@@ -437,8 +437,13 @@ public:
 	virtual bool CloseDatabase(int flags = defaultFlag) = 0;
 
 	//metaobject
+	// explicitName: when non-empty, the object is named directly and the
+	// GetNewName sibling-scan is skipped. Bulk builders (e.g. the JSON config
+	// generator) always know the final name, so this avoids the O(N^2) that a
+	// per-create unique-default-name scan costs when many siblings share a parent.
 	ibValueMetaObject* CreateMetaObject(const ibClassID& clsid,
-		ibValueMetaObject* parentMetaObj, bool runObject = true);
+		ibValueMetaObject* parentMetaObj, bool runObject = true,
+		const wxString& explicitName = wxEmptyString);
 
 	bool RenameMetaObject(ibValueMetaObject* object, const wxString& newName);
 	void RemoveMetaObject(ibValueMetaObject* object, ibValueMetaObject* objParent = nullptr);

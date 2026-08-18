@@ -54,6 +54,7 @@ add_executable(oes_tests
     test_dbTaxonomy.cpp
     test_gitService.cpp
     test_metadataSerialize.cpp
+    test_configSpec.cpp
     test_propertySerialized.cpp
     test_metadataTree.cpp
     test_commonAttribute.cpp
@@ -361,6 +362,56 @@ set_target_properties(oes_job_tenancy_test PROPERTIES
 )
 
 gtest_discover_tests(oes_job_tenancy_test)
+
+# ---------------------------------------------------------------------------
+# Sample-configuration generator (utility, not a test). Builds a minimal OES
+# configuration in memory and writes it to an .mcf file:
+#   cmake --build build --target oes_make_sample_config
+#   ./bin/oes_make_sample_config path/to/SampleConfig.mcf
+# ---------------------------------------------------------------------------
+add_executable(oes_make_sample_config "${CMAKE_SOURCE_DIR}/tools/make_sample_config.cpp")
+
+target_link_libraries(oes_make_sample_config PRIVATE backend)
+
+target_compile_definitions(oes_make_sample_config PRIVATE OES_TESTING)
+
+target_include_directories(oes_make_sample_config PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}/src/engine"
+    "${CMAKE_SOURCE_DIR}/src/engine/backend"
+)
+
+set_target_properties(oes_make_sample_config PROPERTIES
+    CXX_STANDARD          17
+    CXX_STANDARD_REQUIRED ON
+    BUILD_RPATH            "${CMAKE_BINARY_DIR}/bin"
+    INSTALL_RPATH          "${CMAKE_BINARY_DIR}/bin"
+)
+
+# ---------------------------------------------------------------------------
+# CLI configuration generator (utility, not a test). Reads a friendly JSON spec
+# and writes an .mcf configuration file via the backend engine:
+#   cmake --build build --target oes_config_gen
+#   ./bin/oes_config_gen spec.json out.mcf
+# ---------------------------------------------------------------------------
+add_executable(oes_config_gen "${CMAKE_SOURCE_DIR}/tools/oes_config_gen.cpp")
+
+target_link_libraries(oes_config_gen PRIVATE backend)
+
+target_compile_definitions(oes_config_gen PRIVATE OES_TESTING)
+
+target_include_directories(oes_config_gen PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}/src/engine"
+    "${CMAKE_SOURCE_DIR}/src/engine/backend"
+)
+
+set_target_properties(oes_config_gen PROPERTIES
+    CXX_STANDARD          17
+    CXX_STANDARD_REQUIRED ON
+    BUILD_RPATH            "${CMAKE_BINARY_DIR}/bin"
+    INSTALL_RPATH          "${CMAKE_BINARY_DIR}/bin"
+)
 
 # ---------------------------------------------------------------------------
 # Frontend GUI harness — STEP 1. Links the DESKTOP frontend.dll (real wx

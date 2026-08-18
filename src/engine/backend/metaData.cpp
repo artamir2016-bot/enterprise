@@ -258,7 +258,7 @@ void ibMetaData::DoGenerateNewID(ibMetaID& id, const ibValueMetaObject* top) con
 	}
 }
 
-ibValueMetaObject* ibMetaData::CreateMetaObject(const ibClassID& clsidIn, ibValueMetaObject* parent, bool runObject)
+ibValueMetaObject* ibMetaData::CreateMetaObject(const ibClassID& clsidIn, ibValueMetaObject* parent, bool runObject, const wxString& explicitName)
 {
 	// Resolve the requested clsid against the owner: a tabular section's RAM (MD_TBL) and
 	// DB-backed reference (MD_TBLR) variants are the same kind, so the owner remaps a pasted
@@ -287,7 +287,9 @@ ibValueMetaObject* ibMetaData::CreateMetaObject(const ibClassID& clsidIn, ibValu
 	if (newMetaObject != nullptr) {
 
 		newMetaObject->SetName(
-			GetNewName(clsid, parent, newMetaObject->GetClassName())
+			explicitName.IsEmpty()
+				? GetNewName(clsid, parent, newMetaObject->GetClassName())
+				: explicitName
 		);
 
 		//always create meta object

@@ -1,0 +1,27 @@
+{
+  "name": "SampleConfiguration",
+  "catalogs": [
+    {
+      "name": "Products",
+      "attributes": [
+        { "name": "Price",   "type": "Number", "precision": 15, "scale": 2 },
+        { "name": "Article", "type": "String", "length": 20 }
+      ]
+    }
+  ],
+  "documents": [
+    {
+      "name": "Invoice",
+      "attributes": [
+        { "name": "Sum",  "type": "Number", "precision": 15, "scale": 2 },
+        { "name": "Date", "type": "Date" }
+      ]
+    }
+  ],
+  "commonModules": [
+    {
+      "name": "CommonFunctions",
+      "code": "// Sample common module - VES (1C/BSL-flavoured) dialect.\n\nFunction CalculateLineTotal(Quantity, Price) Export\n\tReturn Quantity * Price;\nEndFunction\n\nFunction ApplyDiscount(Amount, Percent) Export\n\tIf Percent <= 0 Then\n\t\tReturn Amount;\n\tEndIf;\n\tReturn Amount - Amount * Percent / 100;\nEndFunction\n\nProcedure ShowGreeting(Name) Export\n\tIf Name = \"\" Then\n\t\tMessage(\"Hello, guest!\");\n\tElse\n\t\tMessage(\"Hello, \" + Name + \"!\");\n\tEndIf;\nEndProcedure\n"
+    }
+  ]
+}

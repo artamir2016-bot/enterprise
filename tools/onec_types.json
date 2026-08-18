@@ -1,0 +1,18 @@
+{
+  "_comment": "1C compound type name -> OES registered value-type name (VALUE_TYPE_REGISTER). Keys lowercased. Applied to identifiers NOT in method position. Extend without code changes. Types with no OES equivalent are omitted and fall through to dictionary translation.",
+
+  "массив": "Array",
+  "структура": "Structure",
+  "соответствие": "Container",
+  "таблицазначений": "Table",
+  "таблицазначенийстрока": "TableValueRow",
+  "таблицазначенийколонка": "TableValueColumn",
+  "запрос": "Query",
+  "табличныйдокумент": "SpreadsheetDocument",
+  "описаниетипов": "TypeDescription",
+  "моментвремени": "PointInTime",
+  "граница": "Boundary",
+  "цвет": "Colour",
+  "шрифт": "Font",
+  "уникальныйидентификатор": "Guid"
+}

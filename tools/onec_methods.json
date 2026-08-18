@@ -1,0 +1,47 @@
+{
+  "_comment": "1C object method name -> OES method name. Keys lowercased, full method name. Applied ONLY to identifiers in METHOD POSITION (after a dot). Priority over the general word dictionary. Note: 'удалить' maps to Delete (Structure/Container/Table); OES Array uses Remove — flat map can't disambiguate by receiver type, see docs. Extend without code changes.",
+
+  "добавить": "Add",
+  "вставить": "Insert",
+  "количество": "Count",
+  "найти": "Find",
+  "найтипозначению": "Find",
+  "очистить": "Clear",
+  "получить": "Get",
+  "установить": "Set",
+  "удалить": "Delete",
+  "содержит": "Contains",
+  "сортировать": "Sort",
+  "скопировать": "Clone",
+  "свойство": "Property",
+
+  "выполнить": "Execute",
+  "выполнитьпакет": "ExecuteBatch",
+  "установитьпараметр": "SetParameter",
+  "выбрать": "Select",
+  "текстзапроса": "QueryText",
+
+  "следующий": "Next",
+  "следующая": "Next",
+  "сброситьпозицию": "Reset",
+  "итог": "Total",
+  "уровень": "Level",
+  "естьподчиненные": "HasChildren",
+
+  "существует": "Exist",
+  "размер": "Size",
+  "получитьимя": "Name",
+
+  "ожидатьзавершения": "Wait",
+  "отменить": "Cancel",
+  "завершено": "IsComplete",
+  "результат": "Result",
+
+  "записать": "Write",
+  "прочитать": "Read",
+
+  "подготовитьзапрос": "PrepareStatement",
+  "выполнитьзапрос": "RunQuery",
+  "выполнитьзапроссрезультатом": "RunQueryWithResults",
+  "установитьпараметрзапроса": "SetParam"
+}
