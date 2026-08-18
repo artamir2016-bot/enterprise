@@ -13,6 +13,7 @@
 #include "backend/metaCollection/attribute/metaAttributeObject.h"  // ibValueMetaObjectAttribute
 #include "backend/metaCollection/partial/commonObject.h"  // ibValueMetaObjectRecordData (module accessors)
 #include "backend/metaCollection/partial/constant.h"      // ibValueMetaObjectConstant
+#include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm
 
 #include "3rdparty/nlohmann/json.hpp"
 
@@ -158,6 +159,39 @@ void ApplyObjectModules(ibValueMetaObject* obj, const json& node) {
 	}
 }
 
+// Create form child metaobjects under an owner (catalog/document/register).
+// MVP-A: form name + module (BSL already translated to VES upstream). FormData
+// is left empty so OES auto-builds the layout from the object's attributes when
+// the form is opened. Form type has no public setter; it stays default (auto).
+bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
+              const json& node, wxString& err) {
+	auto it = node.find("forms");
+	if (it == node.end())
+		return true;
+	if (!it->is_array()) {
+		err = wxT("'forms' must be an array");
+		return false;
+	}
+	for (const json& f : *it) {
+		const wxString name = JStr(f, "name");
+		if (name.IsEmpty()) {
+			err = wxT("form without a 'name'");
+			return false;
+		}
+		ibValueMetaObject* obj = cfg.CreateMetaObject(g_metaFormCLSID, owner, /*runObject*/ false, name);
+		if (obj == nullptr) {
+			err = wxString::Format(wxT("failed to create form '%s'"), name);
+			return false;
+		}
+		if (auto* form = dynamic_cast<ibValueMetaObjectForm*>(obj)) {
+			const wxString code = JStr(f, "module");
+			if (!code.IsEmpty())
+				form->SetModuleText(code);
+		}
+	}
+	return true;
+}
+
 // ---- Pass 2 fillers -------------------------------------------------------
 
 // Catalog / Document: attributes, tabular sections, object/manager modules.
@@ -182,6 +216,8 @@ bool FillRecordObject(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
 		}
 	}
 	ApplyObjectModules(obj, node);
+	if (!AddForms(cfg, obj, node, err))
+		return false;
 	return true;
 }
 
@@ -192,6 +228,8 @@ bool FillRegister(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
 	if (!AddTypedChildren(cfg, obj, node, "resources",  g_metaResourceCLSID,  refMap, err)) return false;
 	if (!AddTypedChildren(cfg, obj, node, "attributes", g_metaAttributeCLSID, refMap, err)) return false;
 	ApplyObjectModules(obj, node);
+	if (!AddForms(cfg, obj, node, err))
+		return false;
 	return true;
 }
 

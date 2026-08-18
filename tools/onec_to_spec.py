@@ -148,6 +148,39 @@ def child_objects(obj_el):
     return obj_el.find(MD + "ChildObjects")
 
 
+def _form_type_from_name(name):
+    low = name.lower()
+    if "списк" in low or "list" in low:
+        return "list"
+    if "выбор" in low or "choice" in low or "select" in low:
+        return "select"
+    if "групп" in low or "folder" in low:
+        return "folder"
+    return "object"
+
+
+def parse_forms(dump_dir, kind_dir, base_name, limit=0):
+    """Return [{name, type, module}] for an object's Forms/ (managed forms)."""
+    forms_dir = os.path.join(dump_dir, kind_dir, base_name, "Forms")
+    if not os.path.isdir(forms_dir):
+        return []
+    out = []
+    for fn in sorted(os.listdir(forms_dir)):
+        if not fn.endswith(".xml"):
+            continue
+        name = fn[:-4]
+        module = read_file(os.path.join(forms_dir, name, "Ext", "Form", "Module.bsl"))
+        out.append({
+            "name": name,
+            "type": _form_type_from_name(name),
+            "module": maybe_translate(module),
+        })
+        report["Forms"] += 1
+        if limit and len(out) >= limit:
+            break
+    return out
+
+
 def parse_record_object(root_el, dump_dir, kind_dir, base_name):
     """Catalog / Document -> friendly dict (attributes, tabularSections, modules)."""
     obj_el = None
@@ -189,6 +222,9 @@ def parse_record_object(root_el, dump_dir, kind_dir, base_name):
         out["objectModule"] = maybe_translate(obj_mod)
     if mgr_mod:
         out["managerModule"] = maybe_translate(mgr_mod)
+    forms = parse_forms(dump_dir, kind_dir, base_name)
+    if forms:
+        out["forms"] = forms
     return out
 
 
@@ -256,6 +292,9 @@ def parse_register(root_el, dump_dir, kind_dir, base_name):
         out["objectModule"] = maybe_translate(rs)
     if mgr:
         out["managerModule"] = maybe_translate(mgr)
+    forms = parse_forms(dump_dir, kind_dir, base_name)
+    if forms:
+        out["forms"] = forms
     return out
 
 

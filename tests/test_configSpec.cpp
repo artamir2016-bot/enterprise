@@ -166,6 +166,37 @@ TEST(ConfigSpec, BuildFull_UnresolvedRefDegradesGracefully) {
 	EXPECT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
 }
 
+TEST(ConfigSpec, BuildFromJson_CreatesForms) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [ { "name": "Price", "type": "Number" } ],
+	      "forms": [
+	        { "name": "ItemForm", "type": "object",
+	          "module": "Procedure OnOpen() Public\nEndProcedure" },
+	        { "name": "ListForm", "type": "list" }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	wxMemoryBuffer buf;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(buf));
+	EXPECT_TRUE(BufferContains(buf, "ItemForm"));
+	EXPECT_TRUE(BufferContains(buf, "ListForm"));
+	EXPECT_TRUE(BufferContains(buf, "Procedure OnOpen()"));
+
+	// Round-trip byte equality with forms present.
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(buf));
+	wxMemoryBuffer buf2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(buf2));
+	ASSERT_EQ(buf.GetDataLen(), buf2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(buf.GetData(), buf2.GetData(), buf.GetDataLen()));
+}
+
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;
