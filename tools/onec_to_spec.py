@@ -159,6 +159,82 @@ def _form_type_from_name(name):
     return "object"
 
 
+# 1C managed-form control tree (Ext/Form.xml, "logform" namespace) -> OES controls.
+LF = "{http://v8.1c.ru/8.3/xcf/logform}"
+
+# 1C control tag -> OES control kind understood by metadataConfigSpec BuildControlNode.
+_CTRL_KIND = {
+    "InputField":      "field",
+    "LabelField":      "field",
+    "CheckBoxField":   "checkbox",
+    "LabelDecoration": "label",
+    "UsualGroup":      "group",
+    "ColumnGroup":     "group",
+    "ButtonGroup":     "group",
+    "Pages":           "pages",
+    "Page":            "page",
+    "Table":           "table",
+}
+
+
+def _last_seg(path):
+    return path.rsplit(".", 1)[-1] if path else ""
+
+
+def _data_path(el):
+    dp = el.find(LF + "DataPath")
+    return _txt(dp).strip() if dp is not None else ""
+
+
+def _map_form_children(child_items, in_table):
+    """Map a <ChildItems> element to a list of OES control dicts.
+
+    DataPath binds by its LAST segment (the attribute / column name), which is the
+    raw 1C name — metadata names are imported verbatim (not translated), so the
+    names match. Inside a Table only columns are meaningful: groups are flattened
+    so the tablebox holds columns directly (its only legal child kind)."""
+    out = []
+    for el in child_items:
+        kind = _CTRL_KIND.get(_local(el.tag))
+        if kind is None:
+            continue
+        name = el.get("name") or ""
+        if in_table:
+            if kind in ("field", "checkbox"):
+                out.append({"kind": "column", "name": name, "field": _last_seg(_data_path(el))})
+            elif kind in ("group", "pages", "page"):
+                sub = el.find(LF + "ChildItems")
+                if sub is not None:
+                    out.extend(_map_form_children(sub, True))   # flatten into columns
+            continue
+        node = {"kind": kind, "name": name}
+        if kind in ("field", "checkbox"):
+            node["attr"] = _last_seg(_data_path(el))
+        elif kind == "table":
+            node["attr"] = _last_seg(_data_path(el))
+        sub = el.find(LF + "ChildItems")
+        if sub is not None:
+            children = _map_form_children(sub, kind == "table")
+            if children:
+                node["children"] = children
+        out.append(node)
+    return out
+
+
+def parse_form_controls(form_xml_path):
+    """Return the OES control tree for a 1C managed form's Ext/Form.xml, or []."""
+    if not os.path.isfile(form_xml_path):
+        return []
+    try:
+        root = ET.parse(form_xml_path).getroot()
+    except ET.ParseError:
+        return []
+    child_items = root.find(LF + "ChildItems")   # the Form's own root items (not the command bar's)
+    if child_items is None:
+        return []
+    return _map_form_children(child_items, False)
+
+
 def parse_forms(dump_dir, kind_dir, base_name, limit=0):
     """Return [{name, type, module}] for an object's Forms/ (managed forms)."""
     forms_dir = os.path.join(dump_dir, kind_dir, base_name, "Forms")
@@ -170,11 +246,21 @@ def parse_forms(dump_dir, kind_dir, base_name, limit=0):
             continue
         name = fn[:-4]
         module = read_file(os.path.join(forms_dir, name, "Ext", "Form", "Module.bsl"))
-        out.append({
+        form_type = _form_type_from_name(name)
+        entry = {
             "name": name,
-            "type": _form_type_from_name(name),
+            "type": form_type,
             "module": maybe_translate(module),
-        })
+        }
+        # MVP-B: replicate the 1C control tree into FormData for object/item forms.
+        # List/select/folder forms rely on OES auto-layout (their main source is the
+        # list, which the control-binding model does not target yet).
+        if form_type == "object":
+            controls = parse_form_controls(os.path.join(forms_dir, name, "Ext", "Form.xml"))
+            if controls:
+                entry["controls"] = controls
+                report["FormControls"] += 1
+        out.append(entry)
         report["Forms"] += 1
         if limit and len(out) >= limit:
             break

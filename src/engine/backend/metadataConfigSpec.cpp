@@ -14,6 +14,8 @@
 #include "backend/metaCollection/partial/commonObject.h"  // ibValueMetaObjectRecordData (module accessors)
 #include "backend/metaCollection/partial/constant.h"      // ibValueMetaObjectConstant
 #include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm
+#include "backend/serialize/dataBuilder.h"                 // ibDataNode / ibDataValue (form control tree)
+#include "backend/sourceDescription.h"                     // ibSourceDescription / ibSourceDescriptionMemory (control Source binding)
 
 #include "3rdparty/nlohmann/json.hpp"
 
@@ -159,10 +161,171 @@ void ApplyObjectModules(ibValueMetaObject* obj, const json& node) {
 	}
 }
 
+// ---- Form control tree (MVP-B) -------------------------------------------
+//
+// A form's FormData blob is a binary-provider serialization of an ibDataNode
+// control tree (frame.cpp ibValueFrame::Save/LoadNode). Every control node is:
+//   fields   "ControlId" (s32) / "Name" (wxString) / "Expanded" (bool)
+//   props    per-control (absent -> the property keeps its default on load;
+//            SetNodeValue intercepts the empty value, so a minimal node is safe)
+//   children sub-controls (recursion)
+// The control TYPE is the node clsid = control_to_clsid("CT_XXX") — a pure
+// backend hash, no frontend dependency. Data binding rides the "Source" property
+// as an ordered metaId path: for an OBJECT form the head hop is the form's MAIN
+// attribute (id 1, rebuilt from the source in the form ctor), then the object's
+// attribute metaId (BuildForm: Source={mainAttrId,fieldId}); a table column adds
+// the column's metaId ({mainAttrId,tsId,colId}). A non-empty FormData skips the
+// auto-layout (CreateAndBuildForm), so this tree is authoritative.
+
+// Control clsids — same strings the frontend registers (widgets.h / tableBox.h /
+// notebook.h / boxsizer.cpp), computed the same way (control_to_clsid).
+constexpr ibClassID kCtrlText     = control_to_clsid("CT_TXTC");  // Textctrl
+constexpr ibClassID kCtrlCheckbox = control_to_clsid("CT_CHKB");  // Checkbox
+constexpr ibClassID kCtrlStatic   = control_to_clsid("CT_STTX");  // Statictext
+constexpr ibClassID kCtrlTable    = control_to_clsid("CT_TABL");  // Tablebox
+constexpr ibClassID kCtrlColumn   = control_to_clsid("CT_TBLC");  // TableboxColumn
+constexpr ibClassID kCtrlNotebook = control_to_clsid("CT_NTBK");  // Notebook
+constexpr ibClassID kCtrlPage     = control_to_clsid("CT_NTPG");  // NotebookPage
+constexpr ibClassID kCtrlBox      = control_to_clsid("CT_BSZR");  // Boxsizer
+
+constexpr ibMetaID kFormMainAttrId = 1;   // object form's main attribute (ctor-assigned, first attribute)
+constexpr int      kFormRootId     = 1;   // the form control's own id (frontend defaultFormId)
+
+// A tabular section's resolved ids: the section metaId + its columns' metaIds by name.
+struct TabInfo {
+	ibMetaID id = 0;
+	std::map<wxString, ibMetaID> cols;
+};
+
+// Owner attribute / tabular-section name -> metaId maps, for resolving control bindings.
+struct AttrMaps {
+	std::map<wxString, ibMetaID> attrs;      // direct attribute name -> metaId
+	std::map<wxString, TabInfo>  tabs;       // tabular-section name -> {id, cols}
+};
+
+void BuildAttrMaps(ibValueMetaObject* owner, AttrMaps& out) {
+	for (unsigned int i = 0; i < owner->GetChildCount(); i++) {
+		ibValueMetaObject* child = owner->GetChild(i);
+		if (child == nullptr)
+			continue;
+		if (auto* a = dynamic_cast<ibValueMetaObjectAttribute*>(child)) {
+			out.attrs[a->GetName()] = a->GetMetaID();
+		}
+		else if (child->GetClassType() == g_metaTableRefCLSID) {
+			TabInfo ti;
+			ti.id = child->GetMetaID();
+			for (unsigned int j = 0; j < child->GetChildCount(); j++)
+				if (auto* col = dynamic_cast<ibValueMetaObjectAttribute*>(child->GetChild(j)))
+					ti.cols[col->GetName()] = col->GetMetaID();
+			out.tabs[child->GetName()] = ti;
+		}
+	}
+}
+
+// Encode a control Source binding (an ordered metaId hop path) as a node property value.
+ibDataValue MakeSource(const std::vector<ibSourceId>& hops) {
+	ibSourceDescription desc;
+	for (ibSourceId id : hops)
+		desc.AppendSource(id);
+	ibDataValue value;
+	ibSourceDescriptionMemory::WriteNode(value, desc);
+	return value;
+}
+
+// Emit one control (and its children) as a child node under `parent`. `tableId`
+// is the enclosing tablebox's tabular-section metaId (0 outside a table) so a
+// column resolves its 3-hop source. `nextId` hands out form-unique control ids.
+void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
+                      int& nextId, ibMetaID tableId) {
+	const wxString kind = JStr(c, "kind", wxT("field")).Lower();
+	const wxString name = JStr(c, "name");
+
+	ibClassID clsid = kCtrlText;
+	if      (kind == wxT("field"))                                clsid = kCtrlText;
+	else if (kind == wxT("checkbox"))                            clsid = kCtrlCheckbox;
+	else if (kind == wxT("label") || kind == wxT("statictext")) clsid = kCtrlStatic;
+	else if (kind == wxT("table"))                              clsid = kCtrlTable;
+	else if (kind == wxT("column"))                             clsid = kCtrlColumn;
+	else if (kind == wxT("pages") || kind == wxT("notebook"))  clsid = kCtrlNotebook;
+	else if (kind == wxT("page"))                               clsid = kCtrlPage;
+	else if (kind == wxT("group") || kind == wxT("box"))       clsid = kCtrlBox;
+
+	const int id = nextId++;
+	ibDataNode& node = parent.AddChild(clsid, id);
+	node.SetValue(wxT("ControlId"), (s32)id);
+	node.SetValue(wxT("Name"), name);
+	node.SetValue(wxT("Expanded"), true);
+
+	// Data binding. Field/checkbox/statictext bind to an object attribute; a
+	// table binds to its tabular section; a column adds the leaf column hop.
+	ibMetaID childTableId = tableId;
+	if (kind == wxT("field") || kind == wxT("checkbox") || kind == wxT("label") || kind == wxT("statictext")) {
+		const wxString attr = JStr(c, "attr");
+		auto it = maps.attrs.find(attr);
+		if (!attr.IsEmpty() && it != maps.attrs.end())
+			node.SetProperty(wxT("Source"), MakeSource({ (ibSourceId)kFormMainAttrId, (ibSourceId)it->second }));
+		const wxString title = JStr(c, "title");
+		if (!title.IsEmpty())
+			node.SetProp<wxString>(wxT("Title"), title);
+	}
+	else if (kind == wxT("table")) {
+		const wxString attr = JStr(c, "attr");
+		auto it = maps.tabs.find(attr);
+		if (it != maps.tabs.end()) {
+			node.SetProperty(wxT("Source"), MakeSource({ (ibSourceId)kFormMainAttrId, (ibSourceId)it->second.id }));
+			childTableId = it->second.id;   // columns resolve against this section
+		}
+	}
+	else if (kind == wxT("column")) {
+		const wxString field = JStr(c, "field");
+		const wxString title = JStr(c, "title");
+		// Find the column's metaId within the enclosing table's section.
+		ibMetaID colId = 0;
+		for (const auto& t : maps.tabs)
+			if (t.second.id == tableId) {
+				auto cit = t.second.cols.find(field);
+				if (cit != t.second.cols.end()) colId = cit->second;
+				break;
+			}
+		if (colId != 0 && tableId != 0)
+			node.SetProperty(wxT("Source"), MakeSource({ (ibSourceId)kFormMainAttrId, (ibSourceId)tableId, (ibSourceId)colId }));
+		if (!title.IsEmpty())
+			node.SetProp<wxString>(wxT("Title"), title);
+	}
+
+	// Recurse.
+	auto ch = c.find("children");
+	if (ch != c.end() && ch->is_array())
+		for (const json& sub : *ch)
+			BuildControlNode(node, sub, maps, nextId, childTableId);
+}
+
+// Build the whole FormData blob for a form node with a "controls" tree.
+// Returns an empty buffer when there are no controls (caller leaves FormData
+// empty -> auto-layout, the MVP-A behaviour).
+wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const AttrMaps& maps) {
+	auto it = f.find("controls");
+	if (it == f.end() || !it->is_array() || it->empty())
+		return wxMemoryBuffer();
+
+	auto root = std::make_shared<ibDataNode>();
+	root->SetValue(wxT("ControlId"), (s32)kFormRootId);   // form's own control id (1)
+	root->SetValue(wxT("Name"), formName);
+	root->SetValue(wxT("Expanded"), true);
+
+	int nextId = kFormRootId + 1;   // children start after the form
+	for (const json& c : *it)
+		BuildControlNode(*root, c, maps, nextId, /*tableId*/ 0);
+
+	return ibValueMetaObjectFormBase::FormNodeToBlob(ibDataValue::Child(root));
+}
+
 // Create form child metaobjects under an owner (catalog/document/register).
-// MVP-A: form name + module (BSL already translated to VES upstream). FormData
-// is left empty so OES auto-builds the layout from the object's attributes when
-// the form is opened. Form type has no public setter; it stays default (auto).
+// Form name + module (BSL already translated to VES upstream). When the form JSON
+// carries a "controls" tree (MVP-B), replicate it into the FormData blob so the
+// 1C layout is preserved; otherwise FormData stays empty and OES auto-builds the
+// layout from the object's attributes on open (MVP-A). Form type has no public
+// setter; it stays default.
 bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
               const json& node, wxString& err) {
 	auto it = node.find("forms");
@@ -172,6 +335,10 @@ bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
 		err = wxT("'forms' must be an array");
 		return false;
 	}
+
+	AttrMaps maps;
+	BuildAttrMaps(owner, maps);   // resolve control bindings against the owner's attributes
+
 	for (const json& f : *it) {
 		const wxString name = JStr(f, "name");
 		if (name.IsEmpty()) {
@@ -187,6 +354,9 @@ bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
 			const wxString code = JStr(f, "module");
 			if (!code.IsEmpty())
 				form->SetModuleText(code);
+			const wxMemoryBuffer formData = BuildFormData(f, name, maps);
+			if (!formData.IsEmpty())
+				form->SetFormData(formData);
 		}
 	}
 	return true;

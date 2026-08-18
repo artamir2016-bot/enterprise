@@ -16,11 +16,36 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <algorithm>
+#include <vector>
 
 #include "backend/metadataConfiguration.h"
 #include "backend/metadataConfigSpec.h"
+#include "backend/metaCollection/metaFormObject.h"     // ibValueMetaObjectForm / FormBlobToNode
+#include "backend/serialize/dataBuilder.h"             // ibDataNode / ibDataValue (form control tree)
+#include "backend/clsid.h"                             // control_to_clsid
 
 namespace {
+
+// Depth-first search for the first form metaobject under a config.
+ibValueMetaObjectForm* FindFirstForm(ibValueMetaObject* obj) {
+	if (obj == nullptr)
+		return nullptr;
+	if (auto* form = dynamic_cast<ibValueMetaObjectForm*>(obj))
+		return form;
+	for (unsigned int i = 0; i < obj->GetChildCount(); i++)
+		if (ibValueMetaObjectForm* found = FindFirstForm(obj->GetChild(i)))
+			return found;
+	return nullptr;
+}
+
+// Recursively collect every control node clsid in a form-data node tree.
+void CollectClsids(const ibDataNode& node, std::vector<ibClassID>& out) {
+	for (const ibDataNode& child : node.Children()) {
+		out.push_back(child.GetClsid());
+		CollectClsids(child, out);
+	}
+}
 
 const char* kSpec = R"JSON({
   "name": "SpecCfg",
@@ -195,6 +220,68 @@ TEST(ConfigSpec, BuildFromJson_CreatesForms) {
 	ASSERT_TRUE(back.SaveConfigToBuffer(buf2));
 	ASSERT_EQ(buf.GetDataLen(), buf2.GetDataLen());
 	EXPECT_EQ(0, std::memcmp(buf.GetData(), buf2.GetData(), buf.GetDataLen()));
+}
+
+TEST(ConfigSpec, BuildFromJson_CreatesFormControlTree) {
+	// MVP-B: a form's "controls" tree is replicated into the FormData blob.
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [
+	        { "name": "Price",  "type": "Number" },
+	        { "name": "Active", "type": "Boolean" }
+	      ],
+	      "tabularSections": [
+	        { "name": "Lines", "attributes": [ { "name": "Qty", "type": "Number" } ] }
+	      ],
+	      "forms": [
+	        { "name": "ItemForm", "type": "object",
+	          "controls": [
+	            { "kind": "group", "name": "Header", "children": [
+	              { "kind": "field",    "name": "PriceField", "attr": "Price" },
+	              { "kind": "checkbox", "name": "ActiveFlag", "attr": "Active" }
+	            ] },
+	            { "kind": "table", "name": "LinesTable", "attr": "Lines", "children": [
+	              { "kind": "column", "name": "QtyCol", "field": "Qty", "title": "Quantity" }
+	            ] }
+	          ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	// The form carries a non-empty FormData blob (control tree present, not auto-layout).
+	ibValueMetaObjectForm* form = FindFirstForm(cfg.GetCommonMetaObject());
+	ASSERT_NE(form, nullptr);
+	const wxMemoryBuffer blob = form->GetFormData();
+	ASSERT_GT(blob.GetDataLen(), 0u);
+
+	// The blob decodes to a control node tree with the expected control clsids.
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(blob);
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+	std::vector<ibClassID> clsids;
+	CollectClsids(*rootVal.AsChild(), clsids);
+
+	auto has = [&](ibClassID c) {
+		return std::find(clsids.begin(), clsids.end(), c) != clsids.end();
+	};
+	EXPECT_TRUE(has(control_to_clsid("CT_BSZR")));  // group box
+	EXPECT_TRUE(has(control_to_clsid("CT_TXTC")));  // field
+	EXPECT_TRUE(has(control_to_clsid("CT_CHKB")));  // checkbox
+	EXPECT_TRUE(has(control_to_clsid("CT_TABL")));  // table
+	EXPECT_TRUE(has(control_to_clsid("CT_TBLC")));  // column
+
+	// Config byte round-trip holds with the control blob embedded.
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
 }
 
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {
