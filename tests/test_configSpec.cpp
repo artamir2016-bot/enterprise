@@ -446,6 +446,61 @@ TEST(ConfigSpec, BuildFromJson_EmitsRealNotebookTabs) {
 	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
 }
 
+TEST(ConfigSpec, BuildFromJson_GroupTitleBecomesHeader) {
+	// A group carrying a "title" (1C UsualGroup shown with ShowTitle) contributes
+	// a section HEADER: an unbound Statictext emitted before the group's fields,
+	// while the group's own layout stays flattened (no Boxsizer). A group WITHOUT
+	// a title (a layout column) emits no header.
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [ { "name": "Price", "type": "Number" } ],
+	      "forms": [
+	        { "name": "ItemForm", "type": "object",
+	          "controls": [
+	            { "kind": "group", "name": "Titled", "title": "ru = 'Section';", "children": [
+	              { "kind": "field", "name": "PriceField", "attr": "Price" }
+	            ] },
+	            { "kind": "group", "name": "Plain", "children": [
+	              { "kind": "field", "name": "PriceField2", "attr": "Price" }
+	            ] }
+	          ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectForm* form = FindFirstForm(cfg.GetCommonMetaObject());
+	ASSERT_NE(form, nullptr);
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(form->GetFormData());
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+
+	// Groups stay flattened (no Boxsizer), and exactly ONE header Statictext is
+	// emitted — for the titled group only.
+	std::vector<ibClassID> clsids;
+	CollectClsids(*rootVal.AsChild(), clsids);
+	EXPECT_EQ(0, std::count(clsids.begin(), clsids.end(), control_to_clsid("CT_BSZR")));
+	const long statics = std::count(clsids.begin(), clsids.end(), control_to_clsid("CT_STTX"));
+	EXPECT_EQ(statics, 1) << "one header for the titled group, none for the plain one";
+
+	// That header carries the group's title as its caption.
+	std::function<const ibDataNode*(const ibDataNode&)> findStatic =
+		[&](const ibDataNode& n) -> const ibDataNode* {
+			for (const ibDataNode& ch : n.Children()) {
+				if (ch.GetClsid() == control_to_clsid("CT_STTX")) return &ch;
+				if (const ibDataNode* r = findStatic(ch)) return r;
+			}
+			return nullptr;
+		};
+	const ibDataNode* hdr = findStatic(*rootVal.AsChild());
+	ASSERT_NE(hdr, nullptr);
+	const ibDataValue t = hdr->GetProperty(wxT("Title"));
+	ASSERT_EQ(t.Kind(), ibDataKind::String);
+	EXPECT_EQ(t.AsString(), wxT("ru = 'Section';"));
+}
+
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

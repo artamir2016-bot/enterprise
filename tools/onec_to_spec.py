@@ -254,6 +254,17 @@ def _map_form_children(child_items, in_table):
             title = _title_loc(el)
             if title:
                 node["title"] = title
+        elif kind == "group":
+            # A UsualGroup shows its title as a section header when ShowTitle is on
+            # (1C's default when the element is absent). Layout-only columns set
+            # ShowTitle=false and get no header. Carry the title only when shown;
+            # the group's layout is still flattened, but the header survives.
+            show = el.find(LF + "ShowTitle")
+            shown = (show is None) or (_txt(show).strip().lower() == "true")
+            if shown:
+                title = _title_loc(el)
+                if title:
+                    node["title"] = title
         sub = el.find(LF + "ChildItems")
         if sub is not None:
             children = _map_form_children(sub, kind == "table")

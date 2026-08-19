@@ -300,6 +300,20 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	// page's direct children — SizerItem cells whose parent is the page WINDOW —
 	// were exactly what tripped it, so tabs load correctly now.
 	if (kind == wxT("group") || kind == wxT("box")) {
+		// A 1C UsualGroup shown with a title (ShowTitle, default on) contributes a
+		// section HEADER. We keep the group's layout flattened but surface that
+		// header as an unbound Statictext before the group's fields, so the tab
+		// reads "Целая часть / <fields> / Дробная часть / <fields>" rather than one
+		// undifferentiated list. The importer only sets "title" when 1C actually
+		// shows it (layout-only columns set ShowTitle=false and carry none).
+		const wxString title = JStr(c, "title");
+		if (!title.IsEmpty()) {
+			json header;
+			header["kind"]  = "label";
+			header["name"]  = JStr(c, "name").utf8_str().data();  // group name → header id in the tree
+			header["title"] = title.utf8_str().data();
+			BuildControlNode(parent, header, maps, nextId, tableId, host);
+		}
 		auto ch = c.find("children");
 		if (ch != c.end() && ch->is_array())
 			for (const json& sub : *ch)
