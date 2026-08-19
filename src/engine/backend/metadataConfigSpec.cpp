@@ -222,6 +222,13 @@ struct AttrMaps {
 };
 
 void BuildAttrMaps(ibValueMetaObject* owner, AttrMaps& out) {
+	// 1C standard attributes: a catalog's Code / Description are OES predefined attributes with their
+	// own metaIds. Map the 1C DataPath names ("Code"/"Description") to them so those bound fields
+	// resolve and render (otherwise Наименование / Код stay unbound and don't draw).
+	if (auto* h = dynamic_cast<ibValueMetaObjectRecordDataHierarchyMutableRef*>(owner)) {
+		if (auto* code = h->GetDataCode())        out.attrs[wxT("Code")]        = code->GetMetaID();
+		if (auto* desc = h->GetDataDescription()) out.attrs[wxT("Description")] = desc->GetMetaID();
+	}
 	for (unsigned int i = 0; i < owner->GetChildCount(); i++) {
 		ibValueMetaObject* child = owner->GetChild(i);
 		if (child == nullptr)
