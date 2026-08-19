@@ -351,6 +351,12 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 			childTableId = it->second.id;   // columns resolve against this section
 		}
 	}
+	else if (kind == wxT("page")) {
+		// The NotebookPage's Title is its TAB caption (default "New page" otherwise).
+		const wxString title = JStr(c, "title");
+		if (!title.IsEmpty())
+			node.SetProp<wxString>(wxT("Title"), title);
+	}
 	else if (kind == wxT("column")) {
 		const wxString field = JStr(c, "field");
 		const wxString title = JStr(c, "title");

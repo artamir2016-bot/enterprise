@@ -368,7 +368,7 @@ TEST(ConfigSpec, BuildFromJson_EmitsRealNotebookTabs) {
 	        { "name": "ItemForm", "type": "object",
 	          "controls": [
 	            { "kind": "pages", "name": "Tabs", "children": [
-	              { "kind": "page", "name": "Main", "children": [
+	              { "kind": "page", "name": "Main", "title": "ru = 'Base';", "children": [
 	                { "kind": "field", "name": "PriceField", "attr": "Price" }
 	              ] },
 	              { "kind": "page", "name": "Extra", "children": [
@@ -419,6 +419,21 @@ TEST(ConfigSpec, BuildFromJson_EmitsRealNotebookTabs) {
 			return false;
 		};
 	EXPECT_TRUE(notebookHoldsPageDirectly(*rootVal.AsChild()));
+
+	// The first page carries its tab caption (raw-loc-text) as the Title property.
+	std::function<const ibDataNode*(const ibDataNode&)> firstPage =
+		[&](const ibDataNode& n) -> const ibDataNode* {
+			for (const ibDataNode& ch : n.Children()) {
+				if (ch.GetClsid() == control_to_clsid("CT_NTPG")) return &ch;
+				if (const ibDataNode* r = firstPage(ch)) return r;
+			}
+			return nullptr;
+		};
+	const ibDataNode* page = firstPage(*rootVal.AsChild());
+	ASSERT_NE(page, nullptr);
+	const ibDataValue pageTitle = page->GetProperty(wxT("Title"));
+	ASSERT_EQ(pageTitle.Kind(), ibDataKind::String);
+	EXPECT_EQ(pageTitle.AsString(), wxT("ru = 'Base';"));
 
 	// Byte round-trip holds with the notebook blob embedded.
 	wxMemoryBuffer b1;

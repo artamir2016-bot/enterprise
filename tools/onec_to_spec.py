@@ -248,6 +248,12 @@ def _map_form_children(child_items, in_table):
             title = _title_loc(el)
             if title:
                 node["title"] = title
+        elif kind == "page":
+            # A Page's Title is its TAB caption; without it the tab shows OES's
+            # default "New page". Carry it as raw-loc-text (same as decorations).
+            title = _title_loc(el)
+            if title:
+                node["title"] = title
         sub = el.find(LF + "ChildItems")
         if sub is not None:
             children = _map_form_children(sub, kind == "table")
