@@ -353,6 +353,84 @@ TEST(ConfigSpec, BuildFromJson_LabelCarriesTitleIntoBlob) {
 	EXPECT_EQ(title.AsString(), wxT("ru = '%';ro = '%';"));
 }
 
+TEST(ConfigSpec, BuildFromJson_EmitsRealNotebookTabs) {
+	// A 1C Pages/Page tree must become a real OES Notebook (CT_NTBK) holding
+	// NotebookPage tabs (CT_NTPG) — not flattened. Bound fields inside a page
+	// ride SizerItem cells whose parent is the page window (the shape that once
+	// crashed the loaded-tree layout, now fixed).
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [ { "name": "Price", "type": "Number" } ],
+	      "forms": [
+	        { "name": "ItemForm", "type": "object",
+	          "controls": [
+	            { "kind": "pages", "name": "Tabs", "children": [
+	              { "kind": "page", "name": "Main", "children": [
+	                { "kind": "field", "name": "PriceField", "attr": "Price" }
+	              ] },
+	              { "kind": "page", "name": "Extra", "children": [
+	                { "kind": "group", "name": "Grp", "children": [
+	                  { "kind": "label", "name": "Note", "title": "ru = 'x';" }
+	                ] }
+	              ] }
+	            ] }
+	          ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectForm* form = FindFirstForm(cfg.GetCommonMetaObject());
+	ASSERT_NE(form, nullptr);
+	const wxMemoryBuffer blob = form->GetFormData();
+	ASSERT_GT(blob.GetDataLen(), 0u);
+
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(blob);
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+	std::vector<ibClassID> clsids;
+	CollectClsids(*rootVal.AsChild(), clsids);
+	auto has = [&](ibClassID c) {
+		return std::find(clsids.begin(), clsids.end(), c) != clsids.end();
+	};
+	EXPECT_TRUE(has(control_to_clsid("CT_NTBK")));  // the notebook
+	EXPECT_TRUE(has(control_to_clsid("CT_NTPG")));  // its pages
+	EXPECT_TRUE(has(control_to_clsid("CT_TXTC")));  // bound field inside a page
+	// Two pages emitted.
+	const long pageCount = std::count(clsids.begin(), clsids.end(), control_to_clsid("CT_NTPG"));
+	EXPECT_EQ(pageCount, 2);
+	// Groups inside a page are still flattened (no Boxsizer emitted).
+	EXPECT_FALSE(has(control_to_clsid("CT_BSZR")));
+
+	// A NotebookPage is added to the Notebook DIRECTLY (no SizerItem between
+	// them); the notebook itself and the page's fields DO ride SizerItem cells.
+	std::function<bool(const ibDataNode&)> notebookHoldsPageDirectly =
+		[&](const ibDataNode& n) -> bool {
+			for (const ibDataNode& ch : n.Children()) {
+				if (ch.GetClsid() == control_to_clsid("CT_NTBK")) {
+					for (const ibDataNode& pg : ch.Children())
+						if (pg.GetClsid() == control_to_clsid("CT_NTPG"))
+							return true;   // page is a direct child of the notebook
+				}
+				if (notebookHoldsPageDirectly(ch)) return true;
+			}
+			return false;
+		};
+	EXPECT_TRUE(notebookHoldsPageDirectly(*rootVal.AsChild()));
+
+	// Byte round-trip holds with the notebook blob embedded.
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+}
+
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

@@ -286,16 +286,20 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	const wxString kind = JStr(c, "kind", wxT("field")).Lower();
 	const wxString name = JStr(c, "name");
 
-	// Containers (groups AND notebooks/pages) are emitted TRANSPARENTLY — their
-	// children are lifted into the parent instead of a nested Boxsizer / NotebookPage.
-	// The visual host's LOADED-tree layout crashes on these (access violation in
-	// wxSizer::SetContainingWindow, reached via ibValueSizerItem::OnUpdated's
-	// NotebookPage `page->Layout()` fixup and via nested Boxsizers) — a path the
-	// auto-builder never exercises, since it only ever lays out a FLAT widget list.
-	// Flattening reproduces that proven-safe flat shape while keeping the object's
-	// field selection, order and bindings (and tables, which are plain windows).
-	if (kind == wxT("group") || kind == wxT("box") ||
-	    kind == wxT("pages") || kind == wxT("notebook") || kind == wxT("page")) {
+	// GROUPS (UsualGroup / ColumnGroup / box) are still emitted TRANSPARENTLY —
+	// their children are lifted into the parent instead of a nested Boxsizer.
+	// Nested Boxsizers in a LOADED tree are a separate, unverified layout path;
+	// flattening keeps a proven-flat shape while preserving field selection,
+	// order and bindings. A group inside a page therefore contributes its fields
+	// straight to that page (its section box is dropped, its tab is not).
+	//
+	// NOTEBOOKS / PAGES are now emitted as REAL controls (a CT_NTBK holding
+	// CT_NTPG pages). The access violation that once forced flattening them was a
+	// SizerItem-misclassified-as-sizer bug in ibVisualHost::RefreshControl
+	// (SetSizer walking a bare wxObject sentinel), fixed separately; a notebook
+	// page's direct children — SizerItem cells whose parent is the page WINDOW —
+	// were exactly what tripped it, so tabs load correctly now.
+	if (kind == wxT("group") || kind == wxT("box")) {
 		auto ch = c.find("children");
 		if (ch != c.end() && ch->is_array())
 			for (const json& sub : *ch)
