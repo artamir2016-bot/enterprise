@@ -277,6 +277,20 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	const wxString kind = JStr(c, "kind", wxT("field")).Lower();
 	const wxString name = JStr(c, "name");
 
+	// Groups are emitted TRANSPARENTLY — their children are lifted into the parent
+	// instead of a nested Boxsizer. A serialized tree with Boxsizer-inside-Boxsizer
+	// (deep 1C group nesting, or an empty group) crashes the visual host's
+	// loaded-tree layout (wxSizer::SetContainingWindow), a path the auto-builder —
+	// which only ever makes a FLAT widget list — never exercises. Flattening keeps
+	// field order + bindings and the notebook/page/table structure, and renders.
+	if (kind == wxT("group") || kind == wxT("box")) {
+		auto ch = c.find("children");
+		if (ch != c.end() && ch->is_array())
+			for (const json& sub : *ch)
+				BuildControlNode(parent, sub, maps, nextId, tableId, host);
+		return;
+	}
+
 	ibClassID clsid = kCtrlText;
 	Layout    layout = Layout::Widget;
 	Host      childHost = Host::Sizerable;

@@ -269,13 +269,15 @@ TEST(ConfigSpec, BuildFromJson_CreatesFormControlTree) {
 		return std::find(clsids.begin(), clsids.end(), c) != clsids.end();
 	};
 	EXPECT_TRUE(has(control_to_clsid("CT_SIZR")));  // SizerItem layout wrappers (required for visible layout)
-	EXPECT_TRUE(has(control_to_clsid("CT_BSZR")));  // group box
 	EXPECT_TRUE(has(control_to_clsid("CT_TXTC")));  // field
 	EXPECT_TRUE(has(control_to_clsid("CT_CHKB")));  // checkbox
 	EXPECT_TRUE(has(control_to_clsid("CT_TABL")));  // table
 	EXPECT_TRUE(has(control_to_clsid("CT_TBLC")));  // column
+	// Groups are flattened (their children lifted into the parent) — a nested Boxsizer
+	// tree crashes the visual host's loaded-tree layout, so no CT_BSZR is emitted.
+	EXPECT_FALSE(has(control_to_clsid("CT_BSZR")));
 
-	// A widget must sit inside a SizerItem — verify the field's parent chain is Form -> SizerItem -> Textctrl.
+	// A widget must sit inside a SizerItem — verify the parent chain is ... -> SizerItem -> control.
 	std::function<bool(const ibDataNode&, ibClassID)> hasChildClsid =
 		[&](const ibDataNode& n, ibClassID want) {
 			for (const ibDataNode& ch : n.Children())
@@ -287,8 +289,7 @@ TEST(ConfigSpec, BuildFromJson_CreatesFormControlTree) {
 			for (const ibDataNode& ch : n.Children()) {
 				if (ch.GetClsid() == control_to_clsid("CT_SIZR") &&
 				    (hasChildClsid(ch, control_to_clsid("CT_TXTC")) ||
-				     hasChildClsid(ch, control_to_clsid("CT_NTBK")) ||
-				     hasChildClsid(ch, control_to_clsid("CT_BSZR"))))
+				     hasChildClsid(ch, control_to_clsid("CT_NTBK"))))
 					return true;
 				if (sizerItemWrapsAWidget(ch)) return true;
 			}
