@@ -277,13 +277,16 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	const wxString kind = JStr(c, "kind", wxT("field")).Lower();
 	const wxString name = JStr(c, "name");
 
-	// Groups are emitted TRANSPARENTLY — their children are lifted into the parent
-	// instead of a nested Boxsizer. A serialized tree with Boxsizer-inside-Boxsizer
-	// (deep 1C group nesting, or an empty group) crashes the visual host's
-	// loaded-tree layout (wxSizer::SetContainingWindow), a path the auto-builder —
-	// which only ever makes a FLAT widget list — never exercises. Flattening keeps
-	// field order + bindings and the notebook/page/table structure, and renders.
-	if (kind == wxT("group") || kind == wxT("box")) {
+	// Containers (groups AND notebooks/pages) are emitted TRANSPARENTLY — their
+	// children are lifted into the parent instead of a nested Boxsizer / NotebookPage.
+	// The visual host's LOADED-tree layout crashes on these (access violation in
+	// wxSizer::SetContainingWindow, reached via ibValueSizerItem::OnUpdated's
+	// NotebookPage `page->Layout()` fixup and via nested Boxsizers) — a path the
+	// auto-builder never exercises, since it only ever lays out a FLAT widget list.
+	// Flattening reproduces that proven-safe flat shape while keeping the object's
+	// field selection, order and bindings (and tables, which are plain windows).
+	if (kind == wxT("group") || kind == wxT("box") ||
+	    kind == wxT("pages") || kind == wxT("notebook") || kind == wxT("page")) {
 		auto ch = c.find("children");
 		if (ch != c.end() && ch->is_array())
 			for (const json& sub : *ch)
