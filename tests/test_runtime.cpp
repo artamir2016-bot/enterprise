@@ -1688,15 +1688,63 @@ TEST_F(BuiltInRuntime, EvaluateReadsAVariableOfTheHostModule) {
 // ===========================================================================
 TEST(RuntimeTest, CyrillicIdentifiers) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
-	const wxString src = wxString::FromUTF8("var \xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC public; "
-	                                        "\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC = 42;");  // "Перем"
+	// Identifier "Итог" — deliberately NOT a Russian keyword alias (a name like "Перем"
+	// would now collide with the Var keyword, once the keyword subtask lands).
+	const wxString src = wxString::FromUTF8("var \xD0\x98\xD1\x82\xD0\xBE\xD0\xB3 public; "
+	                                        "\xD0\x98\xD1\x82\xD0\xBE\xD0\xB3 = 42;");  // "Итог"
 	ASSERT_TRUE(TryCompile(cc, src));
 
 	ibProcUnit pu;
 	ASSERT_TRUE(TryExecute(pu, cc.m_cByteCode));
 
 	ibValue val;
-	EXPECT_TRUE(pu.GetPropVal(wxString::FromUTF8("\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC"), val));
+	EXPECT_TRUE(pu.GetPropVal(wxString::FromUTF8("\xD0\x98\xD1\x82\xD0\xBE\xD0\xB3"), val));
 	EXPECT_EQ(val.GetType(), ibValueTypes::TYPE_NUMBER);
+	EXPECT_EQ(val.GetInteger(), 42);
+}
+
+// ===========================================================================
+// OES-RU (fork): RUSSIAN KEYWORDS
+//
+// Russian keyword spellings are aliases of the same KEY_* index as the English
+// keywords (translateCode.cpp s_ruKeyWordAlias). ��������� ��� ����: (1) �����
+// ��� VES-����� � CES-������; (2) ������� �������� ����� ����/�����/��������� �
+// VES-������. Source is built with FromUTF8 (real Unicode; the build sets no
+// /utf-8). "���" is a Cyrillic identifier � leans on the P0 foundation too.
+// ===========================================================================
+TEST(RuntimeTest, RussianKeywords_CES) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	// "����� ��� �������; ��� = �� ����;"  == "var ��� public; ��� = Not False;"
+	ASSERT_TRUE(TryCompile(cc, wxString::FromUTF8("\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC\x20\xD1\x80\xD0\xB5\xD0\xB7\x20\xD0\xAD\xD0\xBA\xD1\x81\xD0\xBF\xD0\xBE\xD1\x80\xD1\x82\x3B\x20\xD1\x80\xD0\xB5\xD0\xB7\x20\x3D\x20\xD0\x9D\xD0\xB5\x20\xD0\x9B\xD0\xBE\xD0\xB6\xD1\x8C\x3B")));
+
+	ibProcUnit pu;
+	ASSERT_TRUE(TryExecute(pu, cc.m_cByteCode));
+
+	ibValue val;
+	EXPECT_TRUE(pu.GetPropVal(wxString::FromUTF8("\xD1\x80\xD0\xB5\xD0\xB7"), val));
+	EXPECT_EQ(val.GetType(), ibValueTypes::TYPE_BOOLEAN);
+	EXPECT_TRUE(val.GetBoolean());
+}
+
+TEST(RuntimeTest, RussianKeywords_VES_IfBlock) {
+	const short styleSaved = ibCompileCode::GetCodeStyle();
+	ibCompileCode::SetCodeStyle(CODE_VES);
+
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	// Перем рез Экспорт; Если Истина Тогда рез = 42; Иначе рез = 0; КонецЕсли;
+	const bool ok = TryCompile(cc, wxString::FromUTF8("\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC\x20\xD1\x80\xD0\xB5\xD0\xB7\x20\xD0\xAD\xD0\xBA\xD1\x81\xD0\xBF\xD0\xBE\xD1\x80\xD1\x82\x3B\x0A\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8\x20\xD0\x98\xD1\x81\xD1\x82\xD0\xB8\xD0\xBD\xD0\xB0\x20\xD0\xA2\xD0\xBE\xD0\xB3\xD0\xB4\xD0\xB0\x0A\xD1\x80\xD0\xB5\xD0\xB7\x20\x3D\x20\x34\x32\x3B\x0A\xD0\x98\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\x0A\xD1\x80\xD0\xB5\xD0\xB7\x20\x3D\x20\x30\x3B\x0A\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8\x3B\x0A"));
+
+	ibProcUnit pu;
+	bool ran = false;
+	if (ok) ran = static_cast<bool>(TryExecute(pu, cc.m_cByteCode));
+
+	ibValue val;
+	bool got = ran && pu.GetPropVal(wxString::FromUTF8("\xD1\x80\xD0\xB5\xD0\xB7"), val);
+
+	ibCompileCode::SetCodeStyle(styleSaved);   // restore BEFORE asserting
+
+	ASSERT_TRUE(ok);
+	ASSERT_TRUE(ran);
+	ASSERT_TRUE(got);
 	EXPECT_EQ(val.GetInteger(), 42);
 }
