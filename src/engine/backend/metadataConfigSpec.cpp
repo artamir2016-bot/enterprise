@@ -16,6 +16,7 @@
 #include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm
 #include "backend/serialize/dataBuilder.h"                 // ibDataNode / ibDataValue (form control tree)
 #include "backend/sourceDescription.h"                     // ibSourceDescription / ibSourceDescriptionMemory (control Source binding)
+#include "backend/typeDescription.h"                        // ibTypeDescription / ibTypeDescriptionMemory (form main-attribute Type)
 
 #include "3rdparty/nlohmann/json.hpp"
 
@@ -191,6 +192,7 @@ constexpr ibClassID kCtrlSizerItem = control_to_clsid("CT_SIZR"); // SizerItem �
 
 constexpr ibMetaID kFormMainAttrId = 1;   // object form's main attribute (ctor-assigned, first attribute)
 constexpr int      kFormRootId     = 1;   // the form control's own id (frontend defaultFormId)
+const     ibClassID kFormAttrClsid = system_to_clsid("FormAttributeValue"); // node clsid of a form attribute (formAttribute.cpp)
 
 // wxStretch flag for the SizerItem "Stretch" property (wx 3.3, stable ABI): the ctor default is
 // wxSHRINK (0x1000) — right for a plain widget — and a container/sizer wants wxEXPAND (0x2000) to
@@ -362,10 +364,29 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 			BuildControlNode(node, sub, maps, nextId, childTableId, childHost);
 }
 
+// Emit the form's MAIN attribute (the "Attributes" section, ibValueForm::WriteAttributes
+// shape). An OBJECT form binds its controls through this attribute (Source head = its id 1):
+// without it the controls cannot resolve their field types and DON'T RENDER in the form
+// editor (only unbound labels show). Typed to the owning object (object_to_clsid), so a
+// control's {mainAttr, attrId} path resolves attrId as a field of the object.
+void EmitMainAttribute(ibDataNode& root, ibMetaID ownerMetaID, const ibMetaData* metaData) {
+	ibDataNode& attrs = root.Child(wxT("Attributes"));                 // Child property (WriteAttributes: node.Child("Attributes"))
+	ibDataNode& a = attrs.AddChild(kFormAttrClsid, kFormMainAttrId);   // one attribute, id 1
+	a.SetValue(wxT("AttributeId"), (s32)kFormMainAttrId);
+	a.SetValue(wxT("Main"), true);
+	a.SetProp<wxString>(wxT("Name"), wxT("Object"));                   // ThisForm.Object (id is what bindings use)
+	ibTypeDescription td;
+	td.SetDefaultMetaType(object_to_clsid(ownerMetaID));              // the object type — its fields are the object's attributes
+	ibDataValue typeVal;
+	ibTypeDescriptionMemory::WriteNode(typeVal, td, metaData);
+	a.SetProperty(wxT("Type"), typeVal);
+}
+
 // Build the whole FormData blob for a form node with a "controls" tree.
 // Returns an empty buffer when there are no controls (caller leaves FormData
 // empty -> auto-layout, the MVP-A behaviour).
-wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const AttrMaps& maps) {
+wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const AttrMaps& maps,
+                             ibMetaID ownerMetaID, const ibMetaData* metaData) {
 	auto it = f.find("controls");
 	if (it == f.end() || !it->is_array() || it->empty())
 		return wxMemoryBuffer();
@@ -374,6 +395,8 @@ wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const Attr
 	root->SetValue(wxT("ControlId"), (s32)kFormRootId);   // form's own control id (1)
 	root->SetValue(wxT("Name"), formName);
 	root->SetValue(wxT("Expanded"), true);
+
+	EmitMainAttribute(*root, ownerMetaID, metaData);      // the object the controls bind through
 
 	int nextId = kFormRootId + 1;   // children start after the form
 	for (const json& c : *it)
@@ -416,7 +439,8 @@ bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
 			const wxString code = JStr(f, "module");
 			if (!code.IsEmpty())
 				form->SetModuleText(code);
-			const wxMemoryBuffer formData = BuildFormData(f, name, maps);
+			const wxMemoryBuffer formData = BuildFormData(f, name, maps,
+				owner->GetMetaID(), owner->GetMetaData());
 			if (!formData.IsEmpty())
 				form->SetFormData(formData);
 		}
