@@ -317,6 +317,17 @@ bool ibBackendLocalization::GetTranslateFromArray(const wxString& strLangCode, c
 		}
 	}
 
+	// Last resort: neither the requested language nor the active one is present.
+	// Fall back to the FIRST available translation rather than a blank string — a
+	// caption a user can read beats an empty one. This matters for content authored
+	// in one set of languages viewed under another UI language (e.g. an imported 1C
+	// form with ru/ro captions opened in an English designer): without this, every
+	// such caption (notebook tabs, decorations) renders empty.
+	if (!array.empty()) {
+		strResult = array.front().m_data;
+		return true;
+	}
+
 	strResult.Clear();
 	return false;
 }
