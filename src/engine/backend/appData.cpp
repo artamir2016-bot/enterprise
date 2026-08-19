@@ -906,7 +906,14 @@ long ibApplicationData::RunApplication(const wxString& strAppName, const wxStrin
 	// file/ibuser/ibpwd/locale/debug). enterprise.exe / designer.exe /
 	// daemon.exe declare these as the long name of their legacy short
 	// options, so one builder feeds every parser.
-	wxString executeCmd = strAppName + wxT(' ');
+	// Resolve the sibling binary by ABSOLUTE path next to THIS executable, not by the
+	// working directory / PATH: a designer launched from an arbitrary cwd otherwise made
+	// wxExecute("enterprise …") fail to find enterprise.exe and silently do nothing.
+	// SetName keeps the running exe's extension (.exe on Windows, empty elsewhere). Quote
+	// the path for spaces.
+	wxFileName appPath(wxStandardPaths::Get().GetExecutablePath());
+	appPath.SetName(strAppName);
+	wxString executeCmd = wxString::Format(wxT("\"%s\" "), appPath.GetFullPath());
 
 	if (m_strFile.IsEmpty()) {
 
@@ -922,7 +929,7 @@ long ibApplicationData::RunApplication(const wxString& strAppName, const wxStrin
 			executeCmd += wxString::Format(wxT(" --password=%s"), m_strPassword);
 	}
 	else {
-		executeCmd += wxString::Format(wxT(" --file=%s"), m_strFile);
+		executeCmd += wxString::Format(wxT(" --file=\"%s\""), m_strFile);
 	}
 
 	if (searchDebug)
