@@ -1674,3 +1674,29 @@ TEST_F(BuiltInRuntime, EvaluateReadsAVariableOfTheHostModule) {
 		<< "eval returned " << v.GetString().ToStdString();
 	EXPECT_EQ(v.GetInteger(), 42);
 }
+
+// ===========================================================================
+// OES-RU (fork): CYRILLIC IDENTIFIERS
+//
+// The lexer classifies a name char with iswalpha() in the Unicode build
+// (translateCode.cpp IsWord/GetWord), so a Cyrillic identifier should lex,
+// compile and run exactly like an ASCII one — the foundation of "business
+// logic in Russian". iswalpha is C-runtime-locale dependent, so this test also
+// guards that the process locale classifies Cyrillic as alphabetic. Source is
+// built with FromUTF8 so the Cyrillic reaches the compiler as real Unicode (a
+// wxT() literal would be mojibake under MSVC's default source charset).
+// ===========================================================================
+TEST(RuntimeTest, CyrillicIdentifiers) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src = wxString::FromUTF8("var \xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC public; "
+	                                        "\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC = 42;");  // "Перем"
+	ASSERT_TRUE(TryCompile(cc, src));
+
+	ibProcUnit pu;
+	ASSERT_TRUE(TryExecute(pu, cc.m_cByteCode));
+
+	ibValue val;
+	EXPECT_TRUE(pu.GetPropVal(wxString::FromUTF8("\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC"), val));
+	EXPECT_EQ(val.GetType(), ibValueTypes::TYPE_NUMBER);
+	EXPECT_EQ(val.GetInteger(), 42);
+}

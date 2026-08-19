@@ -471,6 +471,10 @@ bool ibTranslateCode::IsWord() const
 	SkipSpaces();
 	if (m_currentPos < m_bufferSize) {
 		const auto& c = m_strBuffer[m_currentPos];
+		// OES-RU (fork): identifier chars are classified with iswalpha (wide, locale-aware) in
+		// the Unicode build, so CYRILLIC letters lex as name chars — business logic can use
+		// Russian identifiers natively. Verified by RuntimeTest.CyrillicIdentifiers. Keep the
+		// wide classifier here (a byte-wise isalpha would reject Cyrillic).
 #ifdef wxUSE_UNICODE
 		if (((c == wxT('_')) || iswalpha(c) || (c == wxT('#'))) && (c != wxT('[') && c != wxT(']')))
 #else 
