@@ -239,6 +239,13 @@ def _map_form_children(child_items, in_table):
         node = {"kind": kind, "name": name}
         if kind in ("field", "checkbox"):
             node["attr"] = _last_seg(_data_path(el))
+            # An explicit field Title overrides the bound attribute's synonym as the
+            # caption ("Род:", "один:", "два:"). 1C sets it on form-attribute fields
+            # whose attribute name isn't a good label; catalog-bound fields usually
+            # have none and fall back to the synonym. Carry it as raw-loc-text.
+            ftitle = _title_loc(el)
+            if ftitle:
+                node["title"] = ftitle
         elif kind == "table":
             node["attr"] = _last_seg(_data_path(el))
         elif kind == "label":
