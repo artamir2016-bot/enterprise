@@ -187,9 +187,25 @@ constexpr ibClassID kCtrlColumn   = control_to_clsid("CT_TBLC");  // TableboxCol
 constexpr ibClassID kCtrlNotebook = control_to_clsid("CT_NTBK");  // Notebook
 constexpr ibClassID kCtrlPage     = control_to_clsid("CT_NTPG");  // NotebookPage
 constexpr ibClassID kCtrlBox      = control_to_clsid("CT_BSZR");  // Boxsizer
+constexpr ibClassID kCtrlSizerItem = control_to_clsid("CT_SIZR"); // SizerItem — the layout wrapper
 
 constexpr ibMetaID kFormMainAttrId = 1;   // object form's main attribute (ctor-assigned, first attribute)
 constexpr int      kFormRootId     = 1;   // the form control's own id (frontend defaultFormId)
+
+// wxStretch flag for the SizerItem "Stretch" property (wx 3.3, stable ABI): the ctor default is
+// wxSHRINK (0x1000) — right for a plain widget — and a container/sizer wants wxEXPAND (0x2000) to
+// fill its cell. Mirrors SetDefaultLayoutProperties (frontend formFactory.cpp).
+constexpr int kStretchExpand = 0x2000;
+
+// Where a control sits decides whether it needs a SizerItem wrapper. A frame / sizer / notebook page
+// lays its children out through the sizer, so each child is wrapped in a SizerItem (the LOAD path
+// NewObject does NOT auto-insert it — only the interactive editor does). A notebook holds pages
+// directly and a tablebox holds columns directly — no wrapper there.
+enum class Host { Sizerable, Notebook, Table };
+
+// The layout intent a SizerItem gets for the control kind it wraps (mirrors SetDefaultLayoutProperties):
+// a plain widget keeps the SizerItem defaults; a sizer/group drops the border; a container expands.
+enum class Layout { Widget, Sizer, Container };
 
 // A tabular section's resolved ids: the section metaId + its columns' metaIds by name.
 struct TabInfo {
@@ -232,26 +248,55 @@ ibDataValue MakeSource(const std::vector<ibSourceId>& hops) {
 	return value;
 }
 
-// Emit one control (and its children) as a child node under `parent`. `tableId`
-// is the enclosing tablebox's tabular-section metaId (0 outside a table) so a
-// column resolves its 3-hop source. `nextId` hands out form-unique control ids.
+// Create a SizerItem wrapper node under `parent` (the layout cell the sizer positions) and set its
+// layout properties for the control it will hold. Returns the SizerItem node; the real control is
+// added as ITS child. Widgets keep the ctor defaults (proportion 0, wxSHRINK, wxALL border, size 5).
+ibDataNode& AddSizerItem(ibDataNode& parent, int& nextId, Layout layout) {
+	const int id = nextId++;
+	ibDataNode& si = parent.AddChild(kCtrlSizerItem, id);
+	si.SetValue(wxT("ControlId"), (s32)id);
+	si.SetValue(wxT("Name"), wxString());   // system control — the designer hides it
+	si.SetValue(wxT("Expanded"), true);
+	if (layout == Layout::Container) {          // notebook / tablebox — fill the cell
+		si.SetProp<s32>(wxT("Proportion"), 1);
+		si.SetProperty(wxT("Stretch"), ibDataValue::Int(kStretchExpand));
+	}
+	else if (layout == Layout::Sizer) {         // group / boxsizer — expand, no outer border
+		si.SetProp<s32>(wxT("BorderSize"), 0);
+		si.SetProperty(wxT("Stretch"), ibDataValue::Int(kStretchExpand));
+	}
+	return si;
+}
+
+// Emit one control (and its children) under `parent`. `host` says how the parent lays children out:
+// a Sizerable parent wraps each child in a SizerItem, a Notebook/Table parent adds pages/columns
+// directly. `tableId` is the enclosing tablebox's section metaId (0 otherwise) so a column resolves
+// its 3-hop source. `nextId` hands out form-unique control ids.
 void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
-                      int& nextId, ibMetaID tableId) {
+                      int& nextId, ibMetaID tableId, Host host) {
 	const wxString kind = JStr(c, "kind", wxT("field")).Lower();
 	const wxString name = JStr(c, "name");
 
 	ibClassID clsid = kCtrlText;
-	if      (kind == wxT("field"))                                clsid = kCtrlText;
-	else if (kind == wxT("checkbox"))                            clsid = kCtrlCheckbox;
-	else if (kind == wxT("label") || kind == wxT("statictext")) clsid = kCtrlStatic;
-	else if (kind == wxT("table"))                              clsid = kCtrlTable;
-	else if (kind == wxT("column"))                             clsid = kCtrlColumn;
-	else if (kind == wxT("pages") || kind == wxT("notebook"))  clsid = kCtrlNotebook;
-	else if (kind == wxT("page"))                               clsid = kCtrlPage;
-	else if (kind == wxT("group") || kind == wxT("box"))       clsid = kCtrlBox;
+	Layout    layout = Layout::Widget;
+	Host      childHost = Host::Sizerable;
+	if      (kind == wxT("field"))                                { clsid = kCtrlText; }
+	else if (kind == wxT("checkbox"))                            { clsid = kCtrlCheckbox; }
+	else if (kind == wxT("label") || kind == wxT("statictext")) { clsid = kCtrlStatic; }
+	else if (kind == wxT("table"))                              { clsid = kCtrlTable;    layout = Layout::Container; childHost = Host::Table; }
+	else if (kind == wxT("column"))                             { clsid = kCtrlColumn; }
+	else if (kind == wxT("pages") || kind == wxT("notebook"))  { clsid = kCtrlNotebook; layout = Layout::Container; childHost = Host::Notebook; }
+	else if (kind == wxT("page"))                               { clsid = kCtrlPage;     childHost = Host::Sizerable; }
+	else if (kind == wxT("group") || kind == wxT("box"))       { clsid = kCtrlBox;      layout = Layout::Sizer;     childHost = Host::Sizerable; }
+
+	// A Sizerable parent lays out through its sizer, so the control rides a SizerItem cell; a notebook
+	// takes pages directly and a tablebox takes columns directly.
+	ibDataNode* controlParent = &parent;
+	if (host == Host::Sizerable)
+		controlParent = &AddSizerItem(parent, nextId, layout);
 
 	const int id = nextId++;
-	ibDataNode& node = parent.AddChild(clsid, id);
+	ibDataNode& node = controlParent->AddChild(clsid, id);
 	node.SetValue(wxT("ControlId"), (s32)id);
 	node.SetValue(wxT("Name"), name);
 	node.SetValue(wxT("Expanded"), true);
@@ -293,11 +338,11 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 			node.SetProp<wxString>(wxT("Title"), title);
 	}
 
-	// Recurse.
+	// Recurse — children hang off the real control node (not the SizerItem wrapper).
 	auto ch = c.find("children");
 	if (ch != c.end() && ch->is_array())
 		for (const json& sub : *ch)
-			BuildControlNode(node, sub, maps, nextId, childTableId);
+			BuildControlNode(node, sub, maps, nextId, childTableId, childHost);
 }
 
 // Build the whole FormData blob for a form node with a "controls" tree.
@@ -315,7 +360,7 @@ wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const Attr
 
 	int nextId = kFormRootId + 1;   // children start after the form
 	for (const json& c : *it)
-		BuildControlNode(*root, c, maps, nextId, /*tableId*/ 0);
+		BuildControlNode(*root, c, maps, nextId, /*tableId*/ 0, Host::Sizerable);
 
 	return ibValueMetaObjectFormBase::FormNodeToBlob(ibDataValue::Child(root));
 }

@@ -111,15 +111,40 @@ def transliterate(word):
 
 _DICT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ru_en_dict.json")
 
+_HAS_CYR = re.compile(r"[А-Яа-яЁё]")
+_SPLIT_RE = re.compile(
+    r"[A-ZА-ЯЁ]+(?=[A-ZА-ЯЁ][a-zа-яё])"  # caps run before Cap+lower  (НДСДокумент)
+    r"|[A-ZА-ЯЁ]?[a-zа-яё]+"             # Word / word
+    r"|[A-ZА-ЯЁ]+"                       # trailing CAPS  (…НДС)
+    r"|\d+"                              # digits
+)
+
+
 def _load_dict(path=_DICT_PATH):
+    """Load the shared dictionary, splitting entries into single-part words and
+    multi-part PHRASES. A key that is itself a compound identifier (e.g.
+    "ПриСозданииНаСервере") becomes a PHRASE: its run of parts is matched as one
+    unit inside any compound name and replaced by the analog, so every name that
+    contains it translates consistently (the OES standard-event analog, not a
+    part-by-part transliteration)."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
     except OSError:
-        return {}
-    return {k.lower(): v for k, v in raw.items() if not k.startswith("_")}
+        return {}, {}
+    words, phrases = {}, {}
+    for k, v in raw.items():
+        if k.startswith("_"):
+            continue
+        parts = _SPLIT_RE.findall(k)
+        if len(parts) > 1:
+            phrases[tuple(p.lower() for p in parts)] = v
+        else:
+            words[k.lower()] = v
+    return words, phrases
 
-DICT = _load_dict()
+DICT, PHRASES = _load_dict()
+_PHRASE_MAX = max((len(k) for k in PHRASES), default=0)
 
 
 def _load_map(fname):
@@ -148,15 +173,6 @@ _ENDINGS = ["ами", "ями", "ому", "ему", "ыми", "ими", "ого"
             "ов", "ев", "ей", "ам", "ям", "ах", "ях", "ом", "ем",
             "у", "ю", "а", "я", "ы", "и", "е", "о"]
 
-_HAS_CYR = re.compile(r"[А-Яа-яЁё]")
-_SPLIT_RE = re.compile(
-    r"[A-ZА-ЯЁ]+(?=[A-ZА-ЯЁ][a-zа-яё])"  # caps run before Cap+lower  (НДСДокумент)
-    r"|[A-ZА-ЯЁ]?[a-zа-яё]+"             # Word / word
-    r"|[A-ZА-ЯЁ]+"                       # trailing CAPS  (…НДС)
-    r"|\d+"                              # digits
-)
-
-
 def _cap(word):
     return word[0].upper() + word[1:] if word else word
 
@@ -178,11 +194,30 @@ def _translate_part(part):
 
 
 def translate_identifier(name):
-    """Translate a compound Cyrillic identifier via the shared dictionary."""
+    """Translate a compound Cyrillic identifier via the shared dictionary.
+
+    A multi-word PHRASE (e.g. ПриСозданииНаСервере -> OnOpen) is matched first,
+    greedily and longest-first, so it is replaced as one unit wherever it occurs;
+    remaining parts translate individually."""
     parts = _SPLIT_RE.findall(name)
     if not parts:
         return transliterate(name)
-    words = [_translate_part(p) for p in parts]
+    lowered = [p.lower() for p in parts]
+    words = []
+    i, n = 0, len(parts)
+    while i < n:
+        hit = None
+        for plen in range(min(_PHRASE_MAX, n - i), 1, -1):   # longest phrase first
+            repl = PHRASES.get(tuple(lowered[i:i + plen]))
+            if repl is not None:
+                hit = (repl, plen)
+                break
+        if hit is not None:
+            words.append(hit[0])
+            i += hit[1]
+        else:
+            words.append(_translate_part(parts[i]))
+            i += 1
     result = "".join(_cap(w) for w in words)
     if name[:1].islower() and result:  # preserve camelCase locals
         result = result[0].lower() + result[1:]
