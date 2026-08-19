@@ -8,6 +8,8 @@
 #include "backend/metaData.h"
 #include "backend/objCtor.h"          // ibCtorMetaValueType — the ctor a reference clsid resolves to
 #include "backend/compiler/value.h"
+#include "backend/system/value/valueTable.h"         // g_valueTableCLSID
+#include "backend/system/value/valueDynamicList.h"   // g_valueDynamicListCLSID
 #include "frontend/win/ctrls/checktree.h"
 
 #include <wx/dialog.h>
@@ -81,6 +83,16 @@ static std::vector<ibClassID> ibTypesForKind(ibSelectorDataType kind, const ibMe
 
 	if (anyType)
 		types.push_back(ibValue::GetIDByVT(ibValueTypes::TYPE_NULL));
+
+	// Table-shaped values: a value table and the unified dynamic list. The property-grid
+	// inline type dropdown (advpropType.cpp) offers these for the table/any kinds, but the
+	// "Select data type" DIALOG omitted them — so a form attribute could not be made a
+	// DynamicList (or Table) through the dialog, only through the dropdown. Add them here so
+	// both type pickers agree. (Not metadata-derived, so before the metaData guard.)
+	if (anyType || kind == ibSelectorDataType::ibSelectorDataType_table) {
+		types.push_back(g_valueTableCLSID);
+		types.push_back(g_valueDynamicListCLSID);
+	}
 
 	if (metaData == nullptr)
 		return types;
