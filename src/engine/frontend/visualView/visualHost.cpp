@@ -785,7 +785,6 @@ void ibVisualHost::ibContentWindow::RefreshControl(ibValueFrame* obj, wxWindow* 
 		break;
 
 	case COMPONENT_TYPE_SIZER:
-	case COMPONENT_TYPE_SIZERITEM:
 		if (obj->GetClassName() == wxT("Staticboxsizer")) {
 			wxStaticBoxSizer* s = static_cast<wxStaticBoxSizer*>(createdObject);
 			createdWindow = s->GetStaticBox();
@@ -794,6 +793,18 @@ void ibVisualHost::ibContentWindow::RefreshControl(ibValueFrame* obj, wxWindow* 
 		else {
 			createdSizer = static_cast<wxSizer*>(createdObject);
 		}
+		break;
+
+	case COMPONENT_TYPE_SIZERITEM:
+		// A SizerItem is a LAYOUT CELL, not a sizer: its own wxObject is a bare
+		// wxObject sentinel (it has no widget of its own — its child does). It
+		// must NOT populate createdSizer, or the SetSizer(...) block below would
+		// static_cast that sentinel to wxSizer and SetContainingWindow would walk
+		// its non-existent m_children -> access violation. This only ever bit
+		// when a SizerItem's parent was a WINDOW (a notebook page's direct
+		// children), which is why plain forms — where SizerItems sit inside a
+		// sizer — never tripped it. The cell's child is materialised by the
+		// recursion below and attached by ibValueSizerItem::OnUpdated.
 		break;
 
 	default: break;

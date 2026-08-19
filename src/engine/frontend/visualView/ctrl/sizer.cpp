@@ -61,7 +61,21 @@ void ibSizerOps::SetChildParams(ibFrontendSizer* sizer, wxObject* child,
 	// next SetContainingWindow walk dereferences garbage -> access violation.
 	// Clamp to the live item count AFTER Detach; idx == count is a valid append.
 	if (wxWindow* windowChild = wxDynamicCast(child, wxWindow)) {
+		// A control MOVED between containers (e.g. dragged from the form onto a
+		// notebook page) keeps its old wx parent and its old sizer membership:
+		// the tree node moved, but the already-created wx window did not. Adding
+		// it to the new sizer then leaves it referenced by TWO sizers and
+		// parented to the WRONG window; the next SetContainingWindow walk (via
+		// wxWindow::SetSizer) then dereferences the inconsistent graph and
+		// crashes. Detach from whatever sizer currently owns it, and reparent to
+		// the new sizer's containing window, before (re)inserting here.
+		if (wxSizer* oldSizer = windowChild->GetContainingSizer())
+			if (oldSizer != sizer)
+				oldSizer->Detach(windowChild);
 		sizer->Detach(windowChild);
+		if (wxWindow* owner = sizer->GetContainingWindow())
+			if (owner != windowChild->GetParent())
+				windowChild->Reparent(owner);
 		const int count = static_cast<int>(sizer->GetItemCount());
 		if (idx >= 0 && idx < count)
 			sizer->Insert(idx, windowChild, proportion, flag, border);
