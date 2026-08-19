@@ -322,6 +322,12 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 		return;
 	}
 
+	// An empty decoration (a 1C LabelDecoration with no caption — Отступ*, used only
+	// for vertical spacing) has nothing to show. Skip it, or OES fills it with its
+	// default "Static text" placeholder. A label WITH a title stays (it's a caption).
+	if ((kind == wxT("label") || kind == wxT("statictext")) && JStr(c, "title").IsEmpty())
+		return;
+
 	ibClassID clsid = kCtrlText;
 	Layout    layout = Layout::Widget;
 	Host      childHost = Host::Sizerable;
