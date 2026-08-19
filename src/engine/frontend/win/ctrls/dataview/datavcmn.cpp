@@ -740,14 +740,23 @@ ibDataViewCustomRendererBase::RenderText(const wxString& text,
 	rectText.x += xoffset;
 	rectText.width -= xoffset;
 
+	// The owning control is reached through the column (renderer -> column -> ctrl). During a
+	// model rebuild — e.g. creating a new item refreshes the list and re-columns it — a renderer
+	// can be asked to paint while its column is momentarily detached, so the ctrl is null. Deref
+	// crashed here (AV in wxWindow::IsEnabled, and DrawItemText needs a real window). Bail out:
+	// there is nothing to draw into a control that is not attached.
+	auto* const owner = GetOwner() != nullptr ? GetOwner()->GetOwner() : nullptr;
+	if (owner == nullptr)
+		return;
+
 	int flags = 0;
 	if (state & wxDATAVIEW_CELL_SELECTED)
 		flags |= wxCONTROL_SELECTED;
-	if (!(GetOwner()->GetOwner()->IsEnabled() && GetEnabled()))
+	if (!(owner->IsEnabled() && GetEnabled()))
 		flags |= wxCONTROL_DISABLED;
 
 	wxRendererNative::Get().DrawItemText(
-		GetOwner()->GetOwner(),
+		owner,
 		*dc,
 		text,
 		rectText,

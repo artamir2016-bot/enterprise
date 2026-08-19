@@ -919,11 +919,17 @@ wxString ibDataViewToggleRenderer::GetAccessibleDescription() const
 
 bool ibDataViewToggleRenderer::Render(wxRect cell, wxDC* dc, int WXUNUSED(state))
 {
+	// Owner control reached through the column; null while the column is momentarily
+	// detached during a model rebuild (see ibDataViewCustomRendererBase::RenderText).
+	auto* const owner = GetOwner() != nullptr ? GetOwner()->GetOwner() : nullptr;
+	if (owner == nullptr)
+		return true;
+
 	int flags = 0;
 	if (m_toggle)
 		flags |= wxCONTROL_CHECKED;
 	if (GetMode() != wxDATAVIEW_CELL_ACTIVATABLE ||
-		!(GetOwner()->GetOwner()->IsEnabled() && GetEnabled()))
+		!(owner->IsEnabled() && GetEnabled()))
 		flags |= wxCONTROL_DISABLED;
 
 	// Ensure that the check boxes always have at least the minimal required
@@ -935,7 +941,7 @@ bool ibDataViewToggleRenderer::Render(wxRect cell, wxDC* dc, int WXUNUSED(state)
 	cell.SetSize(size);
 
 	wxRendererNative& renderer = wxRendererNative::Get();
-	wxWindow* const win = GetOwner()->GetOwner();
+	wxWindow* const win = owner;
 	if (m_radio)
 		renderer.DrawRadioBitmap(win, *dc, cell, flags);
 	else
@@ -8179,6 +8185,7 @@ wxAccStatus ibDataViewCtrlAccessible::GetState(int childId, long* state)
 	ibDataViewCtrl* dvCtrl = wxDynamicCast(GetWindow(), ibDataViewCtrl);
 	wxCHECK(dvCtrl, wxACC_FAIL);
 	ibDataViewCtrl* dvWnd = wxDynamicCast(dvCtrl->GetMainWindow(), ibDataViewCtrl);
+	wxCHECK(dvWnd, wxACC_FAIL);   // dynamic_cast may miss (main window detached / wrong type) — was deref'd unchecked
 
 	long st = 0;
 	// State flags common to the object and its children.
