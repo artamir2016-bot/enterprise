@@ -217,8 +217,9 @@ struct TabInfo {
 
 // Owner attribute / tabular-section name -> metaId maps, for resolving control bindings.
 struct AttrMaps {
-	std::map<wxString, ibMetaID> attrs;      // direct attribute name -> metaId
+	std::map<wxString, ibMetaID> attrs;      // owner attribute name -> metaId (bound via the main object, 2-hop)
 	std::map<wxString, TabInfo>  tabs;       // tabular-section name -> {id, cols}
+	std::map<wxString, ibMetaID> formAttrs;  // FORM attribute name -> its own attribute id (bound directly, 1-hop)
 };
 
 void BuildAttrMaps(ibValueMetaObject* owner, AttrMaps& out) {
@@ -351,8 +352,18 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	if (kind == wxT("field") || kind == wxT("checkbox") || kind == wxT("label") || kind == wxT("statictext")) {
 		const wxString attr = JStr(c, "attr");
 		auto it = maps.attrs.find(attr);
-		if (!attr.IsEmpty() && it != maps.attrs.end())
+		if (!attr.IsEmpty() && it != maps.attrs.end()) {
+			// Owner attribute — reached THROUGH the main object (id 1) as its field.
 			node.SetProperty(wxT("Source"), MakeSource({ (ibSourceId)kFormMainAttrId, (ibSourceId)it->second }));
+		}
+		else if (!attr.IsEmpty()) {
+			// A FORM attribute (ПолеПрописи…, СуммаЧисло, …) is the value itself —
+			// bind directly to its own id, a single hop. Without this the field has
+			// no type and does not render.
+			auto fit = maps.formAttrs.find(attr);
+			if (fit != maps.formAttrs.end())
+				node.SetProperty(wxT("Source"), MakeSource({ (ibSourceId)fit->second }));
+		}
 		const wxString title = JStr(c, "title");
 		if (!title.IsEmpty())
 			node.SetProp<wxString>(wxT("Title"), title);
@@ -400,8 +411,7 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 // without it the controls cannot resolve their field types and DON'T RENDER in the form
 // editor (only unbound labels show). Typed to the owning object (object_to_clsid), so a
 // control's {mainAttr, attrId} path resolves attrId as a field of the object.
-void EmitMainAttribute(ibDataNode& root, ibMetaID ownerMetaID, const ibMetaData* metaData) {
-	ibDataNode& attrs = root.Child(wxT("Attributes"));                 // Child property (WriteAttributes: node.Child("Attributes"))
+void EmitMainAttribute(ibDataNode& attrs, ibMetaID ownerMetaID, const ibMetaData* metaData) {
 	ibDataNode& a = attrs.AddChild(kFormAttrClsid, kFormMainAttrId);   // one attribute, id 1
 	a.SetValue(wxT("AttributeId"), (s32)kFormMainAttrId);
 	a.SetValue(wxT("Main"), true);
@@ -413,11 +423,39 @@ void EmitMainAttribute(ibDataNode& root, ibMetaID ownerMetaID, const ibMetaData*
 	a.SetProperty(wxT("Type"), typeVal);
 }
 
+// Emit the form's OWN attributes (1C form attributes: ПолеПрописи…, СуммаЧисло, …) into the
+// Attributes section, each with an id AFTER the main attribute's (id 1). A field bound to a form
+// attribute resolves its type from it and renders; without this such fields stay typeless / blank.
+// Records name -> id in maps.formAttrs so BuildControlNode can bind fields to them (single hop).
+void EmitFormAttributes(ibDataNode& attrs, const json& f, const RefMap& refMap,
+                        const ibMetaData* metaData, int& nextAttrId, AttrMaps& maps) {
+	auto it = f.find("formAttributes");
+	if (it == f.end() || !it->is_array())
+		return;
+	for (const json& a : *it) {
+		const wxString name = JStr(a, "name");
+		if (name.IsEmpty())
+			continue;
+		const int id = nextAttrId++;
+		ibDataNode& node = attrs.AddChild(kFormAttrClsid, id);
+		node.SetValue(wxT("AttributeId"), (s32)id);
+		node.SetValue(wxT("Main"), false);
+		node.SetProp<wxString>(wxT("Name"), name);
+		ibTypeDescription td;
+		wxString err;
+		ApplyType(td, a, refMap, name, err);              // String / Number / Boolean / Date (ref degrades to String)
+		ibDataValue typeVal;
+		ibTypeDescriptionMemory::WriteNode(typeVal, td, metaData);
+		node.SetProperty(wxT("Type"), typeVal);
+		maps.formAttrs[name] = (ibMetaID)id;
+	}
+}
+
 // Build the whole FormData blob for a form node with a "controls" tree.
 // Returns an empty buffer when there are no controls (caller leaves FormData
 // empty -> auto-layout, the MVP-A behaviour).
-wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const AttrMaps& maps,
-                             ibMetaID ownerMetaID, const ibMetaData* metaData) {
+wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const AttrMaps& ownerMaps,
+                             ibMetaID ownerMetaID, const RefMap& refMap, const ibMetaData* metaData) {
 	auto it = f.find("controls");
 	if (it == f.end() || !it->is_array() || it->empty())
 		return wxMemoryBuffer();
@@ -427,7 +465,15 @@ wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const Attr
 	root->SetValue(wxT("Name"), formName);
 	root->SetValue(wxT("Expanded"), true);
 
-	EmitMainAttribute(*root, ownerMetaID, metaData);      // the object the controls bind through
+	// Form attributes are FORM-local, so work on a per-form copy of the owner maps.
+	AttrMaps maps = ownerMaps;
+
+	// One "Attributes" section (Child() creates a new node per call, so build it once
+	// and share it between the main object attribute and the form's own attributes).
+	ibDataNode& attrs = root->Child(wxT("Attributes"));
+	EmitMainAttribute(attrs, ownerMetaID, metaData);      // the object the controls bind through (id 1)
+	int nextAttrId = kFormMainAttrId + 1;                 // form attributes get ids after the main
+	EmitFormAttributes(attrs, f, refMap, metaData, nextAttrId, maps);
 
 	int nextId = kFormRootId + 1;   // children start after the form
 	for (const json& c : *it)
@@ -443,7 +489,7 @@ wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const Attr
 // layout from the object's attributes on open (MVP-A). Form type has no public
 // setter; it stays default.
 bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
-              const json& node, wxString& err) {
+              const json& node, const RefMap& refMap, wxString& err) {
 	auto it = node.find("forms");
 	if (it == node.end())
 		return true;
@@ -471,7 +517,7 @@ bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
 			if (!code.IsEmpty())
 				form->SetModuleText(code);
 			const wxMemoryBuffer formData = BuildFormData(f, name, maps,
-				owner->GetMetaID(), owner->GetMetaData());
+				owner->GetMetaID(), refMap, owner->GetMetaData());
 			if (!formData.IsEmpty())
 				form->SetFormData(formData);
 		}
@@ -503,7 +549,7 @@ bool FillRecordObject(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
 		}
 	}
 	ApplyObjectModules(obj, node);
-	if (!AddForms(cfg, obj, node, err))
+	if (!AddForms(cfg, obj, node, refMap, err))
 		return false;
 	return true;
 }
@@ -515,7 +561,7 @@ bool FillRegister(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
 	if (!AddTypedChildren(cfg, obj, node, "resources",  g_metaResourceCLSID,  refMap, err)) return false;
 	if (!AddTypedChildren(cfg, obj, node, "attributes", g_metaAttributeCLSID, refMap, err)) return false;
 	ApplyObjectModules(obj, node);
-	if (!AddForms(cfg, obj, node, err))
+	if (!AddForms(cfg, obj, node, refMap, err))
 		return false;
 	return true;
 }

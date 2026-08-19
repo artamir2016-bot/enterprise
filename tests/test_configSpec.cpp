@@ -501,6 +501,63 @@ TEST(ConfigSpec, BuildFromJson_GroupTitleBecomesHeader) {
 	EXPECT_EQ(t.AsString(), wxT("ru = 'Section';"));
 }
 
+TEST(ConfigSpec, BuildFromJson_FormAttributeBindsField) {
+	// A field bound to a FORM attribute (not a catalog attribute) must get a Source
+	// so it resolves a type and renders. The form attribute is emitted into the
+	// Attributes section with its own id, and the field binds to it single-hop.
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [ { "name": "Price", "type": "Number" } ],
+	      "forms": [
+	        { "name": "ItemForm", "type": "object",
+	          "formAttributes": [ { "name": "Note", "type": "String", "length": 25 } ],
+	          "controls": [
+	            { "kind": "field", "name": "NoteField", "attr": "Note" }
+	          ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectForm* form = FindFirstForm(cfg.GetCommonMetaObject());
+	ASSERT_NE(form, nullptr);
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(form->GetFormData());
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+	const ibDataNode& root = *rootVal.AsChild();
+
+	// The form declares TWO attributes now: the main "Object" (id 1) and "Note".
+	const ibDataValue attrsVal = root.GetProperty(wxT("Attributes"));
+	ASSERT_EQ(attrsVal.Kind(), ibDataKind::Child);
+	const ibDataNode& attrs = *attrsVal.AsChild();
+	int attrCount = 0;
+	bool sawNote = false;
+	for (const ibDataNode& a : attrs.Children()) {
+		++attrCount;
+		if (a.GetProperty(wxT("Name")).Kind() == ibDataKind::String &&
+		    a.GetProperty(wxT("Name")).AsString() == wxT("Note"))
+			sawNote = true;
+	}
+	EXPECT_EQ(attrCount, 2);
+	EXPECT_TRUE(sawNote) << "the form attribute 'Note' is emitted in the Attributes section";
+
+	// The bound field carries a Source (it resolves its type from the form attribute).
+	std::function<const ibDataNode*(const ibDataNode&)> findField =
+		[&](const ibDataNode& n) -> const ibDataNode* {
+			for (const ibDataNode& ch : n.Children()) {
+				if (ch.GetClsid() == control_to_clsid("CT_TXTC")) return &ch;
+				if (const ibDataNode* r = findField(ch)) return r;
+			}
+			return nullptr;
+		};
+	const ibDataNode* field = findField(root);
+	ASSERT_NE(field, nullptr);
+	EXPECT_NE(field->GetProperty(wxT("Source")).Kind(), ibDataKind::Empty)
+		<< "the field bound to a form attribute must have a Source";
+}
+
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

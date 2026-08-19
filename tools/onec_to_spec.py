@@ -288,6 +288,65 @@ def parse_form_controls(form_xml_path):
     return _map_form_children(child_items, False)
 
 
+def parse_form_attributes(form_xml_path):
+    """Return the form's OWN attributes (the non-main <Attributes>) as OES type dicts.
+
+    These are 1C form attributes (ПолеПрописи…, СуммаЧисло, …) that don't exist on
+    the catalog: a field bound to one must resolve its type from the form attribute,
+    or it renders as an empty (typeless) control. Primitive xs: types map straight to
+    OES primitives; the main object attribute and composite/ref types are skipped
+    (the main one is emitted separately; a ref form attribute isn't modelled here)."""
+    if not os.path.isfile(form_xml_path):
+        return []
+    try:
+        root = ET.parse(form_xml_path).getroot()
+    except ET.ParseError:
+        return []
+    cont = root.find(LF + "Attributes")
+    if cont is None:
+        return []
+    out = []
+    for a in cont:
+        if _local(a.tag) != "Attribute":
+            continue
+        main = a.find(LF + "MainAttribute")
+        if main is not None and _txt(main).strip().lower() == "true":
+            continue
+        name = a.get("name") or ""
+        if not name:
+            continue
+        t = a.find(LF + "Type")
+        tt = t.find(CORE + "Type") if t is not None else None
+        xstype = _txt(tt).strip() if tt is not None else ""
+        node = {"name": name}
+        if xstype == "xs:decimal":
+            node["type"] = "Number"
+            nq = t.find(CORE + "NumberQualifiers")
+            if nq is not None:
+                d = nq.find(CORE + "Digits")
+                fd = nq.find(CORE + "FractionDigits")
+                if d is not None and _txt(d).strip().isdigit():
+                    node["precision"] = int(_txt(d).strip())
+                if fd is not None and _txt(fd).strip().isdigit():
+                    node["scale"] = int(_txt(fd).strip())
+        elif xstype == "xs:boolean":
+            node["type"] = "Boolean"
+        elif xstype in ("xs:dateTime", "xs:date"):
+            node["type"] = "Date"
+        elif xstype == "xs:string":
+            node["type"] = "String"
+            sq = t.find(CORE + "StringQualifiers")
+            if sq is not None:
+                ln = sq.find(CORE + "Length")
+                if ln is not None and _txt(ln).strip().isdigit():
+                    node["length"] = int(_txt(ln).strip())
+        else:
+            # Main object, composite, or ref-typed form attribute: not modelled here.
+            continue
+        out.append(node)
+    return out
+
+
 def parse_forms(dump_dir, kind_dir, base_name, limit=0):
     """Return [{name, type, module}] for an object's Forms/ (managed forms)."""
     forms_dir = os.path.join(dump_dir, kind_dir, base_name, "Forms")
@@ -309,10 +368,16 @@ def parse_forms(dump_dir, kind_dir, base_name, limit=0):
         # List/select/folder forms rely on OES auto-layout (their main source is the
         # list, which the control-binding model does not target yet).
         if form_type == "object":
-            controls = parse_form_controls(os.path.join(forms_dir, name, "Ext", "Form.xml"))
+            form_xml = os.path.join(forms_dir, name, "Ext", "Form.xml")
+            controls = parse_form_controls(form_xml)
             if controls:
                 entry["controls"] = controls
                 report["FormControls"] += 1
+            # The form's own attributes — so fields bound to them (not to a catalog
+            # attribute) resolve a type and render instead of staying blank.
+            fattrs = parse_form_attributes(form_xml)
+            if fattrs:
+                entry["formAttributes"] = fattrs
         out.append(entry)
         report["Forms"] += 1
         if limit and len(out) >= limit:
