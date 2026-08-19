@@ -186,6 +186,35 @@ def _data_path(el):
     return _txt(dp).strip() if dp is not None else ""
 
 
+# 1C localized strings live under the "data/core" namespace as <item><lang>/<content>.
+CORE = "{http://v8.1c.ru/8.1/data/core}"
+
+
+def _title_loc(el):
+    """Return a 1C LabelDecoration/group Title as an OES raw-loc-text string.
+
+    OES stores a translatable caption (ibPropertyTString) as `code = 'text';`
+    segments — one per language — which GetValueAsTranslateString parses back.
+    A plain string would fail that parse and resolve to an EMPTY caption, so the
+    per-language form is required. 1C lang codes (ru/ro/en) map straight across.
+    Single quotes in the text are doubled, matching the loc-text quoting."""
+    title = el.find(LF + "Title")
+    if title is None:
+        return ""
+    parts = []
+    for it in title:
+        if _local(it.tag) != "item":
+            continue
+        lang = it.find(CORE + "lang")
+        cont = it.find(CORE + "content")
+        code = (_txt(lang).strip() if lang is not None else "")
+        text = (_txt(cont) if cont is not None else "")
+        if not code or not text:
+            continue
+        parts.append("%s = '%s';" % (code, text.replace("'", "''")))
+    return "".join(parts)
+
+
 def _map_form_children(child_items, in_table):
     """Map a <ChildItems> element to a list of OES control dicts.
 
@@ -212,6 +241,13 @@ def _map_form_children(child_items, in_table):
             node["attr"] = _last_seg(_data_path(el))
         elif kind == "table":
             node["attr"] = _last_seg(_data_path(el))
+        elif kind == "label":
+            # A LabelDecoration carries its own caption (bold section headers, the
+            # "%" markers between fields). Carry it as raw-loc-text so the emitted
+            # Statictext shows the real text instead of the default placeholder.
+            title = _title_loc(el)
+            if title:
+                node["title"] = title
         sub = el.find(LF + "ChildItems")
         if sub is not None:
             children = _map_form_children(sub, kind == "table")

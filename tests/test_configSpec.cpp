@@ -308,6 +308,51 @@ TEST(ConfigSpec, BuildFromJson_CreatesFormControlTree) {
 	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
 }
 
+TEST(ConfigSpec, BuildFromJson_LabelCarriesTitleIntoBlob) {
+	// A 1C LabelDecoration (kind "label") with a caption must land in the FormData
+	// blob as a Statictext whose "Title" holds the raw-loc-text verbatim. Without
+	// it the caption resolves to empty (ibPropertyTString parses `code = '..';`).
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [ { "name": "Price", "type": "Number" } ],
+	      "forms": [
+	        { "name": "ItemForm", "type": "object",
+	          "controls": [
+	            { "kind": "label", "name": "Marker", "title": "ru = '%';ro = '%';" },
+	            { "kind": "field", "name": "PriceField", "attr": "Price" }
+	          ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectForm* form = FindFirstForm(cfg.GetCommonMetaObject());
+	ASSERT_NE(form, nullptr);
+	const wxMemoryBuffer blob = form->GetFormData();
+	ASSERT_GT(blob.GetDataLen(), 0u);
+
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(blob);
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+
+	// Walk to the Statictext node and read back its Title property.
+	std::function<const ibDataNode*(const ibDataNode&)> findStatic =
+		[&](const ibDataNode& n) -> const ibDataNode* {
+			for (const ibDataNode& ch : n.Children()) {
+				if (ch.GetClsid() == control_to_clsid("CT_STTX")) return &ch;
+				if (const ibDataNode* r = findStatic(ch)) return r;
+			}
+			return nullptr;
+		};
+	const ibDataNode* stat = findStatic(*rootVal.AsChild());
+	ASSERT_NE(stat, nullptr) << "the label emits a Statictext node";
+	const ibDataValue title = stat->GetProperty(wxT("Title"));
+	ASSERT_EQ(title.Kind(), ibDataKind::String);
+	EXPECT_EQ(title.AsString(), wxT("ru = '%';ro = '%';"));
+}
+
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;
