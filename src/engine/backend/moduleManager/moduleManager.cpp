@@ -384,11 +384,14 @@ bool ibValueModuleManagerRuntimeConfiguration::CreateMainModule()
 		};
 	}
 
-	//Setup common modules
+	// Setup common modules. A single module that fails to compile (e.g. an imperfectly
+	// translated import, or an edit-in-progress) must NOT abort the whole runtime and leave
+	// the client unable to start at all — 1C starts and surfaces such an error only when the
+	// module is actually called. CreateCommonModule already logged the warning; keep going so
+	// the rest of the configuration runs and can be debugged. The broken module simply isn't
+	// callable (it errors at use).
 	for (auto& moduleValue : m_listCommonModuleManager) {
-		if (!moduleValue->CreateCommonModule()) {
-			return false;
-		}
+		moduleValue->CreateCommonModule();
 	}
 
 	m_initialized = true;
