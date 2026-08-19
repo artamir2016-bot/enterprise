@@ -109,6 +109,55 @@ static_assert(WXSIZEOF(s_listKeyWord) == LastKeyWord,
 	"s_listKeyWord and the KEY_* enum (codeDef.h) must stay in lock-step: "
 	"one entry per enumerator, in the same order.");
 
+// OES-RU (fork): Russian keyword ALIASES. Each maps a Russian spelling to the SAME KEY_* index
+// as its English counterpart, so business logic can be written in Russian (1C / BSL style) and
+// imported 1C modules keep their keywords. The aliases are inserted into the keyword-lookup map
+// beside the English names (see GetKeyNumber below), so they inherit the code-style gate
+// (IsAllowedKey) — a Russian VES-style module needs VES syntax active, exactly like the English
+// one. Two-word 1C forms ("Для Каждого") are not lexable as a single token; the one-word
+// "ДляКаждого" is offered here and the BSL->VES import still normalises the two-word form.
+// Spellings are UTF-8 byte escapes (the build sets no /utf-8, so a raw Cyrillic literal would
+// misencode) converted with wxString::FromUTF8 when the map is built.
+struct ibRuKeyWordAlias { const char* m_utf8; int m_key; };
+static const ibRuKeyWordAlias s_ruKeyWordAlias[] =
+{
+	{ "\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8", KEY_IF },                                                                                             // Если
+	{ "\xD0\xA2\xD0\xBE\xD0\xB3\xD0\xB4\xD0\xB0", KEY_THEN },                                                                                   // Тогда
+	{ "\xD0\x98\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5", KEY_ELSE },                                                                                   // Иначе
+	{ "\xD0\x98\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8", KEY_ELSEIF },                                                  // ИначеЕсли
+	{ "\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8", KEY_ENDIF },                                                   // КонецЕсли
+	{ "\xD0\x94\xD0\xBB\xD1\x8F", KEY_FOR },                                                                                                    // Для
+	{ "\xD0\x94\xD0\xBB\xD1\x8F\xD0\x9A\xD0\xB0\xD0\xB6\xD0\xB4\xD0\xBE\xD0\xB3\xD0\xBE", KEY_FOREACH },                                         // ДляКаждого
+	{ "\xD0\x9F\xD0\xBE", KEY_TO },                                                                                                             // По
+	{ "\xD0\x98\xD0\xB7", KEY_IN },                                                                                                             // Из
+	{ "\xD0\xA6\xD0\xB8\xD0\xBA\xD0\xBB", KEY_DO },                                                                                             // Цикл
+	{ "\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\xA6\xD0\xB8\xD0\xBA\xD0\xBB\xD0\xB0", KEY_ENDDO },                                           // КонецЦикла
+	{ "\xD0\x9F\xD0\xBE\xD0\xBA\xD0\xB0", KEY_WHILE },                                                                                          // Пока
+	{ "\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xB9\xD1\x82\xD0\xB8", KEY_GOTO },                                                                    // Перейти
+	{ "\xD0\x9D\xD0\xB5", KEY_NOT },                                                                                                            // Не
+	{ "\xD0\x98", KEY_AND },                                                                                                                    // И
+	{ "\xD0\x98\xD0\xBB\xD0\xB8", KEY_OR },                                                                                                     // Или
+	{ "\xD0\x9C\xD0\xBE\xD0\xB4", KEY_MOD },                                                                                                    // Мод
+	{ "\xD0\x9F\xD1\x80\xD0\xBE\xD1\x86\xD0\xB5\xD0\xB4\xD1\x83\xD1\x80\xD0\xB0", KEY_PROCEDURE },                                               // Процедура
+	{ "\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\x9F\xD1\x80\xD0\xBE\xD1\x86\xD0\xB5\xD0\xB4\xD1\x83\xD1\x80\xD1\x8B", KEY_ENDPROCEDURE },     // КонецПроцедуры
+	{ "\xD0\xA4\xD1\x83\xD0\xBD\xD0\xBA\xD1\x86\xD0\xB8\xD1\x8F", KEY_FUNCTION },                                                                // Функция
+	{ "\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\xA4\xD1\x83\xD0\xBD\xD0\xBA\xD1\x86\xD0\xB8\xD0\xB8", KEY_ENDFUNCTION },                      // КонецФункции
+	{ "\xD0\xAD\xD0\xBA\xD1\x81\xD0\xBF\xD0\xBE\xD1\x80\xD1\x82", KEY_PUBLIC },                                                                  // Экспорт
+	{ "\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87", KEY_VAL },                                                                                            // Знач
+	{ "\xD0\x92\xD0\xBE\xD0\xB7\xD0\xB2\xD1\x80\xD0\xB0\xD1\x82", KEY_RETURN },                                                                  // Возврат
+	{ "\xD0\x9F\xD0\xBE\xD0\xBF\xD1\x8B\xD1\x82\xD0\xBA\xD0\xB0", KEY_TRY },                                                                     // Попытка
+	{ "\xD0\x98\xD1\x81\xD0\xBA\xD0\xBB\xD1\x8E\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5", KEY_EXCEPT },                                          // Исключение
+	{ "\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\x9F\xD0\xBE\xD0\xBF\xD1\x8B\xD1\x82\xD0\xBA\xD0\xB8", KEY_ENDTRY },                          // КонецПопытки
+	{ "\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB4\xD0\xBE\xD0\xBB\xD0\xB6\xD0\xB8\xD1\x82\xD1\x8C", KEY_CONTINUE },                                        // Продолжить
+	{ "\xD0\x9F\xD1\x80\xD0\xB5\xD1\x80\xD0\xB2\xD0\xB0\xD1\x82\xD1\x8C", KEY_BREAK },                                                           // Прервать
+	{ "\xD0\x92\xD1\x8B\xD0\xB7\xD0\xB2\xD0\xB0\xD1\x82\xD1\x8C\xD0\x98\xD1\x81\xD0\xBA\xD0\xBB\xD1\x8E\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5", KEY_RAISE },  // ВызватьИсключение
+	{ "\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC", KEY_VAR },                                                                                    // Перем
+	{ "\xD0\x9D\xD0\xBE\xD0\xB2\xD1\x8B\xD0\xB9", KEY_NEW },                                                                                    // Новый
+	{ "\xD0\x9D\xD0\xB5\xD0\xBE\xD0\xBF\xD1\x80\xD0\xB5\xD0\xB4\xD0\xB5\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xBE", KEY_UNDEFINED },                       // Неопределено
+	{ "\xD0\x98\xD1\x81\xD1\x82\xD0\xB8\xD0\xBD\xD0\xB0", KEY_TRUE },                                                                            // Истина
+	{ "\xD0\x9B\xD0\xBE\xD0\xB6\xD1\x8C", KEY_FALSE },                                                                                          // Ложь
+};
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -989,6 +1038,11 @@ int ibTranslateCode::IsKeyWord(const wxString& strKeyWord)
 		std::map<wxString, int, ibCaseFoldLess> listNumber;
 		for (int i = 0; i < static_cast<int>(WXSIZEOF(s_listKeyWord)); i++)
 			listNumber[s_listKeyWord[i].m_strKeyWord] = i;
+		// OES-RU (fork): register the Russian keyword aliases beside the English names, mapping
+		// to the same KEY_* index. FromUTF8 decodes the byte-escaped spellings to the wide
+		// strings the lexer produces from the (UTF-8) module buffer.
+		for (const auto& a : s_ruKeyWordAlias)
+			listNumber[wxString::FromUTF8(a.m_utf8)] = a.m_key;
 		return listNumber;
 	}();
 
@@ -1127,7 +1181,11 @@ bool ibTranslateCode::PrepareLexem()
 				//boolean
 				else if (k == KEY_TRUE || k == KEY_FALSE) {
 					m_current_lex.m_lexType = CONSTANT;
-					m_current_lex.m_valData.SetBoolean(s);
+					// OES-RU (fork): derive the boolean from the KEY, not the spelling. SetBoolean
+					// matches only the literal "True", so a Russian alias (Истина / Ложь) — or any
+					// non-"True" spelling of KEY_TRUE — would otherwise always read false. Pass the
+					// canonical English word for the resolved key.
+					m_current_lex.m_valData.SetBoolean(k == KEY_TRUE ? wxT("True") : wxT("False"));
 				}
 				//null
 				else if (k == KEY_NULL) {
