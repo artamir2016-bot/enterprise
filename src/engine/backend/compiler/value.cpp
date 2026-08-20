@@ -1468,6 +1468,15 @@ long ibValue::GetNMethods() const
 	return 0;
 }
 
+// OES-RU (fork): forward to the member table's alias list (see value.h).
+const std::vector<std::pair<wxString, long>>* ibValue::GetMethodAliasList() const
+{
+	if (m_pRef != nullptr && IsReference())
+		return m_pRef->GetMethodAliasList();
+	ibMemberTable* const methodHelper = GetPMethods();
+	return methodHelper != nullptr ? &methodHelper->GetMethodAliases() : nullptr;
+}
+
 // Per-class method resolver. LINQ pipeline ops bypass this entirely —
 // compile-side emits OPER_CALL_LINQ via FindLinqMethodByName before
 // reaching the OPER_CALL_METHOD path.

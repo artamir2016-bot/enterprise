@@ -251,6 +251,18 @@ void ibCompileCode::PrepareModuleData()
 			mainContext->PushFunction(
 				contextValue->GetMethodName(i), pair.first, contextValue->GetMethodHelper(i), i, contextValue->HasRetVal(i), contextValue->GetNParams(i));
 		}
+
+		// OES-RU (fork): register method NAME aliases (Russian global-function names) with the
+		// SAME method number as their target — so an unqualified call by the alias name compiles
+		// and dispatches identically. Enumerated here because the loop above only sees real
+		// positions; the alias carries the target's number, helper, return flag and arity.
+		if (const auto* aliases = contextValue->GetMethodAliasList()) {
+			for (const auto& a : *aliases) {
+				const long tgt = a.second;
+				mainContext->PushFunction(
+					a.first, pair.first, contextValue->GetMethodHelper(tgt), tgt, contextValue->HasRetVal(tgt), contextValue->GetNParams(tgt));
+			}
+		}
 	}
 }
 
