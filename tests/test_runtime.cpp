@@ -1779,3 +1779,29 @@ TEST_F(BuiltInRuntime, RussianSystemFunction_StrLen) {
 	EXPECT_EQ(val.GetType(), ibValueTypes::TYPE_NUMBER);
 	EXPECT_EQ(val.GetInteger(), 4);
 }
+
+// ===========================================================================
+// OES-RU (fork): RUSSIAN OBJECT METHODS
+//
+// Object methods (obj.Method()) dispatch at RUNTIME by name via
+// ibValue::FindMethod, which now honours the member table's alias list. So an
+// Array's Russian method names (Добавить -> Add, Количество -> Count, …,
+// valueArray.cpp) work with no compiler change. Здесь: два Добавить, затем
+// Количество == 2. Source via FromUTF8.
+// ===========================================================================
+TEST_F(BuiltInRuntime, RussianObjectMethod_Array) {
+	if (ibApplicationData::Get() == nullptr) GTEST_SKIP() << "appData env unavailable";
+
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	// var arr public; arr = New Array; arr.Добавить(10); arr.Добавить(20); var cnt public; cnt = arr.Количество();
+	ASSERT_TRUE(TryCompile(cc, wxString::FromUTF8("\x76\x61\x72\x20\x61\x72\x72\x20\x70\x75\x62\x6C\x69\x63\x3B\x20\x61\x72\x72\x20\x3D\x20\x4E\x65\x77\x20\x41\x72\x72\x61\x79\x3B\x20\x61\x72\x72\x2E\xD0\x94\xD0\xBE\xD0\xB1\xD0\xB0\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C\x28\x31\x30\x29\x3B\x20\x61\x72\x72\x2E\xD0\x94\xD0\xBE\xD0\xB1\xD0\xB0\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C\x28\x32\x30\x29\x3B\x20\x76\x61\x72\x20\x63\x6E\x74\x20\x70\x75\x62\x6C\x69\x63\x3B\x20\x63\x6E\x74\x20\x3D\x20\x61\x72\x72\x2E\xD0\x9A\xD0\xBE\xD0\xBB\xD0\xB8\xD1\x87\xD0\xB5\xD1\x81\xD1\x82\xD0\xB2\xD0\xBE\x28\x29\x3B")));
+
+	ibProcUnit pu;
+	wxString err;
+	ASSERT_TRUE(RunBound(cc, pu, err)) << err.ToStdString();
+
+	ibValue val;
+	ASSERT_TRUE(pu.GetPropVal(wxT("cnt"), val));
+	EXPECT_EQ(val.GetType(), ibValueTypes::TYPE_NUMBER);
+	EXPECT_EQ(val.GetInteger(), 2);
+}

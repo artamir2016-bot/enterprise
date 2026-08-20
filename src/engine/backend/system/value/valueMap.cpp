@@ -235,6 +235,14 @@ void ibValueContainer::BindContainerNames(ibMemberTable& helper, const ibValue* 
 		helper.AppendFunc(wxT("Clear"), wxT("Clear()"));
 		helper.AppendFunc(wxT("Delete"), 1, wxT("Delete(key : any)"));
 		helper.AppendFunc(wxT("Insert"), 2, wxT("Insert(key : any, value : any)"));
+
+		// OES-RU (fork): Russian (1C) method aliases — same method number as the target (see
+		// ibMemberTable::AliasMethod). No new dispatch case.
+		helper.AliasMethod(wxString::FromUTF8("\xD0\x9A\xD0\xBE\xD0\xBB\xD0\xB8\xD1\x87\xD0\xB5\xD1\x81\xD1\x82\xD0\xB2\xD0\xBE"), wxT("Count"));  // Количество
+		helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD0\xB2\xD0\xBE\xD0\xB9\xD1\x81\xD1\x82\xD0\xB2\xD0\xBE"), wxT("Property"));  // Свойство
+		helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD1\x87\xD0\xB8\xD1\x81\xD1\x82\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Clear"));  // Очистить
+		helper.AliasMethod(wxString::FromUTF8("\xD0\xA3\xD0\xB4\xD0\xB0\xD0\xBB\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Delete"));  // Удалить
+		helper.AliasMethod(wxString::FromUTF8("\xD0\x92\xD1\x81\xD1\x82\xD0\xB0\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Insert"));  // Вставить
 	}
 }
 
