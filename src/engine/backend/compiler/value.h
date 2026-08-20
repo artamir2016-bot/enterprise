@@ -234,6 +234,13 @@ public:
 		std::vector<ibMemberTableProperty> m_props; // tree of attribute names
 		std::vector<ibMemberTableMethod> m_methods; // tree of method names
 
+		// OES-RU (fork): method NAME aliases → an existing method position. Consulted by
+		// FindMethod only on a miss, so it is empty and free for every table except the ones
+		// that register aliases (the System global functions get Russian aliases: Сообщить ->
+		// Message, СтрДлина -> StrLen, …). This adds NO dispatch case and no new position — the
+		// alias resolves to the SAME method number as its target, so CallAsFunc is unchanged.
+		std::vector<std::pair<wxString, long>> m_methodAliases;   // {alias name, target method position}
+
 		// ---- bind-based population (push) -------------------------------
 		// A contributor appends THIS owner's names into the helper. `ctx` is the
 		// owning value (the record / aggregate that holds this helper), or
@@ -728,15 +735,37 @@ public:
 			if (m_methods.size() >= kFindIndexMin) {
 				const auto& idx = MethodIndex();
 				const auto it = idx.find(strMethodName.Upper().ToStdWstring());
-				return it != idx.end() ? it->second : wxNOT_FOUND;
+				if (it != idx.end())
+					return it->second;
+				return FindMethodAlias(strMethodName);   // OES-RU: alias fallback (empty unless registered)
 			}
 			auto iterator = std::find_if(m_methods.begin(), m_methods.end(), [&strMethodName](const auto& f) {
 				return stringUtils::CompareString(f.m_fieldName, strMethodName); });
 
 			if (iterator != m_methods.end())
 				return (long)std::distance(m_methods.begin(), iterator);
+			return FindMethodAlias(strMethodName);       // OES-RU: alias fallback (empty unless registered)
+		}
+
+		// OES-RU (fork): resolve a name-alias to its target method position (wxNOT_FOUND if none).
+		long FindMethodAlias(const wxString& strMethodName) const {
+			for (const auto& a : m_methodAliases)
+				if (stringUtils::CompareString(a.first, strMethodName))
+					return a.second;
 			return wxNOT_FOUND;
 		}
+
+		// OES-RU (fork): register an alias name for an existing method. Resolves the target's
+		// position now; the alias thereafter resolves to the SAME method number (no new dispatch
+		// case). No-op if the target isn't found. Enumerated by the compiler alongside the real
+		// methods (see GetMethodAliases) so an unqualified call by the alias name compiles.
+		void AliasMethod(const wxString& strAlias, const wxString& strTarget) {
+			const long pos = FindMethod(strTarget);
+			if (pos >= 0)
+				m_methodAliases.emplace_back(strAlias, pos);
+		}
+
+		const std::vector<std::pair<wxString, long>>& GetMethodAliases() const { return m_methodAliases; }
 
 		wxString GetMethodName(const long lMethodNum) const {
 			if (lMethodNum < 0 || lMethodNum >= GetNMethods())
@@ -1414,12 +1443,17 @@ public:
 	 */
 	virtual long GetNMethods() const;
 
-	/// Finds a method by name 
+	/// Finds a method by name
 	/**
 	 *  @param wsMethodName - method name
 	 *  @return - method index
 	 */
 	virtual long FindMethod(const wxString& strMethodName) const;
+
+	// OES-RU (fork): the member table's method NAME aliases ({alias, target position}), or nullptr.
+	// The compiler enumerates these alongside the real methods so an unqualified call by a Russian
+	// global-function alias (Сообщить, СтрДлина, …) resolves to the SAME method number.
+	const std::vector<std::pair<wxString, long>>* GetMethodAliasList() const;
 
 	/// Returns method name
 	/**

@@ -1748,3 +1748,34 @@ TEST(RuntimeTest, RussianKeywords_VES_IfBlock) {
 	ASSERT_TRUE(got);
 	EXPECT_EQ(val.GetInteger(), 42);
 }
+
+// ===========================================================================
+// OES-RU (fork): RUSSIAN SYSTEM FUNCTIONS
+//
+// The global built-ins get Russian aliases (systemManager.cpp, via
+// ibMemberTable::AliasMethod) that FindMethod-resolve to the SAME method number
+// as the English target — no new dispatch case. Here "СтрДлина" is StrLen, so
+// СтрДлина("тест") must return 4. In the BuiltInRuntime fixture so appData is up
+// (ibValueSystemFunction::CallAsFunc dereferences it). Source via FromUTF8.
+// ===========================================================================
+TEST_F(BuiltInRuntime, RussianSystemFunction_StrLen) {
+	if (ibApplicationData::Get() == nullptr) GTEST_SKIP() << "appData env unavailable";
+
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	// Bind the globally-registered context objects (the System global functions among them),
+	// as codeRunner does — otherwise even an English global call would not resolve at compile.
+	for (auto ctor : ibValue::GetListCtorsByType(ibCtorObjectType_object_context))
+		cc.AddContextVariable(ctor->GetClassName(), ctor->CreateObject());   // leaked (short-lived test)
+
+	// var Итог public; Итог = СтрДлина("тест");
+	ASSERT_TRUE(TryCompile(cc, wxString::FromUTF8("\x76\x61\x72\x20\xD0\x98\xD1\x82\xD0\xBE\xD0\xB3\x20\x70\x75\x62\x6C\x69\x63\x3B\x20\xD0\x98\xD1\x82\xD0\xBE\xD0\xB3\x20\x3D\x20\xD0\xA1\xD1\x82\xD1\x80\xD0\x94\xD0\xBB\xD0\xB8\xD0\xBD\xD0\xB0\x28\x22\xD1\x82\xD0\xB5\xD1\x81\xD1\x82\x22\x29\x3B")));
+
+	ibProcUnit pu;
+	wxString err;
+	ASSERT_TRUE(RunBound(cc, pu, err)) << err.ToStdString();
+
+	ibValue val;
+	ASSERT_TRUE(pu.GetPropVal(wxString::FromUTF8("\xD0\x98\xD1\x82\xD0\xBE\xD0\xB3"), val));
+	EXPECT_EQ(val.GetType(), ibValueTypes::TYPE_NUMBER);
+	EXPECT_EQ(val.GetInteger(), 4);
+}
