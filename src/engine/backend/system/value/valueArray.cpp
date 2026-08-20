@@ -98,6 +98,19 @@ void ibValueArray_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx
 	helper.AppendFunc(wxT("Min"),     1, wxT("Min(selector? : Function)"));
 	helper.AppendFunc(wxT("Max"),     1, wxT("Max(selector? : Function)"));
 	helper.AppendFunc(wxT("Average"), 1, wxT("Average(selector? : Function)"));
+
+	// OES-RU (fork): Russian (1C) method aliases — same method number as the target (see
+	// ibMemberTable::AliasMethod). No new dispatch case.
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x94\xD0\xBE\xD0\xB1\xD0\xB0\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Add"));  // Добавить
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x92\xD1\x81\xD1\x82\xD0\xB0\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Insert"));  // Вставить
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9A\xD0\xBE\xD0\xBB\xD0\xB8\xD1\x87\xD0\xB5\xD1\x81\xD1\x82\xD0\xB2\xD0\xBE"), wxT("Count"));  // Количество
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9D\xD0\xB0\xD0\xB9\xD1\x82\xD0\xB8"), wxT("Find"));  // Найти
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD1\x87\xD0\xB8\xD1\x81\xD1\x82\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Clear"));  // Очистить
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Get"));  // Получить
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA3\xD1\x81\xD1\x82\xD0\xB0\xD0\xBD\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Set"));  // Установить
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA3\xD0\xB4\xD0\xB0\xD0\xBB\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Remove"));  // Удалить
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD0\xBE\xD0\xB4\xD0\xB5\xD1\x80\xD0\xB6\xD0\xB8\xD1\x82"), wxT("Contains"));  // Содержит
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD0\xBE\xD1\x80\xD1\x82\xD0\xB8\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x82\xD1\x8C"), wxT("Sort"));  // Сортировать
 }
 
 bool ibValueArray::CallAsFunc(const long lMethodNum, ibValue& pvarRetValue, ibValue** paParams, const long lSizeArray)
