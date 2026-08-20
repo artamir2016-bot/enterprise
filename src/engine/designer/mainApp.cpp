@@ -5,6 +5,7 @@
 
 #include "mainApp.h"
 #include "backend/appData.h"
+#include "backend/metadataConfiguration.h" // OES-CLI: LoadConfigFromFile / SaveConfigToFile / SaveDatabase for batch mode
 #include "backend/backend_exception.h"   // DrainLastErrors for the startup-failure dialog
 #include "backend/backend_mainFrame.h"
 #include "backend/debugger/debugClientBridge.h"
@@ -14,6 +15,7 @@
 
 #include <wx/clipbrd.h>
 #include <wx/cmdline.h>
+#include <wx/ffile.h>   // OES-CLI: /Out message file
 #include <wx/fs_arc.h>
 #include <wx/fs_filter.h>
 #include <wx/fs_mem.h>
@@ -49,6 +51,20 @@ wxIMPLEMENT_APP(ibAppDesigner);
 
 void ibAppDesigner::OnInitCmdLine(wxCmdLineParser& parser)
 {
+	// OES-CLI: 1C:Enterprise 8.3-compatible batch mode.
+	// If a batch verb is on the command line we parse argv OURSELVES in
+	// DoOnRun (the 1C grammar — '/Verb', attached '/F"path"', and '-SubKey'
+	// options — does not fit wxCmdLineParser). Relax the parser so it does not
+	// reject the '/'-prefixed tokens: treat '-' as the only switch char and
+	// swallow every token as a free (multiple/optional) parameter.
+	if (DetectBatchMode()) {
+		m_batchMode = true;
+		parser.SetSwitchChars(wxT("-"));
+		parser.AddParam(wxT("batch"), wxCMD_LINE_VAL_STRING,
+			wxCMD_LINE_PARAM_OPTIONAL | wxCMD_LINE_PARAM_MULTIPLE);
+		return; // do not add the standard -h/--help/--verbose options
+	}
+
 	// Same layout as enterprise.exe — short names legacy, long names match
 	// wenterprise-server so RunApplication emits flags that parse in all bins.
 	parser.AddOption(wxT("file"),   wxT("file"),     "Database file path",      wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
@@ -66,7 +82,13 @@ void ibAppDesigner::OnInitCmdLine(wxCmdLineParser& parser)
 
 bool ibAppDesigner::OnCmdLineParsed(wxCmdLineParser& parser)
 {
-	// FILE ENTRY 
+	// OES-CLI: in batch mode wx did not parse our options — do it from argv.
+	if (m_batchMode) {
+		ParseBatchArgs();
+		return true;
+	}
+
+	// FILE ENTRY
 	parser.Found(wxT("file"), &m_strFile);
 
 	// SERVER ENTRY
@@ -88,6 +110,232 @@ bool ibAppDesigner::OnCmdLineParsed(wxCmdLineParser& parser)
 #endif
 
 //////////////////////////////////////////////////////////////////////////////////
+// OES-CLI: 1C:Enterprise 8.3-compatible headless batch mode.
+//
+//   designer.exe /F"<dir>"  /N"<user>" /P"<pwd>" /CheckConfig
+//   designer.exe /F"<dir>"  /LoadCfg "<file.mcf>" /UpdateDBCfg /Out"log.txt"
+//   designer.exe /S<host[:port]\base> /N<user> /P<pwd> /CheckModules
+//
+// Recognised keys (case-insensitive, value attached or space-separated):
+//   /F <dir>          file infobase (== --file)
+//   /S <host\base>    server infobase (host may carry ':port'; '\' splits base)
+//   /N <user>         infobase user           (== --ibuser)
+//   /P <password>     infobase password       (== --ibpwd)
+//   /LoadCfg <file>   load configuration from a file into the base
+//   /DumpCfg <file>   save the base configuration to a file
+//   /Out <file>       write operation messages to a file
+// Flags (no value):
+//   /UpdateDBCfg              apply the loaded configuration to the database
+//   /CheckConfig             compile-check the whole configuration
+//   /CheckModules            compile-check every module
+//   /DisableStartupMessages  (accepted; batch mode is silent already)
+//   /DisableStartupDialogs   (alias of the above)
+// Unknown '-SubKey' options (e.g. -ThinClient, -Server) are accepted and ignored
+// for 1C command-line compatibility.
+//////////////////////////////////////////////////////////////////////////////////
+
+bool ibAppDesigner::DetectBatchMode() const
+{
+	for (int i = 1; i < argc; ++i) {
+		const wxString low = wxString(argv[i]).Lower();
+		if (low.StartsWith(wxT("/loadcfg"))   || low.StartsWith(wxT("/dumpcfg")) ||
+			low.StartsWith(wxT("/checkconfig")) || low.StartsWith(wxT("/checkmodules")))
+			return true;
+	}
+	return false;
+}
+
+void ibAppDesigner::ParseBatchArgs()
+{
+	// key with a value: either "/Key value" (two tokens) or "/Keyvalue" (attached).
+	auto keyVal = [&](int& i, const wxString& low, const wxString& key, wxString& out) -> bool {
+		if (!low.StartsWith(key))
+			return false;
+		if (low == key) {
+			if (i + 1 < argc) out = argv[++i];
+			else              out.clear();
+		}
+		else {
+			out = wxString(argv[i]).Mid(key.length());
+		}
+		return true;
+	};
+
+	wxString serverArg;
+	for (int i = 1; i < argc; ++i) {
+		const wxString tok = argv[i];
+		const wxString low = tok.Lower();
+		wxString val;
+
+		// flags first (exact match) so a key prefix cannot swallow them
+		if      (low == wxT("/updatedbcfg"))            { m_batchUpdateDBCfg  = true; }
+		else if (low == wxT("/checkconfig"))            { m_batchCheckConfig  = true; }
+		else if (low == wxT("/checkmodules"))           { m_batchCheckModules = true; }
+		else if (low == wxT("/disablestartupmessages")) { /* silent already */ }
+		else if (low == wxT("/disablestartupdialogs"))  { /* silent already */ }
+		// keys with values
+		else if (keyVal(i, low, wxT("/loadcfg"), val))  { m_batchLoadCfg = val; }
+		else if (keyVal(i, low, wxT("/dumpcfg"), val))  { m_batchDumpCfg = val; }
+		else if (keyVal(i, low, wxT("/out"),     val))  { m_batchOut     = val; }
+		else if (keyVal(i, low, wxT("/f"),       val))  { m_strFile      = val; }
+		else if (keyVal(i, low, wxT("/s"),       val))  { serverArg      = val; }
+		else if (keyVal(i, low, wxT("/n"),       val))  { m_strIBUser    = val; }
+		else if (keyVal(i, low, wxT("/p"),       val))  { m_strIBPassword= val; }
+		// '-SubKey' 1C sub-options and anything else: ignored for compatibility
+	}
+
+	// /S host[:port]\base  ->  server / port / database
+	if (!serverArg.IsEmpty()) {
+		wxString host = serverArg;
+		const int bs = host.Find(wxT('\\'), true /*fromEnd*/);
+		if (bs != wxNOT_FOUND) {
+			m_strDatabase = host.Mid(bs + 1);
+			host = host.Left(bs);
+		}
+		const int colon = host.Find(wxT(':'));
+		if (colon != wxNOT_FOUND) {
+			m_strPort = host.Mid(colon + 1);
+			host = host.Left(colon);
+		}
+		m_strServer = host;
+	}
+}
+
+int ibAppDesigner::RunBatch()
+{
+	wxString report;
+	auto emit = [&](const wxString& line) { report += line; report += wxT("\n"); };
+
+	if (m_strFile.IsEmpty() && m_strServer.IsEmpty()) {
+		emit(_("Batch mode: no infobase specified (use /F<dir> or /S<host\\base>)."));
+		fputs(report.ToUTF8().data(), stderr);
+		return 1;
+	}
+
+	// --- open the infobase (headless: base ibSession, like the daemon) --------
+	bool opened = false;
+	try {
+		if (m_strFile.IsEmpty())
+			opened = appDataCreateServer(ibRunMode::eDESIGNER_MODE,
+				m_strServer, m_strPort, m_strUser, m_strPassword, m_strDatabase, m_strLocale);
+		else
+			opened = appDataCreateFile(ibRunMode::eDESIGNER_MODE, m_strFile, m_strLocale);
+	}
+	catch (const ibBackendException&) { opened = false; }
+	catch (...)                       { opened = false; }
+
+	if (!opened) {
+		const std::vector<wxString> chain = ibBackendException::DrainLastErrors();
+		for (const wxString& e : chain) emit(e);
+		emit(_("Batch mode: the infobase could not be opened."));
+		WriteBatchReport(report);
+		return 1;
+	}
+
+	int exitCode = 0;
+
+	{
+		ibSessionHolder holder;
+		ibSession::OpenResult openResult = ibSession::OpenResult::Failed;
+		try {
+			holder = appData->CreateSession();
+			if (holder)
+				openResult = holder->Open(m_strIBUser, m_strIBPassword);
+		}
+		catch (const ibBackendException&) { openResult = ibSession::OpenResult::Failed; }
+		catch (...)                       { openResult = ibSession::OpenResult::Failed; }
+
+		if (!holder || openResult != ibSession::OpenResult::Authenticated) {
+			const std::vector<wxString> chain = ibBackendException::DrainLastErrors();
+			for (const wxString& e : chain) emit(e);
+			emit(_("Batch mode: authentication failed."));
+			WriteBatchReport(report);
+			return 1;
+		}
+
+		ibMetaDataConfigurationBase* metaData = ibApplicationData::GetActiveMetaData();
+
+		// Errors raised while the session compiled the DB configuration on Open.
+		std::vector<wxString> openErrors = ibBackendException::DrainLastErrors();
+
+		// --- /LoadCfg : load configuration from file into the base ------------
+		bool loadedFromFile = false;
+		if (!m_batchLoadCfg.IsEmpty()) {
+			if (metaData != nullptr && metaData->LoadConfigFromFile(m_batchLoadCfg)) {
+				loadedFromFile = true;
+				emit(wxString::Format(_("Configuration loaded from file: %s"), m_batchLoadCfg));
+				if (m_batchUpdateDBCfg) {
+					if (metaData->SaveDatabase())
+						emit(_("Database configuration updated."));
+					else {
+						emit(_("Failed to update the database configuration."));
+						exitCode = 1;
+					}
+				}
+			}
+			else {
+				emit(wxString::Format(_("Failed to load configuration from file: %s"), m_batchLoadCfg));
+				exitCode = 1;
+			}
+		}
+
+		// --- /CheckConfig, /CheckModules : compile-check ----------------------
+		if (m_batchCheckConfig || m_batchCheckModules) {
+			std::vector<wxString> errs;
+			if (loadedFromFile) {
+				// Re-compile the freshly loaded configuration.
+				ibBackendException::DrainLastErrors(); // drop stale
+				try { holder->CompileRoot(); }
+				catch (const ibBackendException&) {}
+				catch (...) {}
+				errs = ibBackendException::DrainLastErrors();
+			}
+			else {
+				// Use the diagnostics from the Open-time compile.
+				errs = std::move(openErrors);
+			}
+
+			const wxString what = m_batchCheckModules
+				? _("Module check") : _("Configuration check");
+			if (errs.empty())
+				emit(wxString::Format(_("%s completed: no errors detected."), what));
+			else {
+				for (const wxString& e : errs) emit(e);
+				emit(wxString::Format(_("%s completed: %u error(s)."), what, (unsigned)errs.size()));
+				exitCode = 1;
+			}
+		}
+
+		// --- /DumpCfg : save the base configuration to a file -----------------
+		if (!m_batchDumpCfg.IsEmpty()) {
+			if (metaData != nullptr && metaData->SaveConfigToFile(m_batchDumpCfg))
+				emit(wxString::Format(_("Configuration saved to file: %s"), m_batchDumpCfg));
+			else {
+				emit(wxString::Format(_("Failed to save configuration to file: %s"), m_batchDumpCfg));
+				exitCode = 1;
+			}
+		}
+	} // holder destroyed here — session closed before OnExit teardown
+
+	WriteBatchReport(report);
+	return exitCode;
+}
+
+void ibAppDesigner::WriteBatchReport(const wxString& report) const
+{
+	if (!m_batchOut.IsEmpty()) {
+		wxFFile out(m_batchOut, wxT("w"));
+		if (out.IsOpened()) {
+			out.Write(report, wxConvUTF8);
+			out.Close();
+		}
+	}
+	// Also to stdout so a console / redirect still sees the messages.
+	fputs(report.ToUTF8().data(), stdout);
+	fflush(stdout);
+}
+
+//////////////////////////////////////////////////////////////////////////////////
 
 // No exe-specific session class — see enterprise/mainApp.cpp. The pair's
 // designer half lives entirely in ibFrontendMainFrameDesigner (which asks
@@ -96,6 +344,10 @@ bool ibAppDesigner::OnCmdLineParsed(wxCmdLineParser& parser)
 
 int ibAppDesigner::DoOnRun()
 {
+	// OES-CLI: headless 1C-compatible batch operation — no window, no event loop.
+	if (m_batchMode)
+		return RunBatch();
+
 	// Get the data directory
 	bool ret = false;
 

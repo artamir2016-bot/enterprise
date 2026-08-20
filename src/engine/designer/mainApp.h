@@ -33,6 +33,20 @@ class ibAppDesigner : public ibWxApp {
 	wxString m_strLocale;
 #endif // wxDEBUG
 
+	// OES-CLI: 1C:Enterprise 8.3-compatible headless batch mode.
+	// When any batch verb (/LoadCfg /DumpCfg /CheckConfig /CheckModules) is
+	// present on the command line the designer runs WITHOUT a window: it opens
+	// the infobase, performs the requested operation, writes messages to the
+	// /Out file (and stdout), and returns an exit code (0 = ok, 1 = errors).
+	// This removes the need for the GUI "load configuration from file" dialog.
+	bool     m_batchMode = false;          // set in OnInitCmdLine, consumed in DoOnRun
+	wxString m_batchLoadCfg;               // /LoadCfg <file>  — load config from file into the base
+	wxString m_batchDumpCfg;               // /DumpCfg <file>  — save the base config to a file
+	wxString m_batchOut;                   // /Out <file>      — write messages to this file
+	bool     m_batchUpdateDBCfg = false;   // /UpdateDBCfg     — apply loaded config to the database
+	bool     m_batchCheckConfig = false;   // /CheckConfig     — compile-check the whole configuration
+	bool     m_batchCheckModules = false;  // /CheckModules    — compile-check all modules
+
 public:
 
 	// ibWxApp pre-wires Install / WrapStartup / 3 exception overrides.
@@ -42,6 +56,19 @@ public:
 	int DoOnRun() override;
 
 	int OnExit() override;
+
+private:
+	// OES-CLI: scan argv for a 1C-style batch verb (called from OnInitCmdLine
+	// before wx parses, so we can relax the parser for '/'-prefixed tokens).
+	bool DetectBatchMode() const;
+	// OES-CLI: parse the 1C-style command line into the m_batch* members.
+	void ParseBatchArgs();
+	// OES-CLI: run the headless batch operation; returns the process exit code.
+	int  RunBatch();
+	// OES-CLI: write the accumulated batch report to /Out (and stdout).
+	void WriteBatchReport(const wxString& report) const;
+
+public:
 
 public:
 
