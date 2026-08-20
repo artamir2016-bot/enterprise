@@ -35,9 +35,25 @@ Each subtask: branch from `feature/import-forms`, implement + test, then merge b
 Every fork edit carries a comment beginning `OES-RU:` explaining WHAT and WHY, so that when this
 branch is compared with the upstream file the added lines are self-describing.
 
-## Status
+## Status — ALL MERGED into `feature/import-forms`
 
-- [ ] 1 — Cyrillic identifiers (P0)
-- [ ] 2 — Russian keywords (P1)
-- [ ] 3 — Russian system functions (P2)
-- [ ] 4 — Russian object methods (P3)
+- [x] 1 — Cyrillic identifiers (P0) — verified end-to-end; lexer already lexes Cyrillic
+      (iswalpha). `RuntimeTest.CyrillicIdentifiers`. Merge: OES-RU P0.
+- [x] 2 — Russian keywords (P1) — `s_ruKeyWordAlias` maps ~35 spellings to their KEY_*;
+      boolean value-keyword now set by KEY not spelling (Истина/Ложь). Two-word
+      «Для Каждого» → one-word «ДляКаждого» (import still normalises the two-word form).
+      `RuntimeTest.RussianKeywords_CES/_VES_IfBlock`. Merge: OES-RU P1.
+- [x] 3 — Russian system functions (P2) — 64 aliases via `ibMemberTable::AliasMethod`
+      (name→same method number, no new dispatch case); compiler enumerates the alias list
+      for global-function resolution. `BuiltInRuntime.RussianSystemFunction_StrLen`.
+      Merge: OES-RU P2.
+- [x] 4 — Russian object methods (P3) — Array + Map via the same AliasMethod mechanism;
+      obj.Method() resolves at runtime through FindMethod's alias fallback (no compiler
+      change). `BuiltInRuntime.RussianObjectMethod_Array`. Merge: OES-RU P3.
+
+### Follow-ups (not done)
+- Object-method aliases beyond Array/Map (Structure, ValueTable, DynamicList, …) — same
+  recipe: add `helper.AliasMethod(...)` lines to each type's `_BindNames`.
+- Two-word 1C keyword forms («Для Каждого») as a native single token would need a lexer /
+  parser tweak; today the import translator normalises them.
+- Russian names in the syntax highlighter / autocomplete surface (cosmetic).
