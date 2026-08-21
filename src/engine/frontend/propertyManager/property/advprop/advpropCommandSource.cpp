@@ -192,7 +192,20 @@ wxPGEditorDialogAdapter* ibPGCommandSourceProperty::GetEditorDialog() const
 			newBtn->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) {
 				// Register a new form-local command; its handler procedure is generated after the modal
 				// closes (so the code page can come forward), and the button is bound to it — all below.
-				createdFc = form->AddFormCommand(form->MakeUniqueFormCommandName());
+				//
+				// Name it after the owning button when we can — "<ButtonName>ПриНажатии" (the 1C
+				// "<Button>OnClick" convention) — so the command / handler reads back to its button.
+				// UTF-8 byte-escaped suffix (the build has no /utf-8, so a raw Cyrillic literal misencodes).
+				wxString base;
+				if (const ibValueCommandBarItem* item =
+						dynamic_cast<const ibValueCommandBarItem*>(dlgProp->GetPropertyObject())) {
+					const wxString name = item->GetName();
+					if (!name.IsEmpty())
+						base = name + wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB8\xD0\x9D\xD0\xB0\xD0\xB6\xD0\xB0\xD1\x82\xD0\xB8\xD0\xB8"); // "ПриНажатии"
+				}
+				createdFc = base.IsEmpty()
+					? form->AddFormCommand(form->MakeUniqueFormCommandName())
+					: form->AddFormCommand(form->MakeUniqueFormCommandName(base));
 				dlg->EndModal(wxID_OK);
 			});
 
