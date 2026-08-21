@@ -194,6 +194,9 @@ bool ibMetaDataConfigurationFile::RunDatabase(int flags)
 
 	wxASSERT(!IsConfigOpen());
 
+	// Set the compiler style from the ACTIVE config's syntax, but NOT when this run is the saved
+	// BASELINE (loadConfigFlag, run by the storage subclass) — the baseline must not override the
+	// syntax the active configuration just established.
 	if ((flags & loadConfigFlag) == 0)
 		ibCompileCode::SetCodeStyle(m_commonObject->GetCompileSyntax());
 
