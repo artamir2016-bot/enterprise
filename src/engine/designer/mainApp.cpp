@@ -265,7 +265,11 @@ int ibAppDesigner::RunBatch()
 				loadedFromFile = true;
 				emit(wxString::Format(_("Configuration loaded from file: %s"), m_batchLoadCfg));
 				if (m_batchUpdateDBCfg) {
-					if (metaData->SaveDatabase())
+					// saveConfigFlag PERSISTS the configuration metadata (its syntax, modules, …) to the
+					// base, not just the data-table restructuring — the same flag the GUI "Update DB
+					// configuration" uses. Plain SaveDatabase() left the base's config metadata stale
+					// (e.g. a VES config kept reading back as CES).
+					if (metaData->SaveDatabase(saveConfigFlag))
 						emit(_("Database configuration updated."));
 					else {
 						emit(_("Failed to update the database configuration."));
