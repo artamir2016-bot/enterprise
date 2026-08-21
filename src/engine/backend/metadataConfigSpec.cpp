@@ -633,6 +633,14 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	if (!cfgName.IsEmpty())
 		root->SetName(cfgName);
 
+	// OES: optional configuration syntax — "ves" (Visual-Basic-style: Если … Тогда … КонецЕсли)
+	// or "ces" (C-style). Russian 1C-style business logic is VES. Absent -> platform default (CES).
+	const wxString syntax = JStr(spec, "syntax");
+	if (syntax.CmpNoCase(wxT("ves")) == 0)
+		root->SetCompileSyntax(syntax_ves);
+	else if (syntax.CmpNoCase(wxT("ces")) == 0)
+		root->SetCompileSyntax(syntax_ces);
+
 	RefMap refMap;
 	std::vector<std::pair<ibValueMetaObject*, const json*>> records;  // catalogs + documents
 	std::vector<std::pair<ibValueMetaObject*, const json*>> infoRegs;

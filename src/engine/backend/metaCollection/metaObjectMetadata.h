@@ -68,6 +68,9 @@ public:
 	}
 
 	ibProgramSyntax GetCompileSyntax() const { return m_propertySyntax->GetValueAsEnum(); }
+	// OES: set the configuration's script syntax (ves / ces). Russian 1C-style modules
+	// (Если … Тогда … КонецЕсли) are VES; the config generator uses this to mark such configs.
+	void SetCompileSyntax(ibProgramSyntax syntax) { m_propertySyntax->SetValue(syntax); }
 
 	void SetVersion(const ibVersionID& version) { m_propertyVersion->SetValue(static_cast<ibProgramVersion>(version)); }
 	ibVersionID GetVersion() const { return m_propertyVersion->GetValueAsInteger(); }
