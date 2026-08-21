@@ -196,13 +196,15 @@ wxPGEditorDialogAdapter* ibPGCommandSourceProperty::GetEditorDialog() const
 				// Name it after the owning button when we can — "<ButtonName>ПриНажатии" (the 1C
 				// "<Button>OnClick" convention) — so the command / handler reads back to its button.
 				// UTF-8 byte-escaped suffix (the build has no /utf-8, so a raw Cyrillic literal misencodes).
+				wxString ownerName;
+				const ibPropertyObject* po = dlgProp->GetPropertyObject();
+				if (const ibValueFrame* fr = dynamic_cast<const ibValueFrame*>(po))
+					ownerName = fr->GetControlName();               // a BUTTON CONTROL on the form
+				else if (const ibValueCommandBarItem* item = dynamic_cast<const ibValueCommandBarItem*>(po))
+					ownerName = item->GetName();                    // a command-bar (toolbar) item
 				wxString base;
-				if (const ibValueCommandBarItem* item =
-						dynamic_cast<const ibValueCommandBarItem*>(dlgProp->GetPropertyObject())) {
-					const wxString name = item->GetName();
-					if (!name.IsEmpty())
-						base = name + wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB8\xD0\x9D\xD0\xB0\xD0\xB6\xD0\xB0\xD1\x82\xD0\xB8\xD0\xB8"); // "ПриНажатии"
-				}
+				if (!ownerName.IsEmpty())
+					base = ownerName + wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB8\xD0\x9D\xD0\xB0\xD0\xB6\xD0\xB0\xD1\x82\xD0\xB8\xD0\xB8"); // "ПриНажатии"
 				createdFc = base.IsEmpty()
 					? form->AddFormCommand(form->MakeUniqueFormCommandName())
 					: form->AddFormCommand(form->MakeUniqueFormCommandName(base));

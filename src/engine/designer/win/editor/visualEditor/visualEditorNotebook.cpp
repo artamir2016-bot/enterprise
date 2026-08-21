@@ -135,8 +135,17 @@ void ibVisualEditorNotebook::ModifyEvent(ibEvent* event, const wxVariant& oldVal
 			int patchLine = endPos > 0 ?
 				2 : -1;
 			m_lineStart = m_lineEnd + patchLine;
+			// Put the caret INSIDE the freshly created body, on the indented empty line — the <!>
+			// position — not on the "Procedure" header. MakeProcedureTemplate lays the body-empty
+			// line at +2 in CES (Procedure / { / <tab> / }) and at +1 in VES (Procedure / <tab> /
+			// EndProcedure). GetLineEndPosition lands the caret right after the tab indent.
+			const int bodyLine = m_lineStart +
+				((ibCompileCode::GetCodeStyle() == CODE_CES) ? 2 : 1);
+			m_codeEditor->GotoPos(m_codeEditor->GetLineEndPosition(bodyLine));
 		}
-		m_codeEditor->GotoLine(m_lineStart);
+		else {
+			m_codeEditor->GotoLine(m_lineStart);
+		}
 		m_codeEditor->SetSTCFocus(true);
 	}
 
