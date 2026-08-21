@@ -208,20 +208,33 @@ wxPGEditorDialogAdapter* ibPGCommandSourceProperty::GetEditorDialog() const
 			const wxTreeItemId sel = tc->GetSelection();
 			bool applied = false;
 			if (createdFc != nullptr) {
-				// OES: the designer pressed "New command". Generate its Action handler procedure in the
-				// form module and open the code editor at it — the SAME path a control's event edit takes
-				// (ibFrontendVisualEditorNotebook::ModifyEvent creates the procedure + jumps). Then bind
-				// the button to this command (1-hop [id], display "Form.<name>").
-#ifndef OES_USE_WEB
-				// Designer-only: the editor notebook interface lives outside the web build.
-				const wxString handler = createdFc->GetName();
-				if (ibFrontendVisualEditorNotebook* ed = ibFrontendVisualEditorNotebook::FindEditorByForm(form))
-					ed->ModifyEvent(createdFc->GetActionEvent(), wxVariant(wxString()), wxVariant(handler));
-#endif
+				// OES: the designer pressed "New command". Bind the button to the freshly created command
+				// NOW (a lightweight value set, exactly like the existing pick path), and DEFER generating
+				// the Action handler + opening the code editor.
+				//
+				// Why defer: ibFrontendVisualEditorNotebook::ModifyEvent switches the notebook to the code
+				// page, edits the code control, runs an undo command and rebuilds the canvas/inspector. Doing
+				// that synchronously here re-enters the property grid while it is still processing THIS button
+				// event — the rebuild frees the very property/adapter we are running in (use-after-free →
+				// fast-fail 0xC0000409 abort, the observed crash). CallAfter runs it on a clean stack once the
+				// grid has finished committing this edit.
 				const ibBackendCommandReceiver* owner =
 					dynamic_cast<const ibBackendCommandReceiver*>(dlgProp->GetPropertyObject());
 				SetValue(new ibVariantDataCommandSource(owner, ibCommandDescription(createdFc->GetId()), createdFc->GetFullName()));
 				applied = true;
+#ifndef OES_USE_WEB
+				// Designer-only: the editor notebook interface lives outside the web build. createdFc is owned
+				// by the form (stable), so capturing it and the form by value is safe across the deferral.
+				ibFormCommandValue* fc = createdFc;
+				ibValueForm* theForm = form;
+				pg->CallAfter([fc, theForm]() {
+					try {
+						if (ibFrontendVisualEditorNotebook* ed = ibFrontendVisualEditorNotebook::FindEditorByForm(theForm))
+							ed->ModifyEvent(fc->GetActionEvent(), wxVariant(wxString()), wxVariant(fc->GetName()));
+					}
+					catch (...) { /* never let handler generation take the designer down */ }
+				});
+#endif
 			}
 			else if (res == wxID_OK && sel.IsOk()) {
 				// A GROUP node has no desc (IsOk() false) — ignored, so only a real command commits.
