@@ -82,6 +82,27 @@ Russian keywords (`Функционал`, `Сценарий`, `Структур�
 | Config check | the new `/CheckConfig` `/CheckModules` batch CLI | agent `checkModules` |
 | Gherkin + report | — | parser, step library, JUnit/Allure report |
 
+## Status (delivered)
+
+- **#1 transport — DONE.** `ibTestAgent` in `frontend.dll`, `--testagent[=port]` in designer +
+  enterprise, framed JSON, `ping`/`appInfo`/`quit`. Verified.
+- **#4 enterprise form commands + message tap — DONE (core).** `getForms`, `activeForm`,
+  `findControl`, `get/setControlValue`, `get/setAttribute`, `openForm` (catalog list/object),
+  `pressCommand` (form command / form-module proc), `getMessages`/`clearMessages` via a backend
+  message tap. Verified on `demo_ru_base` (open Товары, set/get Артикул + Цена round-trip).
+- **#3 runner — DONE (MVP).** `tools/oes_testrunner/` — Russian Gherkin parser, launcher, step
+  library, JUnit report. `features/demo_ru.feature` runs green (1/1): Designer → close → Enterprise
+  → open Товары → assert controls → set/read Артикул & Цена.
+
+### Next
+- Press STANDARD actions (записать/провести) — needs the protected command set; unlocks the
+  ПередЗаписью + message-tap assertion (create Товар, Цена<0, записать → «Цена не может быть
+  отрицательной»).
+- #2 generic wx-UI commands (menus/dialogs/tree) to drive the DESIGNER beyond ping.
+- #5 designer helpers (openConfig / checkModules / saveConfig).
+- Concurrency: a SERVER base lets Designer + Enterprise run truly at once (a file base is exclusive,
+  so the demo closes Designer before Enterprise).
+
 ## Phased plan (subtasks · priority · branch)
 
 Each subtask: branch from `feature/import-forms`, implement + test, merge back `--no-ff`.
