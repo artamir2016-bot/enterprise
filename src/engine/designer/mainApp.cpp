@@ -6,6 +6,7 @@
 #include "mainApp.h"
 #include "backend/appData.h"
 #include "backend/metadataConfiguration.h" // OES-CLI: LoadConfigFromFile / SaveConfigToFile / SaveDatabase for batch mode
+#include "frontend/testAgent/testAgent.h"  // OES-TEST: embedded test-automation agent (--testagent)
 #include "backend/backend_exception.h"   // DrainLastErrors for the startup-failure dialog
 #include "backend/backend_mainFrame.h"
 #include "backend/debugger/debugClientBridge.h"
@@ -77,6 +78,10 @@ void ibAppDesigner::OnInitCmdLine(wxCmdLineParser& parser)
 	parser.AddOption(wxT("ib_pwd"), wxT("ibpwd"),    "IB password",             wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
 	parser.AddOption(wxT("lc"),     wxT("locale"),   "UI locale",               wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
 
+	// OES-TEST: start the embedded test-automation agent on the given localhost port (bare flag =
+	// default port). Off unless passed. See docs/test-automation.md.
+	parser.AddOption(wxT("testagent"), wxT("testagent"), "Test-automation agent port", wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
+
 	return wxApp::OnInitCmdLine(parser);
 }
 
@@ -104,6 +109,11 @@ bool ibAppDesigner::OnCmdLineParsed(wxCmdLineParser& parser)
 
 	// LOCALE
 	parser.Found(wxT("lc"), &m_strLocale);
+
+	// OES-TEST: --testagent[=port]
+	wxString taPort;
+	if (parser.Found(wxT("testagent"), &taPort))
+		m_testAgentPort = taPort.IsEmpty() ? ibTestAgent::kDefaultTestAgentPort : wxAtoi(taPort);
 
 	return wxApp::OnCmdLineParsed(parser);
 }
@@ -534,6 +544,12 @@ int ibAppDesigner::DoOnRun()
 		frame->Destroy();
 		return 1;
 	}
+
+	// OES-TEST: bring up the test-automation agent once the main frame exists (so windows are
+	// enumerable). Off unless --testagent[=port] was passed. See docs/test-automation.md.
+	if (m_testAgentPort >= 0)
+		ibTestAgent::Get().Start(m_testAgentPort);
+
 	return wxApp::OnRun();
 }
 
