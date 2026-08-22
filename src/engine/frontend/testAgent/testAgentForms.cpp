@@ -34,6 +34,12 @@
 #include <wx/image.h>
 #include <wx/bitmap.h>
 
+#include <wx/toplevel.h>   // wxGetTopLevelParent
+
+#ifdef __WXMSW__
+#include <windows.h>       // OES-TEST: force the target window to the foreground for real input
+#endif
+
 #include <vector>
 #include <utility>
 #include <mutex>
@@ -308,6 +314,31 @@ namespace {
 		return w;
 	}
 
+	// Bring a window's top-level frame to the OS foreground so wxUIActionSimulator input (which the OS
+	// routes to the foreground window) lands here. Uses the AttachThreadInput trick to defeat the
+	// foreground lock when another process currently owns it.
+	void RaiseToForeground(wxWindow* w)
+	{
+		wxWindow* top = wxGetTopLevelParent(w != nullptr ? w : wxTheApp->GetTopWindow());
+		if (top == nullptr)
+			return;
+		top->Show();
+		top->Raise();
+#ifdef __WXMSW__
+		HWND hwnd = static_cast<HWND>(top->GetHandle());
+		if (hwnd != nullptr) {
+			const DWORD me = ::GetCurrentThreadId();
+			const HWND  fg = ::GetForegroundWindow();
+			const DWORD fgTid = fg ? ::GetWindowThreadProcessId(fg, nullptr) : 0;
+			if (fgTid && fgTid != me) ::AttachThreadInput(fgTid, me, TRUE);
+			::BringWindowToTop(hwnd);
+			::SetForegroundWindow(hwnd);
+			if (fgTid && fgTid != me) ::AttachThreadInput(fgTid, me, FALSE);
+		}
+#endif
+		Pump(150);
+	}
+
 	wxPoint WindowCenter(wxWindow* w)
 	{
 		const wxRect r = w->GetScreenRect();
@@ -361,16 +392,26 @@ namespace {
 
 	// --- real-input command handlers -------------------------------------------------------------
 
+	json Cmd_FocusApp(const json&)
+	{
+		RaiseToForeground(nullptr);
+		return json{ {"focused", true} };
+	}
+
 	json Cmd_MoveMouse(const json& args)
 	{
 		wxUIActionSimulator sim;
 		const int steps   = args.value("steps", 25);
 		const int delayMs = args.value("delayMs", 8);
 		wxPoint to;
-		if (args.contains("name"))
-			to = WindowCenter(ControlWindow(args));
-		else
+		if (args.contains("name")) {
+			wxWindow* w = ControlWindow(args);
+			RaiseToForeground(w);
+			to = WindowCenter(w);
+		}
+		else {
 			to = wxPoint(args.at("x").get<int>(), args.at("y").get<int>());
+		}
 		SmoothMoveTo(sim, to, steps, delayMs);
 		return json{ {"x", to.x}, {"y", to.y} };
 	}
@@ -379,6 +420,7 @@ namespace {
 	{
 		wxUIActionSimulator sim;
 		wxWindow* w = ControlWindow(args);
+		RaiseToForeground(w);
 		SmoothMoveTo(sim, WindowCenter(w), args.value("steps", 25), args.value("delayMs", 8));
 		Pump(60);
 		if (args.value("double", false))
@@ -403,6 +445,7 @@ namespace {
 	json Cmd_TypeText(const json& args)
 	{
 		wxUIActionSimulator sim;
+		RaiseToForeground(nullptr);
 		const wxString text = FromUtf8(args.at("text"));
 		const int perCharMs = args.value("perCharMs", 35);   // visible typing cadence for video
 		for (size_t i = 0; i < text.length(); ++i) {
@@ -429,6 +472,7 @@ namespace {
 	{
 		wxUIActionSimulator sim;
 		wxWindow* w = ControlWindow(args);
+		RaiseToForeground(w);
 		SmoothMoveTo(sim, WindowCenter(w), args.value("steps", 25), args.value("delayMs", 8));
 		Pump(60);
 		sim.MouseClick();
@@ -509,6 +553,7 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "getDiagnostics")  result = Cmd_GetDiagnostics();
 	else if (cmd == "clearDiagnostics") result = Cmd_ClearDiagnostics();
 	// real OS input (video-able)
+	else if (cmd == "focusApp")            result = Cmd_FocusApp(args);
 	else if (cmd == "moveMouse")           result = Cmd_MoveMouse(args);
 	else if (cmd == "clickControl")        result = Cmd_ClickControl(args);
 	else if (cmd == "clickAt")             result = Cmd_ClickAt(args);
