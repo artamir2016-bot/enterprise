@@ -50,11 +50,13 @@ class TestIDE(tk.Tk):
         self.features_dir = DEFAULT_FEATURES
         self.current_path: str | None = None
         self.proc: subprocess.Popen | None = None
+        self.live_proc: subprocess.Popen | None = None   # app launched for live inspection
         self.out_q: "queue.Queue[str|None]" = queue.Queue()
 
         self._build_ui()
         self._refresh_feature_list()
         self.after(80, self._drain_output)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # -- layout ----------------------------------------------------------------------------------
     def _build_ui(self):
@@ -147,6 +149,21 @@ class TestIDE(tk.Tk):
 
     # -- live inspector --------------------------------------------------------------------------
     def _build_inspector(self, parent):
+        # launch bar — start an app for live inspection straight from the IDE
+        launch = ttk.Frame(parent)
+        launch.pack(fill=tk.X, pady=2)
+        self.live_app = tk.StringVar(value="Предприятие")
+        ttk.Combobox(launch, textvariable=self.live_app, width=12, state="readonly",
+                     values=["Предприятие", "Дизайнер"]).pack(side=tk.LEFT)
+        ttk.Button(launch, text="▶ Запустить", command=self._live_launch).pack(side=tk.LEFT, padx=2)
+        ttk.Button(launch, text="■ Остановить", command=self._live_stop).pack(side=tk.LEFT)
+
+        base_bar = ttk.Frame(parent)
+        base_bar.pack(fill=tk.X, pady=2)
+        ttk.Label(base_bar, text="база:").pack(side=tk.LEFT)
+        self.live_base = tk.StringVar(value=r"E:\Projects\OES\testbase\demo_ru_base")
+        ttk.Entry(base_bar, textvariable=self.live_base).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+
         bar = ttk.Frame(parent)
         bar.pack(fill=tk.X, pady=2)
         ttk.Label(bar, text="порт:").pack(side=tk.LEFT)
@@ -158,6 +175,54 @@ class TestIDE(tk.Tk):
         self.inspector.pack(fill=tk.BOTH, expand=True)
         self.inspector.bind("<Double-1>", self._insert_from_inspector)
         self._insp_meta: dict[str, tuple[str, str]] = {}   # node -> (kind, payload)
+
+    def _live_launch(self):
+        if self.live_proc is not None and self.live_proc.poll() is None:
+            messagebox.showinfo("Уже запущено", "Приложение для live-view уже запущено. Сначала остановите.")
+            return
+        exe = "enterprise.exe" if self.live_app.get() == "Предприятие" else "designer.exe"
+        path = os.path.join(self.bin_var.get(), exe)
+        if not os.path.exists(path):
+            messagebox.showerror("Не найдено", f"Нет файла:\n{path}")
+            return
+        port = self.insp_port.get() or "1651"
+        args = [path, f'--file={self.live_base.get()}', f'--testagent={port}']
+        try:
+            self.live_proc = subprocess.Popen(args)
+        except Exception as exc:
+            messagebox.showerror("Ошибка запуска", str(exc))
+            return
+        self.status.set(f"Запущено {exe} (--testagent={port}); обновляю инспектор…")
+        self.after(6000, self._inspect_refresh)   # give the app time to come up
+
+    def _live_stop(self):
+        # try a clean quit through the agent, then terminate the process
+        try:
+            c = TestAgentClient(port=int(self.insp_port.get() or "1651"), timeout=3).connect(retries=1)
+            c.quit()
+            c.close()
+        except Exception:
+            pass
+        if self.live_proc is not None:
+            try:
+                self.live_proc.wait(timeout=6)
+            except Exception:
+                try:
+                    self.live_proc.terminate()
+                except Exception:
+                    pass
+            self.live_proc = None
+        self.status.set("Live-приложение остановлено")
+
+    def _on_close(self):
+        # never leave a launched app or a running scenario orphaned
+        for p in (self.live_proc, self.proc):
+            if p is not None and p.poll() is None:
+                try:
+                    p.terminate()
+                except Exception:
+                    pass
+        self.destroy()
 
     def _inspect_refresh(self):
         port = int(self.insp_port.get() or "1651")
