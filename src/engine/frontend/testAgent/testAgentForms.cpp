@@ -34,7 +34,9 @@
 #include <wx/image.h>
 #include <wx/bitmap.h>
 
-#include <wx/toplevel.h>   // wxGetTopLevelParent
+#include <wx/toplevel.h>   // wxGetTopLevelParent / wxTopLevelWindows
+#include <wx/frame.h>      // wxFrame / GetMenuBar (generic UI driving)
+#include <wx/menu.h>       // wxMenuBar / wxMenu / wxMenuItem
 
 #ifdef __WXMSW__
 #include <windows.h>       // OES-TEST: force the target window to the foreground for real input
@@ -488,6 +490,168 @@ namespace {
 		return json{ {"ok", true} };
 	}
 
+	// =============================================================================================
+	// GENERIC wx-UI driving (works in ANY OES app — used to drive the DESIGNER: menus, dialogs,
+	// tree, buttons — beyond the runtime-form control tree). See docs/test-automation.md.
+	// =============================================================================================
+
+	wxFrame* MainFrame()
+	{
+		return wxDynamicCast(wxTheApp != nullptr ? wxTheApp->GetTopWindow() : nullptr, wxFrame);
+	}
+
+	// Recursively search a window subtree for a widget matching a selector.
+	wxWindow* FindWidgetRec(wxWindow* root, const wxString& by, const wxString& val)
+	{
+		if (root == nullptr)
+			return nullptr;
+		bool match = false;
+		if (by == "name")       match = (root->GetName() == val);
+		else if (by == "label") match = (root->GetLabel() == val) || root->GetLabel().Contains(val);
+		else if (by == "type")  match = (wxString(root->GetClassInfo()->GetClassName()) == val);
+		if (match)
+			return root;
+		for (wxWindow* child : root->GetChildren()) {
+			if (wxWindow* found = FindWidgetRec(child, by, val))
+				return found;
+		}
+		return nullptr;
+	}
+
+	wxWindow* FindWidgetAny(const json& args)
+	{
+		const wxString by  = wxString::FromUTF8(args.value("by", std::string("label")).c_str());
+		const wxString val = FromUtf8(args.at("value"));
+		for (wxWindowList::iterator it = wxTopLevelWindows.begin(); it != wxTopLevelWindows.end(); ++it) {
+			if (wxWindow* found = FindWidgetRec(*it, by, val))
+				return found;
+		}
+		return nullptr;
+	}
+
+	json Cmd_ListWindows()
+	{
+		json arr = json::array();
+		for (wxWindowList::iterator it = wxTopLevelWindows.begin(); it != wxTopLevelWindows.end(); ++it) {
+			wxWindow* w = *it;
+			if (w == nullptr) continue;
+			const wxRect r = w->GetScreenRect();
+			arr.push_back({ {"title", ToUtf8(w->GetLabel())},
+				{"class", ToUtf8(wxString(w->GetClassInfo()->GetClassName()))},
+				{"shown", w->IsShown()},
+				{"x", r.x}, {"y", r.y}, {"w", r.width}, {"h", r.height} });
+		}
+		return json{ {"windows", arr} };
+	}
+
+	json Cmd_ListMenus()
+	{
+		wxFrame* fr = MainFrame();
+		wxMenuBar* mb = fr != nullptr ? fr->GetMenuBar() : nullptr;
+		json arr = json::array();
+		if (mb != nullptr) {
+			for (size_t i = 0; i < mb->GetMenuCount(); ++i) {
+				json items = json::array();
+				wxMenu* menu = mb->GetMenu(i);
+				if (menu != nullptr)
+					for (wxMenuItem* it : menu->GetMenuItems())
+						if (it != nullptr && !it->IsSeparator())
+							items.push_back(ToUtf8(it->GetItemLabelText()));
+				arr.push_back({ {"menu", ToUtf8(mb->GetMenuLabelText(i))}, {"items", items} });
+			}
+		}
+		return json{ {"menus", arr} };
+	}
+
+	// Recursively find a menu item by displayed label within a wxMenu.
+	wxMenuItem* FindMenuItem(wxMenu* menu, const wxString& label)
+	{
+		if (menu == nullptr) return nullptr;
+		for (wxMenuItem* it : menu->GetMenuItems()) {
+			if (it == nullptr) continue;
+			if (it->GetItemLabelText() == label || it->GetItemLabelText().Contains(label))
+				return it;
+			if (it->GetSubMenu() != nullptr)
+				if (wxMenuItem* sub = FindMenuItem(it->GetSubMenu(), label))
+					return sub;
+		}
+		return nullptr;
+	}
+
+	json Cmd_InvokeMenu(const json& args)
+	{
+		wxFrame* fr = MainFrame();
+		wxMenuBar* mb = fr != nullptr ? fr->GetMenuBar() : nullptr;
+		if (mb == nullptr)
+			throw std::runtime_error("no menu bar");
+		const json& path = args.at("path");
+		if (!path.is_array() || path.empty())
+			throw std::runtime_error("path must be a non-empty array");
+
+		const wxString top = FromUtf8(path[0]);
+		wxMenu* menu = nullptr;
+		for (size_t i = 0; i < mb->GetMenuCount(); ++i)
+			if (mb->GetMenuLabelText(i) == top || mb->GetMenuLabelText(i).Contains(top)) {
+				menu = mb->GetMenu(i); break;
+			}
+		if (menu == nullptr)
+			throw std::runtime_error("top menu not found: " + ToUtf8(top));
+
+		wxMenuItem* item = nullptr;
+		for (size_t k = 1; k < path.size(); ++k) {
+			item = FindMenuItem(menu, FromUtf8(path[k]));
+			if (item == nullptr)
+				throw std::runtime_error("menu item not found: " + path[k].get<std::string>());
+			if (k + 1 < path.size()) {
+				menu = item->GetSubMenu();
+				if (menu == nullptr)
+					throw std::runtime_error("not a submenu: " + path[k].get<std::string>());
+			}
+		}
+		if (item == nullptr)
+			throw std::runtime_error("menu item not resolved");
+
+		// Deferred: a menu handler may open a modal (file / config dialog) — running it inside this
+		// socket callback would block the agent. On the event loop it runs cleanly; the reply returns
+		// at once and any resulting dialog is driven by findWidget/clickWidget or captured by the taps.
+		const int id = item->GetId();
+		if (wxTheApp != nullptr) {
+			wxTheApp->CallAfter([fr, id]() {
+				wxCommandEvent evt(wxEVT_MENU, id);
+				evt.SetEventObject(fr);
+				fr->GetEventHandler()->ProcessEvent(evt);
+			});
+		}
+		return json{ {"invoked", true}, {"deferred", true} };
+	}
+
+	json Cmd_FindWidget(const json& args)
+	{
+		wxWindow* w = FindWidgetAny(args);
+		if (w == nullptr)
+			return json{ {"found", false} };
+		const wxRect r = w->GetScreenRect();
+		return json{ {"found", true},
+			{"class", ToUtf8(wxString(w->GetClassInfo()->GetClassName()))},
+			{"label", ToUtf8(w->GetLabel())},
+			{"x", r.x}, {"y", r.y}, {"w", r.width}, {"h", r.height} };
+	}
+
+	json Cmd_ClickWidget(const json& args)
+	{
+		wxWindow* w = FindWidgetAny(args);
+		if (w == nullptr)
+			throw std::runtime_error("widget not found");
+		RaiseToForeground(w);
+		wxUIActionSimulator sim;
+		SmoothMoveTo(sim, WindowCenter(w), args.value("steps", 25), args.value("delayMs", 8));
+		Pump(60);
+		if (args.value("double", false)) sim.MouseDblClick();
+		else                              sim.MouseClick();
+		Pump(120);
+		return json{ {"clicked", true} };
+	}
+
 	json Cmd_Screenshot(const json& args)
 	{
 		const wxString path = FromUtf8(args.at("path"));
@@ -561,6 +725,12 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "pressKey")            result = Cmd_PressKey(args);
 	else if (cmd == "setControlValueReal") result = Cmd_SetControlValueReal(args);
 	else if (cmd == "screenshot")          result = Cmd_Screenshot(args);
+	// generic wx-UI driving (designer: menus / dialogs / widgets)
+	else if (cmd == "listWindows")         result = Cmd_ListWindows();
+	else if (cmd == "listMenus")           result = Cmd_ListMenus();
+	else if (cmd == "invokeMenu")          result = Cmd_InvokeMenu(args);
+	else if (cmd == "findWidget")          result = Cmd_FindWidget(args);
+	else if (cmd == "clickWidget")         result = Cmd_ClickWidget(args);
 	else return false;
 	return true;
 }
