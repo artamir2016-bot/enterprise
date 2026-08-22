@@ -16,10 +16,44 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+
+
+class VideoRecorder:
+    """Screen-record a scenario to MP4 via ffmpeg (gdigrab on Windows). No-op if ffmpeg is absent."""
+
+    def __init__(self, out_dir: str | None):
+        self.out_dir = out_dir
+        self.ffmpeg = shutil.which("ffmpeg") if out_dir else None
+        self.proc: subprocess.Popen | None = None
+
+    def start(self, name: str) -> None:
+        if not self.ffmpeg:
+            return
+        os.makedirs(self.out_dir, exist_ok=True)
+        safe = re.sub(r"[^\w.-]+", "_", name).strip("_") or "scenario"
+        out = os.path.join(self.out_dir, safe + ".mp4")
+        cmd = [self.ffmpeg, "-y", "-f", "gdigrab", "-framerate", "15", "-i", "desktop",
+               "-pix_fmt", "yuv420p", out]
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1.0)  # let capture spin up before the scenario acts
+
+    def stop(self) -> None:
+        if self.proc is None:
+            return
+        try:
+            self.proc.communicate(b"q", timeout=10)   # graceful finalize (writes moov atom)
+        except Exception:
+            try:
+                self.proc.terminate()
+            except Exception:
+                pass
+        self.proc = None
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from agent_client import TestAgentClient, AgentError          # noqa: E402
@@ -183,6 +217,48 @@ def _assert_message(ctx: Context, fragment):
         raise StepError(f'сообщение "{fragment}" не найдено. Получено: {texts}')
 
 
+# ---- REAL input steps (video-able: real cursor / keystrokes) -----------------------------------
+@step(r'^Я навожу мышь на поле "(.+)"$')
+def _move_to(ctx: Context, name):
+    ctx.current.call("moveMouse", name=name)
+
+
+@step(r'^Я кликаю по полю "(.+)"$')
+def _click_ctrl(ctx: Context, name):
+    ctx.current.call("clickControl", name=name)
+
+
+@step(r'^Я дважды кликаю по полю "(.+)"$')
+def _dclick_ctrl(ctx: Context, name):
+    ctx.current.call("clickControl", name=name, double=True)
+
+
+@step(r'^Я ввожу в поле "(.+)" текст "(.*)"$')
+def _type_into(ctx: Context, name, value):
+    ctx.current.call("setControlValueReal", name=name, value=value)
+
+
+@step(r'^Я печатаю "(.*)"$')
+def _type_text(ctx: Context, text):
+    ctx.current.call("typeText", text=text)
+
+
+@step(r'^Я нажимаю клавишу "(.+)"$')
+def _press_key(ctx: Context, combo):
+    parts = [p.strip() for p in combo.split("+")]
+    key = parts[-1]
+    mods = {p.lower(): True for p in parts[:-1]}
+    key = {"ctrl": "ctrl", "shift": "shift", "alt": "alt"}.get(key.lower(), key)
+    ctx.current.call("pressKey", key=key,
+                     ctrl=mods.get("ctrl", False), shift=mods.get("shift", False),
+                     alt=mods.get("alt", False))
+
+
+@step(r'^Я делаю скриншот "(.+)"$')
+def _screenshot(ctx: Context, path):
+    ctx.current.call("screenshot", path=path)
+
+
 @step(r'^Значение поля "(.+)" равно "(.*)"$')
 def _assert_control(ctx: Context, name, expected):
     got = ctx.current.call("getControlValue", name=name).get("value")
@@ -194,6 +270,14 @@ def _assert_control(ctx: Context, name, expected):
 def _assert_control_exists(ctx: Context, name):
     if not ctx.current.call("findControl", name=name).get("found"):
         raise StepError(f'контрол "{name}" не найден')
+
+
+@step(r'^Я вижу ошибку "(.+)"$')
+def _assert_diag(ctx: Context, fragment):
+    diags = ctx.current.call("getDiagnostics").get("diagnostics", [])
+    texts = [d.get("message", "") for d in diags]
+    if not any(fragment in t for t in texts):
+        raise StepError(f'ошибка "{fragment}" не найдена. Получено: {texts}')
 
 
 @step(r'^Я вижу форму "(.+)"$')
@@ -218,7 +302,7 @@ def run_step(ctx: Context, st: Step) -> None:
     raise StepError(f"нет обработчика для шага: {st.keyword} {st.text}")
 
 
-def run(feature_path: str, bin_dir: str, junit: str | None) -> int:
+def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | None = None) -> int:
     feature = parse_feature(open(feature_path, encoding="utf-8").read())
     print(f"Функционал: {feature.name}")
 
@@ -229,6 +313,8 @@ def run(feature_path: str, bin_dir: str, junit: str | None) -> int:
         print(f"  Сценарий: {sc.name}")
         case = ET.SubElement(suite, "testcase", name=sc.name)
         ctx = Context(bin_dir)
+        recorder = VideoRecorder(video_dir)
+        recorder.start(sc.name)
         t0 = time.time()
         try:
             for st in sc.steps:
@@ -242,6 +328,7 @@ def run(feature_path: str, bin_dir: str, junit: str | None) -> int:
             fail.text = str(exc)
         finally:
             case.set("time", f"{time.time() - t0:.2f}")
+            recorder.stop()
             ctx.teardown()
 
     total = len(feature.scenarios)
@@ -261,8 +348,9 @@ def main() -> int:
     ap.add_argument("feature")
     ap.add_argument("--bin", default=DEFAULT_BIN, help="directory with designer.exe/enterprise.exe")
     ap.add_argument("--junit", default=None, help="write JUnit XML report to this path")
+    ap.add_argument("--video", default=None, help="record each scenario to MP4 in this dir (needs ffmpeg)")
     args = ap.parse_args()
-    return run(args.feature, args.bin, args.junit)
+    return run(args.feature, args.bin, args.junit, args.video)
 
 
 if __name__ == "__main__":

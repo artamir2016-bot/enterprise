@@ -91,6 +91,11 @@ public:
 	// session->GetFrame()->ShowModalMessage(...) instead of raw
 	// wxMessageBox so the backend stays wx-ignorant.
 	int ShowModalMessage(const wxString& message, const wxString& caption, int style) override {
+		// OES-TEST: let a registered interceptor (test agent) capture + auto-answer instead of
+		// popping a blocking wxMessageBox — an automated run must never hang on a modal.
+		int answer = 0;
+		if (ibBackendDocFrame::RunModalInterceptor(message, caption, style, answer))
+			return answer;
 		return wxMessageBox(message, caption, style, this);
 	}
 
