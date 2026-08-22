@@ -23,6 +23,15 @@ public:
 // the thunk's entries unchanged.
 constexpr long g_aliasExport = 1000;
 
+// OES-RU: Russian aliases for predefined object-module EVENT handlers. The platform invokes events
+// by fixed English names (BeforeWrite / OnWrite / BeforeDelete / …); a Russian 1C-style module names
+// its handlers ПередЗаписью / ПриЗаписи / … . ibRuEventAlias maps an English event name to its
+// Russian synonym (empty if none). ibResolveEventName returns the name actually present in the
+// module: the English one if defined, else the Russian synonym if that is defined, else the English
+// name unchanged. See docs/ru-language.md.
+BACKEND_API wxString ibRuEventAlias(const wxString& englishEvent);
+BACKEND_API wxString ibResolveEventName(class ibProcUnit* pu, const wxString& englishEvent);
+
 class BACKEND_API ibRuntimeModuleDataObject {
 public:
 
@@ -247,7 +256,8 @@ protected:
 		ibValue** paParams, const long lSizeArray) const
 	{
 		if (auto pu = GetProcUnit())
-			return pu->CallAsProc(strMethodName, paParams, lSizeArray);
+			// OES-RU: fire a Russian-named handler (ПередЗаписью, …) when no English one is defined.
+			return pu->CallAsProc(ibResolveEventName(pu.get(), strMethodName), paParams, lSizeArray);
 		return false;
 	}
 
@@ -255,7 +265,7 @@ protected:
 		ibValue& pvarRetValue, ibValue** paParams, const long lSizeArray) const
 	{
 		if (auto pu = GetProcUnit())
-			return pu->CallAsFunc(strMethodName, pvarRetValue, paParams, lSizeArray);
+			return pu->CallAsFunc(ibResolveEventName(pu.get(), strMethodName), pvarRetValue, paParams, lSizeArray);
 		return false;
 	}
 
