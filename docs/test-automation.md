@@ -57,6 +57,13 @@ Command set (JSON over the framed channel):
   batch check), `saveConfig`.
 - **Lifecycle**: `ping`, `appInfo`, `quit`.
 
+### 2a. IDE / feature workbench (`tools/oes_testrunner/ide.py`)
+A dependency-free Tkinter desktop UI (Vanessa-like): feature list (open/new/save), a Gherkin editor
+with Russian keyword highlighting, a **step palette** (grouped by category from `steps_catalog.py`;
+double-click inserts a step template), and **Run / Run with video** buttons that drive `runner.py` as
+a subprocess and stream its output live (OK green / FAIL red / summary). Launch:
+`python tools/oes_testrunner/ide.py`.
+
 ### 2. Runner / Orchestrator (`oes_testrunner`)
 Parses Russian Gherkin, owns the **step library** (phrase → agent command mapping — extensible in
 data/config without rebuilding the platform), launches/attaches app instances with `--testagent`,
