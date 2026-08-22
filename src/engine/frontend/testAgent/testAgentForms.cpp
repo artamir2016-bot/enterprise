@@ -156,6 +156,31 @@ namespace {
 		return json{ {"found", ctrl != nullptr} };
 	}
 
+	void CollectControls(ibValueFrame* node, json& arr)
+	{
+		if (node == nullptr)
+			return;
+		for (unsigned int i = 0; i < node->GetChildCount(); ++i) {
+			ibValueFrame* c = node->GetChild(i);
+			if (c == nullptr)
+				continue;
+			const wxString name = c->GetControlName();
+			const wxString cls = c->GetClassName();
+			// Skip layout wrappers (SizerItem/"Sizer") — they carry no addressable control name.
+			if (!name.IsEmpty() && !cls.Contains(wxT("Sizer")))
+				arr.push_back({ {"name", ToUtf8(name)}, {"class", ToUtf8(cls)} });
+			CollectControls(c, arr);   // recurse into containers regardless
+		}
+	}
+
+	json Cmd_ListControls(const json& args)
+	{
+		ibValueForm* form = ResolveForm(args);
+		json arr = json::array();
+		CollectControls(form, arr);
+		return json{ {"controls", arr} };
+	}
+
 	json Cmd_GetControlValue(const json& args)
 	{
 		ibValueFrame* ctrl = ResolveControl(args);
@@ -706,6 +731,7 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	if      (cmd == "getForms")        result = Cmd_GetForms();
 	else if (cmd == "activeForm")      result = Cmd_ActiveForm();
 	else if (cmd == "findControl")     result = Cmd_FindControl(args);
+	else if (cmd == "listControls")    result = Cmd_ListControls(args);
 	else if (cmd == "getControlValue") result = Cmd_GetControlValue(args);
 	else if (cmd == "setControlValue") result = Cmd_SetControlValue(args);
 	else if (cmd == "getAttribute")    result = Cmd_GetAttribute(args);
