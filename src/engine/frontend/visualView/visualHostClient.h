@@ -188,6 +188,10 @@ public:
 
 	ibFormVisualEditView* GetFirstView() const;
 	ibValueForm* GetValueForm() const;
+
+	// OES-TEST: snapshot of every open runtime form (from the internal open-doc registry). Used by
+	// the test-automation agent to enumerate the UI. See docs/test-automation.md.
+	static std::vector<ibValueForm*> GetOpenForms();
 	const ibUniqueKey& GetFormKey() const;
 	bool CompareFormKey(const ibUniqueKey& formKey) const;
 

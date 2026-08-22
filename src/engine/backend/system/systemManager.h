@@ -4,6 +4,8 @@
 #include "backend/backend.h"
 #include "backend/compiler/value.h"
 
+#include <functional>   // OES-TEST: ibMessageTap
+
 //-- Constants:
 #define PageBreak wxT("\n\n")
 #define LineBreak wxT("\n")
@@ -94,6 +96,12 @@ public:
 	static void SetStatus(const wxString& sStatus);
 	static void ClearMessage();
 	static void SetError(const wxString& strError);
+
+	// OES-TEST: message tap — the test-automation agent registers a sink here to CAPTURE user
+	// messages (Сообщить / Message) for assertions, alongside the normal on-screen routing. Empty
+	// by default (no capture). See docs/test-automation.md.
+	using ibMessageTap = std::function<void(const wxString&, ibStatusMessage)>;
+	static void SetMessageTap(ibMessageTap tap);
 	static void Raise(const wxString& strError);
 	static wxString ErrorDescription();
 	static bool IsEmptyValue(const ibValue& cData);
