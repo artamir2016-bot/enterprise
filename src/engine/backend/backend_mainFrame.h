@@ -7,6 +7,8 @@
 #include "backend/session/sessionHolder.h"   // the frame OWNS its session
 #include "backend/job/jobSchedule.h"          // ibJobScheduleDescription — edited through ShowScheduleEditor
 
+#include <functional>   // OES-TEST: modal interceptor
+
 class ibSession;
 
 // The frame is not a process-level singleton — it belongs to ibSession.
@@ -112,6 +114,14 @@ public:
 	// Body is out-of-line in backend_mainFrame.cpp so backend.dll exports
 	// a concrete symbol that wfrontend.dll can pick up via dllimport.
 	virtual int ShowModalMessage(const wxString& message, const wxString& caption, int style);
+
+	// OES-TEST: modal interceptor. When set (by the test agent), ShowModalMessage — and thus Alert /
+	// Question / any backend-routed dialog — CAPTURES the text and returns a default answer instead of
+	// showing a blocking wxMessageBox, so an automated run never hangs on a modal. Returns true if the
+	// interceptor handled the call (answer filled). See docs/test-automation.md.
+	using ibModalInterceptor = std::function<bool(const wxString& message, const wxString& caption, int style, int& answer)>;
+	static void SetModalInterceptor(ibModalInterceptor fn);
+	static bool RunModalInterceptor(const wxString& message, const wxString& caption, int style, int& answer);
 
 	virtual void RefreshFrame() = 0;
 	virtual void RaiseFrame() = 0;

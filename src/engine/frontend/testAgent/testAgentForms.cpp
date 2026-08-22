@@ -12,8 +12,10 @@
 #include "backend/metaCollection/partial/catalog.h"            // ibValueMetaObjectCatalog (GetObjectForm/GetListForm)
 #include "backend/metaCollection/metaObject.h"                 // g_metaCatalogCLSID
 #include "backend/session/session.h"                           // ibSession::CurrentFrame
-#include "backend/backend_mainFrame.h"                         // ibBackendDocFrame::ActiveWindow
+#include "backend/backend_mainFrame.h"                         // ibBackendDocFrame::ActiveWindow + modal interceptor
+#include "backend/backend_diagnostic.h"                        // ibDiagnostics / ibDiagnosticSink — capture runtime/compile errors
 #include "backend/backend_form.h"                              // ibBackendValueForm::ShowForm
+#include "backend/standardCommand.h"                           // ibActionID (the set type itself stays unnamed — use auto)
 #include "backend/system/systemManager.h"                      // ibValueSystemFunction::SetMessageTap
 
 #include "frontend/visualView/ctrl/form.h"                     // ibValueForm
@@ -22,17 +24,59 @@
 #include "frontend/visualView/ctrl/formAttribute.h"            // ibFormAttributeValue (GetValue/SetHeldValue)
 #include "frontend/visualView/visualHostClient.h"              // ibFormVisualDocument::GetOpenForms
 
+#include <wx/uiaction.h>   // OES-TEST: REAL OS mouse/keyboard input (for video-able runs)
+#include <wx/window.h>
+#include <wx/gdicmn.h>     // wxPoint / wxRect
+#include <wx/utils.h>      // wxGetMousePosition / wxMilliSleep
+#include <wx/app.h>        // wxTheApp->Yield
+#include <wx/dcscreen.h>   // wxScreenDC (screenshot)
+#include <wx/dcmemory.h>
+#include <wx/image.h>
+#include <wx/bitmap.h>
+
 #include <vector>
 #include <utility>
+#include <mutex>
 
 using nlohmann::json;
 
 namespace {
 
-	// --- captured user messages (Сообщить / Message) ---------------------------------------------
-	// Populated by the tap on the GUI thread; read by getMessages on the same thread — no lock.
+	// --- captured user-facing diagnostics -------------------------------------------------------
+	// Sources fire on any thread (Сообщить from a worker, ibDiagnostics from the failing thread,
+	// a modal from the GUI thread) — guard the buffers with a mutex.
+	std::mutex gs_captureMutex;
+	// Flat message log: Сообщить, intercepted modals, and error text — what "Я вижу сообщение" reads.
 	std::vector<std::pair<wxString, int>> gs_messages;
+	// Structured runtime/compile diagnostics ({module,line,message,kind}) from ibDiagnostics.
+	struct DiagEntry { wxString message; wxString module; int line; int kind; };
+	std::vector<DiagEntry> gs_diagnostics;
 	bool gs_tapInstalled = false;
+
+	void PushMessage(const wxString& text, int status)
+	{
+		std::lock_guard<std::mutex> lock(gs_captureMutex);
+		gs_messages.emplace_back(text, status);
+		if (gs_messages.size() > 4000)
+			gs_messages.erase(gs_messages.begin(), gs_messages.begin() + 2000);
+	}
+
+	// OES-TEST: capture EVERY published runtime/compile diagnostic (the "{Module(line)}: message"
+	// failures) as data — the sink the ibDiagnostic header names a test as the intended consumer of.
+	class ibTestAgentDiagSink : public ibDiagnosticSink {
+	public:
+		void OnDiagnostic(const ibDiagnostic& d) override {
+			{
+				std::lock_guard<std::mutex> lock(gs_captureMutex);
+				gs_diagnostics.push_back({ d.m_message, d.m_moduleName, static_cast<int>(d.m_line),
+					static_cast<int>(d.m_kind) });
+			}
+			// Also fold the decorated form into the flat log so message assertions catch errors too.
+			PushMessage(wxString::Format(wxT("{%s(%u)}: %s"),
+				d.m_moduleName, d.m_line, d.m_message), 2 /*error*/);
+		}
+	};
+	ibTestAgentDiagSink gs_diagSink;
 
 	std::string ToUtf8(const wxString& s) { return std::string(s.utf8_str()); }
 	wxString    FromUtf8(const json& v)   { return wxString::FromUTF8(v.get<std::string>().c_str()); }
@@ -171,21 +215,44 @@ namespace {
 		ibValueForm* form = ResolveForm(args);
 		const wxString name = FromUtf8(args.at("name"));
 
-		// A form command (its named handler procedure) — the button-delegated event.
+		// 1) a form command (its named handler procedure) — the button-delegated event.
 		if (form->GetFormCommand(name) != nullptr) {
 			form->CallAsEvent(name);
 			return json{ {"pressed", true}, {"via", "formCommand"} };
 		}
 
-		// Otherwise fire it as a form-module procedure by name (a control's OnClick handler, etc.).
-		// (Pressing STANDARD actions — записать/провести — needs the protected command set and is a
-		// documented follow-up; see docs/test-automation.md.)
+		// 2) a STANDARD action (Save / SaveAndClose / Post / …) — match by internal name OR by the
+		// displayed caption. `auto` avoids naming the protected-nested command-set type; its accessors
+		// are public. CallAsAction delegates to the source object (record write → triggers ПередЗаписью).
+		//
+		// Run it DEFERRED (CallAfter) on the event loop, NOT inside this socket callback: a write opens
+		// a DB transaction and, on error/cancel, rolls back — doing that reentrantly from the socket
+		// handler hangs the agent. Deferred, it runs on a clean stack; any message / error is captured
+		// by the taps + diagnostic sink, so the runner reads the outcome via getMessages/getDiagnostics
+		// after a short wait. The reply returns immediately so the agent never blocks.
+		auto cmds = form->GetStandardCommands(form->GetTypeForm());
+		for (unsigned int i = 0; i < cmds.GetCount(); ++i) {
+			const ibActionID id = cmds.GetID(i);
+			if (id == wxNOT_FOUND) continue;
+			if (cmds.GetNameByID(id) == name || cmds.GetCaptionByID(id) == name) {
+				if (wxTheApp != nullptr) {
+					wxTheApp->CallAfter([form, id]() {
+						try { form->CallAsAction(id, form); }
+						catch (...) { /* captured by the diagnostic sink; never take the app down */ }
+					});
+				}
+				return json{ {"pressed", true}, {"via", "standardAction"}, {"deferred", true} };
+			}
+		}
+
+		// 3) otherwise fire it as a form-module procedure by name (a control's OnClick handler, etc.).
 		form->CallAsEvent(name);
 		return json{ {"pressed", true}, {"via", "event"} };
 	}
 
 	json Cmd_GetMessages()
 	{
+		std::lock_guard<std::mutex> lock(gs_captureMutex);
 		json arr = json::array();
 		for (const auto& m : gs_messages)
 			arr.push_back({ {"text", ToUtf8(m.first)}, {"status", m.second} });
@@ -194,8 +261,208 @@ namespace {
 
 	json Cmd_ClearMessages()
 	{
+		std::lock_guard<std::mutex> lock(gs_captureMutex);
 		gs_messages.clear();
+		gs_diagnostics.clear();
 		return json{ {"ok", true} };
+	}
+
+	json Cmd_GetDiagnostics()
+	{
+		std::lock_guard<std::mutex> lock(gs_captureMutex);
+		json arr = json::array();
+		for (const auto& d : gs_diagnostics)
+			arr.push_back({ {"message", ToUtf8(d.message)}, {"module", ToUtf8(d.module)},
+				{"line", d.line}, {"kind", d.kind} });   // kind: 0=Compile, 1=Runtime
+		return json{ {"diagnostics", arr} };
+	}
+
+	json Cmd_ClearDiagnostics()
+	{
+		std::lock_guard<std::mutex> lock(gs_captureMutex);
+		gs_diagnostics.clear();
+		return json{ {"ok", true} };
+	}
+
+	// =============================================================================================
+	// REAL OS input (wxUIActionSimulator) — moves the actual cursor and sends real key events so a
+	// screen recorder captures a genuine walkthrough. Runs on the GUI thread; simulated input is
+	// queued to the OS and processed once we return to the event loop, so Pump() yields to let it
+	// take effect and keep the UI painting during a move.
+	// =============================================================================================
+
+	void Pump(int ms = 0)
+	{
+		if (wxTheApp != nullptr)
+			wxTheApp->Yield(true);
+		if (ms > 0)
+			wxMilliSleep(ms);
+	}
+
+	wxWindow* ControlWindow(const json& args)
+	{
+		ibValueFrame* ctrl = ResolveControl(args);
+		wxWindow* w = wxDynamicCast(ctrl->GetWxObject(), wxWindow);
+		if (w == nullptr)
+			throw std::runtime_error("control has no window");
+		return w;
+	}
+
+	wxPoint WindowCenter(wxWindow* w)
+	{
+		const wxRect r = w->GetScreenRect();
+		return wxPoint(r.x + r.width / 2, r.y + r.height / 2);
+	}
+
+	// Move the real cursor from where it is to `to` in `steps` eased steps — visible, smooth motion.
+	void SmoothMoveTo(wxUIActionSimulator& sim, const wxPoint& to, int steps, int delayMs)
+	{
+		if (steps < 1) steps = 1;
+		const wxPoint from = wxGetMousePosition();
+		for (int i = 1; i <= steps; ++i) {
+			const double t = static_cast<double>(i) / steps;
+			const int x = static_cast<int>(from.x + (to.x - from.x) * t);
+			const int y = static_cast<int>(from.y + (to.y - from.y) * t);
+			sim.MouseMove(x, y);
+			Pump(delayMs);
+		}
+	}
+
+	// Named-key -> keycode (for pressKey). Single printable chars map to themselves (upper-cased).
+	long KeyCode(const wxString& key)
+	{
+		static const struct { const char* n; long k; } tbl[] = {
+			{"enter", WXK_RETURN}, {"return", WXK_RETURN}, {"tab", WXK_TAB},
+			{"escape", WXK_ESCAPE}, {"esc", WXK_ESCAPE}, {"space", WXK_SPACE},
+			{"backspace", WXK_BACK}, {"delete", WXK_DELETE}, {"del", WXK_DELETE},
+			{"home", WXK_HOME}, {"end", WXK_END}, {"pageup", WXK_PAGEUP}, {"pagedown", WXK_PAGEDOWN},
+			{"up", WXK_UP}, {"down", WXK_DOWN}, {"left", WXK_LEFT}, {"right", WXK_RIGHT},
+			{"f1", WXK_F1}, {"f2", WXK_F2}, {"f3", WXK_F3}, {"f4", WXK_F4}, {"f5", WXK_F5},
+			{"f6", WXK_F6}, {"f7", WXK_F7}, {"f8", WXK_F8}, {"f9", WXK_F9}, {"f10", WXK_F10},
+			{"f11", WXK_F11}, {"f12", WXK_F12},
+		};
+		const wxString low = key.Lower();
+		for (const auto& e : tbl)
+			if (low == e.n)
+				return e.k;
+		if (key.length() == 1)
+			return static_cast<long>(wxToupper(key[0]));
+		return 0;
+	}
+
+	int Modifiers(const json& args)
+	{
+		int m = wxMOD_NONE;
+		if (args.value("ctrl", false))  m |= wxMOD_CONTROL;
+		if (args.value("shift", false)) m |= wxMOD_SHIFT;
+		if (args.value("alt", false))   m |= wxMOD_ALT;
+		return m;
+	}
+
+	// --- real-input command handlers -------------------------------------------------------------
+
+	json Cmd_MoveMouse(const json& args)
+	{
+		wxUIActionSimulator sim;
+		const int steps   = args.value("steps", 25);
+		const int delayMs = args.value("delayMs", 8);
+		wxPoint to;
+		if (args.contains("name"))
+			to = WindowCenter(ControlWindow(args));
+		else
+			to = wxPoint(args.at("x").get<int>(), args.at("y").get<int>());
+		SmoothMoveTo(sim, to, steps, delayMs);
+		return json{ {"x", to.x}, {"y", to.y} };
+	}
+
+	json Cmd_ClickControl(const json& args)
+	{
+		wxUIActionSimulator sim;
+		wxWindow* w = ControlWindow(args);
+		SmoothMoveTo(sim, WindowCenter(w), args.value("steps", 25), args.value("delayMs", 8));
+		Pump(60);
+		if (args.value("double", false))
+			sim.MouseDblClick();
+		else
+			sim.MouseClick();
+		Pump(120);
+		return json{ {"clicked", true} };
+	}
+
+	json Cmd_ClickAt(const json& args)
+	{
+		wxUIActionSimulator sim;
+		SmoothMoveTo(sim, wxPoint(args.at("x").get<int>(), args.at("y").get<int>()),
+			args.value("steps", 25), args.value("delayMs", 8));
+		Pump(60);
+		sim.MouseClick();
+		Pump(120);
+		return json{ {"clicked", true} };
+	}
+
+	json Cmd_TypeText(const json& args)
+	{
+		wxUIActionSimulator sim;
+		const wxString text = FromUtf8(args.at("text"));
+		const int perCharMs = args.value("perCharMs", 35);   // visible typing cadence for video
+		for (size_t i = 0; i < text.length(); ++i) {
+			const std::string ch = wxString(text[i]).utf8_str().data();
+			sim.Text(ch.c_str());
+			Pump(perCharMs);
+		}
+		return json{ {"typed", static_cast<int>(text.length())} };
+	}
+
+	json Cmd_PressKey(const json& args)
+	{
+		wxUIActionSimulator sim;
+		const long code = KeyCode(FromUtf8(args.at("key")));
+		if (code == 0)
+			throw std::runtime_error("unknown key");
+		sim.Char(static_cast<int>(code), Modifiers(args));
+		Pump(60);
+		return json{ {"pressed", true} };
+	}
+
+	// Real, video-able field edit: move to the control, click to focus, select-all, type the value.
+	json Cmd_SetControlValueReal(const json& args)
+	{
+		wxUIActionSimulator sim;
+		wxWindow* w = ControlWindow(args);
+		SmoothMoveTo(sim, WindowCenter(w), args.value("steps", 25), args.value("delayMs", 8));
+		Pump(60);
+		sim.MouseClick();
+		Pump(120);
+		sim.Char('A', wxMOD_CONTROL);   // select all
+		Pump(40);
+		const wxString text = FromUtf8(args.at("value"));
+		const int perCharMs = args.value("perCharMs", 35);
+		for (size_t i = 0; i < text.length(); ++i) {
+			sim.Text(wxString(text[i]).utf8_str().data());
+			Pump(perCharMs);
+		}
+		return json{ {"ok", true} };
+	}
+
+	json Cmd_Screenshot(const json& args)
+	{
+		const wxString path = FromUtf8(args.at("path"));
+		wxRect rect;
+		if (args.contains("name")) {
+			rect = ControlWindow(args)->GetScreenRect();
+		}
+		else {
+			const wxSize scr = wxGetDisplaySize();
+			rect = wxRect(0, 0, scr.x, scr.y);
+		}
+		wxScreenDC screen;
+		wxBitmap bmp(rect.width, rect.height);
+		wxMemoryDC mem(bmp);
+		mem.Blit(0, 0, rect.width, rect.height, &screen, rect.x, rect.y);
+		mem.SelectObject(wxNullBitmap);
+		if (!bmp.ConvertToImage().SaveFile(path, wxBITMAP_TYPE_PNG))
+			throw std::runtime_error("could not write screenshot");
+		return json{ {"saved", ToUtf8(path)}, {"w", rect.width}, {"h", rect.height} };
 	}
 }
 
@@ -204,11 +471,26 @@ void ibTestAgentInstallMessageTap()
 	if (gs_tapInstalled)
 		return;
 	gs_tapInstalled = true;
+
+	// 1) Сообщить / Message (the message pane).
 	ibValueSystemFunction::SetMessageTap([](const wxString& text, ibStatusMessage status) {
-		gs_messages.emplace_back(text, static_cast<int>(status));
-		if (gs_messages.size() > 2000)                 // bound the buffer
-			gs_messages.erase(gs_messages.begin(), gs_messages.begin() + 1000);
+		PushMessage(text, static_cast<int>(status));
 	});
+
+	// 2) Runtime / compile errors ("{Module(line)}: message") — captured as data, before any UI.
+	ibDiagnostics::Subscribe(&gs_diagSink);
+
+	// 3) Modal dialogs (Alert / Question / any backend-routed wxMessageBox): capture the text and
+	// auto-answer so an automated run never blocks. Default answer proceeds (OK, else Yes, else
+	// Cancel), and the enum/return maps accordingly for Question-style calls.
+	ibBackendDocFrame::SetModalInterceptor(
+		[](const wxString& message, const wxString& caption, int style, int& answer) -> bool {
+			PushMessage(caption.IsEmpty() ? message : (caption + wxT(": ") + message), 1 /*warning*/);
+			if      (style & wxOK)  answer = wxOK;
+			else if (style & wxYES) answer = wxYES;
+			else                    answer = wxCANCEL;
+			return true;
+		});
 }
 
 bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& result)
@@ -224,6 +506,16 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "pressCommand")    result = Cmd_PressCommand(args);
 	else if (cmd == "getMessages")     result = Cmd_GetMessages();
 	else if (cmd == "clearMessages")   result = Cmd_ClearMessages();
+	else if (cmd == "getDiagnostics")  result = Cmd_GetDiagnostics();
+	else if (cmd == "clearDiagnostics") result = Cmd_ClearDiagnostics();
+	// real OS input (video-able)
+	else if (cmd == "moveMouse")           result = Cmd_MoveMouse(args);
+	else if (cmd == "clickControl")        result = Cmd_ClickControl(args);
+	else if (cmd == "clickAt")             result = Cmd_ClickAt(args);
+	else if (cmd == "typeText")            result = Cmd_TypeText(args);
+	else if (cmd == "pressKey")            result = Cmd_PressKey(args);
+	else if (cmd == "setControlValueReal") result = Cmd_SetControlValueReal(args);
+	else if (cmd == "screenshot")          result = Cmd_Screenshot(args);
 	else return false;
 	return true;
 }
