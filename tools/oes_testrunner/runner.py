@@ -120,13 +120,18 @@ class Context:
             except Exception:
                 pass
             agent.close()
-        time.sleep(1.0)
+        # Wait for each process to ACTUALLY exit before the next scenario reopens the same base —
+        # a Firebird file base is exclusive, so a lingering process makes the next open race/fail.
         for proc in self.procs.values():
             try:
-                if proc.poll() is None:
-                    proc.terminate()
+                proc.wait(timeout=10)
             except Exception:
-                pass
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=5)
+                except Exception:
+                    pass
+        time.sleep(1.5)   # settle the file-base lock release
         self.agents.clear()
         self.procs.clear()
         self.current = None
@@ -267,6 +272,27 @@ def _press_key(ctx: Context, combo):
 @step(r'^Я делаю скриншот "(.+)"$')
 def _screenshot(ctx: Context, path):
     ctx.current.call("screenshot", path=path)
+
+
+# ---- generic UI (designer): menus / widgets / windows ------------------------------------------
+@step(r'^Я выбираю меню "(.+)"$')
+def _invoke_menu(ctx: Context, path):
+    # "Конфигурация -> Обновите конфигурацию базы данных" or "Конфигурация | ..."
+    parts = [p.strip() for p in re.split(r'->|\||/|→', path)]
+    ctx.current.call("invokeMenu", path=parts)
+
+
+@step(r'^Я кликаю по виджету "(.+)"$')
+def _click_widget(ctx: Context, label):
+    ctx.current.call("clickWidget", by="label", value=label)
+
+
+@step(r'^Я вижу окно "(.+)"$')
+def _assert_window(ctx: Context, title):
+    wins = ctx.current.call("listWindows").get("windows", [])
+    titles = [w.get("title", "") for w in wins]
+    if not any(title in t for t in titles):
+        raise StepError(f'окно "{title}" не найдено. Открыто: {titles}')
 
 
 @step(r'^Значение поля "(.+)" равно "(.*)"$')
