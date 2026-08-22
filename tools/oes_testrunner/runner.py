@@ -208,6 +208,16 @@ def _clear_msgs(ctx: Context):
     ctx.current.call("clearMessages")
 
 
+@step(r'^Я жду (\d+(?:[.,]\d+)?) секунд[ы]?$')
+def _wait(ctx: Context, secs):
+    time.sleep(float(secs.replace(",", ".")))
+
+
+@step(r'^Я очищаю сообщения$')
+def _clear_messages(ctx: Context):
+    ctx.current.call("clearMessages")
+
+
 @step(r'^Я вижу сообщение "(.+)"$')
 @step(r'^Сообщение "(.+)" присутствует$')
 def _assert_message(ctx: Context, fragment):
