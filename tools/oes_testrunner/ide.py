@@ -24,6 +24,7 @@ from tkinter import ttk, filedialog, messagebox, font as tkfont
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from steps_catalog import STEP_CATALOG  # noqa: E402
+from agent_client import TestAgentClient  # noqa: E402
 
 DEFAULT_FEATURES = os.path.join(HERE, "features")
 DEFAULT_BIN = r"E:\Projects\OES\build\windows-x64-release\bin\Release"
@@ -114,13 +115,21 @@ class TestIDE(tk.Tk):
         center.add(out_frame, weight=2)
         main.add(center, weight=5)
 
-        # right: step palette
-        right = ttk.Frame(main)
-        ttk.Label(right, text="Палитра шагов (двойной клик — вставить)").pack(anchor=tk.W)
-        self.palette = ttk.Treeview(right, show="tree", height=30)
+        # right: notebook with step palette + live inspector
+        right = ttk.Notebook(main)
+
+        pal_tab = ttk.Frame(right)
+        ttk.Label(pal_tab, text="Двойной клик — вставить шаг").pack(anchor=tk.W)
+        self.palette = ttk.Treeview(pal_tab, show="tree", height=30)
         self.palette.pack(fill=tk.BOTH, expand=True)
         self.palette.bind("<Double-1>", self._insert_step)
         self._fill_palette()
+        right.add(pal_tab, text="Шаги")
+
+        insp_tab = ttk.Frame(right)
+        self._build_inspector(insp_tab)
+        right.add(insp_tab, text="Инспектор")
+
         main.add(right, weight=2)
 
         self.status = tk.StringVar(value="Готово")
@@ -135,6 +144,75 @@ class TestIDE(tk.Tk):
             self.palette.item(node, tags=("step",))
             self._step_by_node = getattr(self, "_step_by_node", {})
             self._step_by_node[node] = (template, desc)
+
+    # -- live inspector --------------------------------------------------------------------------
+    def _build_inspector(self, parent):
+        bar = ttk.Frame(parent)
+        bar.pack(fill=tk.X, pady=2)
+        ttk.Label(bar, text="порт:").pack(side=tk.LEFT)
+        self.insp_port = tk.StringVar(value="1651")
+        ttk.Entry(bar, textvariable=self.insp_port, width=6).pack(side=tk.LEFT, padx=2)
+        ttk.Button(bar, text="Обновить", command=self._inspect_refresh).pack(side=tk.LEFT, padx=2)
+        ttk.Label(parent, text="Двойной клик — вставить шаг по элементу").pack(anchor=tk.W)
+        self.inspector = ttk.Treeview(parent, show="tree", height=28)
+        self.inspector.pack(fill=tk.BOTH, expand=True)
+        self.inspector.bind("<Double-1>", self._insert_from_inspector)
+        self._insp_meta: dict[str, tuple[str, str]] = {}   # node -> (kind, payload)
+
+    def _inspect_refresh(self):
+        port = int(self.insp_port.get() or "1651")
+        for n in self.inspector.get_children(""):
+            self.inspector.delete(n)
+        self._insp_meta.clear()
+        try:
+            c = TestAgentClient(port=port, timeout=8).connect(retries=1)
+        except Exception as exc:
+            self.status.set(f"Инспектор: нет подключения к :{port} ({exc})")
+            return
+        try:
+            info = c.app_info()
+            self.status.set(f"Инспектор: {info.get('app','?')} :{port}")
+
+            wins = self.inspector.insert("", tk.END, text="Окна", open=True)
+            for w in c.call("listWindows").get("windows", []):
+                node = self.inspector.insert(wins, tk.END, text=w.get("title") or w.get("class"))
+                self._insp_meta[node] = ("window", w.get("title", ""))
+
+            menus = self.inspector.insert("", tk.END, text="Меню", open=False)
+            for m in c.call("listMenus").get("menus", []):
+                mnode = self.inspector.insert(menus, tk.END, text=m.get("menu", ""), open=False)
+                for item in m.get("items", []):
+                    inode = self.inspector.insert(mnode, tk.END, text=item)
+                    self._insp_meta[inode] = ("menu", f"{m.get('menu','')} -> {item}")
+
+            ctrls = self.inspector.insert("", tk.END, text="Контролы активной формы", open=True)
+            try:
+                for ctl in c.call("listControls").get("controls", []):
+                    label = f"{ctl.get('name','')}  ({ctl.get('class','')})"
+                    node = self.inspector.insert(ctrls, tk.END, text=label)
+                    self._insp_meta[node] = ("control", ctl.get("name", ""))
+            except Exception:
+                self.inspector.insert(ctrls, tk.END, text="(нет активной формы)")
+        finally:
+            c.close()
+
+    def _insert_from_inspector(self, _evt):
+        node = self.inspector.focus()
+        meta = self._insp_meta.get(node)
+        if not meta:
+            return
+        kind, payload = meta
+        if kind == "window":
+            line = f'Тогда Я вижу окно "{payload}"'
+        elif kind == "menu":
+            line = f'Когда Я выбираю меню "{payload}"'
+        elif kind == "control":
+            line = f'Когда Я устанавливаю значение поля "{payload}" равным ""'
+        else:
+            return
+        self.editor.insert(tk.INSERT, "\n    " + line)
+        self._highlight()
+        self.editor.focus_set()
 
     # -- feature files ---------------------------------------------------------------------------
     def _refresh_feature_list(self):
