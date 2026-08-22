@@ -47,6 +47,10 @@ class ibAppDesigner : public ibWxApp {
 	bool     m_batchCheckConfig = false;   // /CheckConfig     — compile-check the whole configuration
 	bool     m_batchCheckModules = false;  // /CheckModules    — compile-check all modules
 
+	// OES-TEST: --testagent[=port] starts the embedded test-automation agent (docs/test-automation.md).
+	// -1 = off. A bare --testagent uses ibTestAgent::kDefaultTestAgentPort.
+	int      m_testAgentPort = -1;
+
 public:
 
 	// ibWxApp pre-wires Install / WrapStartup / 3 exception overrides.

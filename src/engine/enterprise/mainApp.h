@@ -27,6 +27,9 @@ class ibAppEnterprise : public ibWxApp {
 	wxString m_strIBUser;
 	wxString m_strIBPassword;
 
+	// OES-TEST: --testagent[=port] starts the embedded test-automation agent (-1 = off).
+	int m_testAgentPort = -1;
+
 #ifdef DEBUG
 	//LOCALE
 	wxString m_strLocale = wxT("en");

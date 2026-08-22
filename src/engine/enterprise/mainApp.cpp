@@ -9,6 +9,7 @@
 #include "backend/backend_mainFrame.h"
 #include "frontend/session/guiSession.h"   // transitively pulls backend/session/session.h
 #include "backend/session/sessionRegistry.h"
+#include "frontend/testAgent/testAgent.h"  // OES-TEST: embedded test-automation agent (--testagent)
 
 #include <wx/clipbrd.h>
 #include <wx/fs_arc.h>
@@ -59,6 +60,9 @@ void ibAppEnterprise::OnInitCmdLine(wxCmdLineParser& parser)
 	parser.AddOption(wxT("lc"),     wxT("locale"),   "UI locale",               wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
 	parser.AddSwitch(wxT("debug"),  wxT("debug"),    "Enable debug attach.",    wxCMD_LINE_VAL_NONE);
 
+	// OES-TEST: --testagent[=port] — embedded test-automation agent (docs/test-automation.md).
+	parser.AddOption(wxT("testagent"), wxT("testagent"), "Test-automation agent port", wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
+
 	return wxApp::OnInitCmdLine(parser);
 }
 
@@ -81,8 +85,13 @@ bool ibAppEnterprise::OnCmdLineParsed(wxCmdLineParser& parser)
 	// LOCALE
 	parser.Found(wxT("lc"), &m_strLocale);
 
-	// DEBUG 
+	// DEBUG
 	m_debugEnable = parser.FoundSwitch(wxT("debug")) == wxCMD_SWITCH_ON;
+
+	// OES-TEST: --testagent[=port]
+	wxString taPort;
+	if (parser.Found(wxT("testagent"), &taPort))
+		m_testAgentPort = taPort.IsEmpty() ? ibTestAgent::kDefaultTestAgentPort : wxAtoi(taPort);
 
 	return wxApp::OnCmdLineParsed(parser);
 }
@@ -308,6 +317,12 @@ int ibAppEnterprise::DoOnRun()
 		frame->Destroy();
 		return 1;
 	}
+
+	// OES-TEST: start the test-automation agent after the main frame exists. Off unless
+	// --testagent[=port] was passed. See docs/test-automation.md.
+	if (m_testAgentPort >= 0)
+		ibTestAgent::Get().Start(m_testAgentPort);
+
 	return wxApp::OnRun();
 }
 
