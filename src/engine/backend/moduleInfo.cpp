@@ -7,8 +7,43 @@
 
 #include "appData.h"                 // DesignerMode() guard in Compile()
 #include "backend/compiler/cache/byteCodeCache.h"              // AOT cache Load / Save
+#include "backend/compiler/procUnit.h"                // OES-RU: ibProcUnit::FindProcedure (event-alias resolve)
 #include "backend/metaCollection/metaModuleObject.h"  // ibValueMetaObjectModuleBase full type for GetGuid/GetClassType
 #include "backend/metaData.h"                         // ibMetaData::GetConfigMD5 — the cache key's second half
+
+// OES-RU: Russian aliases for predefined object-module event handlers. English event name (the one
+// the platform invokes) -> Russian synonym a 1C-style module would use. UTF-8 byte escapes (the
+// build has no /utf-8). See docs/ru-language.md.
+wxString ibRuEventAlias(const wxString& englishEvent)
+{
+	struct Pair { const char* en; const char* ru; };
+	static const Pair k[] = {
+		{ "BeforeWrite",  "\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xB4\xD0\x97\xD0\xB0\xD0\xBF\xD0\xB8\xD1\x81\xD1\x8C\xD1\x8E" },                     // ПередЗаписью
+		{ "OnWrite",      "\xD0\x9F\xD1\x80\xD0\xB8\xD0\x97\xD0\xB0\xD0\xBF\xD0\xB8\xD1\x81\xD0\xB8" },                                             // ПриЗаписи
+		{ "BeforeDelete", "\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xB4\xD0\xA3\xD0\xB4\xD0\xB0\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\xBC" },     // ПередУдалением
+		{ "OnDelete",     "\xD0\x9F\xD1\x80\xD0\xB8\xD0\xA3\xD0\xB4\xD0\xB0\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB8" },                             // ПриУдалении
+		{ "Filling",      "\xD0\x9E\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD0\xBA\xD0\xB0\xD0\x97\xD0\xB0\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F" }, // ОбработкаЗаполнения
+		{ "OnCopy",       "\xD0\x9F\xD1\x80\xD0\xB8\xD0\x9A\xD0\xBE\xD0\xBF\xD0\xB8\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB8" },       // ПриКопировании
+	};
+	for (const Pair& p : k)
+		if (englishEvent == wxString::FromAscii(p.en))
+			return wxString::FromUTF8(p.ru);
+	return wxEmptyString;
+}
+
+// Return the handler name actually present in the module: the English event if defined, else its
+// Russian synonym if defined, else the English name unchanged (CallAsProc then no-ops as before).
+wxString ibResolveEventName(ibProcUnit* pu, const wxString& englishEvent)
+{
+	if (pu == nullptr)
+		return englishEvent;
+	if (pu->FindProcedure(englishEvent) != wxNOT_FOUND)
+		return englishEvent;
+	const wxString ru = ibRuEventAlias(englishEvent);
+	if (!ru.IsEmpty() && pu->FindProcedure(ru) != wxNOT_FOUND)
+		return ru;
+	return englishEvent;
+}
 
 // The single ctor is inline in moduleInfo.h (it must reference ExportThunk +
 // BindTail). Only the dtor lives out-of-line.
