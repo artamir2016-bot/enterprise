@@ -18,6 +18,14 @@
 
 #include "systemManagerEnum.h"
 
+// OES-TEST: message-tap storage — a registered sink captures user messages (Сообщить/Message) for
+// test assertions. Declared here (before Message() below) so the tap is visible at the call site.
+static ibValueSystemFunction::ibMessageTap gs_messageTap;
+void ibValueSystemFunction::SetMessageTap(ibValueSystemFunction::ibMessageTap tap)
+{
+	gs_messageTap = std::move(tap);
+}
+
 //--- Basic:
 bool ibValueSystemFunction::Boolean(const ibValue& cValue)
 {
@@ -490,6 +498,10 @@ void ibValueSystemFunction::Message(const wxString& strMessage, ibStatusMessage 
 	// per-session worker thread on web.
 	if (auto* frame = ibSession::CurrentFrame())
 		frame->Message(strMessage, status);
+
+	// OES-TEST: also feed the message to the capture sink (test agent), if registered.
+	if (gs_messageTap)
+		gs_messageTap(strMessage, status);
 }
 
 void ibValueSystemFunction::Alert(const wxString& strMessage) //Alert

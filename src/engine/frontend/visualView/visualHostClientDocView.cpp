@@ -34,6 +34,18 @@ ibValueForm* ibFormVisualDocument::GetValueForm() const
 	return m_valueForm;
 }
 
+// OES-TEST: enumerate every open runtime form for the test-automation agent.
+std::vector<ibValueForm*> ibFormVisualDocument::GetOpenForms()
+{
+	std::vector<ibValueForm*> forms;
+	forms.reserve(s_createdDocFormArray.size());
+	for (ibFormVisualDocument* doc : s_createdDocFormArray) {
+		if (doc != nullptr && doc->GetValueForm() != nullptr)
+			forms.push_back(doc->GetValueForm());
+	}
+	return forms;
+}
+
 bool ibFormVisualDocument::OnCreate(const wxString& path, long flags)
 {
 	const ibSourceDataObject* sourceObject = m_valueForm->GetSourceObject();

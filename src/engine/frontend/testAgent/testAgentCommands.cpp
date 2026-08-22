@@ -5,6 +5,7 @@
 // enterprise runtime-form commands) without touching the socket/framing code.
 
 #include "testAgent.h"
+#include "testAgentInternal.h"   // ibTestAgentDispatchForm — enterprise runtime-form commands
 
 #include "../../../3rdparty/nlohmann/json.hpp"
 
@@ -69,7 +70,8 @@ std::string ibTestAgent::HandleRequest(const std::string& request)
 		if      (cmd == "ping")    result = Cmd_Ping(args);
 		else if (cmd == "appInfo") result = Cmd_AppInfo(args);
 		else if (cmd == "quit")    result = Cmd_Quit(args);
-		else throw std::runtime_error("unknown command: " + cmd);
+		else if (!ibTestAgentDispatchForm(cmd, args, result))   // enterprise runtime-form commands
+			throw std::runtime_error("unknown command: " + cmd);
 
 		response = json{ {"id", id}, {"ok", true}, {"result", result} };
 	}

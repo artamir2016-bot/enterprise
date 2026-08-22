@@ -6,6 +6,9 @@
 #include <wx/app.h>
 #include <wx/log.h>
 
+// OES-TEST: installs the user-message capture tap (defined in testAgentForms.cpp).
+void ibTestAgentInstallMessageTap();
+
 namespace {
 	// Distinct wxSocket event ids so the server socket and the client socket route to different
 	// handlers on this same wxEvtHandler.
@@ -57,6 +60,7 @@ bool ibTestAgent::Start(int port)
 	Bind(wxEVT_SOCKET, &ibTestAgent::OnClientEvent, this, kIdClient);
 
 	m_server = server;
+	ibTestAgentInstallMessageTap();   // start capturing user messages for assertions
 	wxLogMessage(wxT("OES test agent listening on 127.0.0.1:%d"), port);
 	return true;
 }
