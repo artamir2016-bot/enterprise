@@ -668,6 +668,106 @@ namespace {
 		return json{ {"widgets", arr}, {"window", root != nullptr ? ToUtf8(root->GetLabel()) : std::string()} };
 	}
 
+	// The window a tree command targets: args["window"] by title, else the focused window's top level.
+	wxWindow* ResolveWindow(const json& args)
+	{
+		if (args.contains("window") && args["window"].is_string()) {
+			const wxString want = FromUtf8(args["window"]);
+			for (wxWindowList::iterator it = wxTopLevelWindows.begin(); it != wxTopLevelWindows.end(); ++it) {
+				wxWindow* w = *it;
+				if (w != nullptr && (w->GetLabel() == want || w->GetLabel().Contains(want)))
+					return w;
+			}
+			throw std::runtime_error("window not found: " + ToUtf8(want));
+		}
+		wxWindow* f = wxWindow::FindFocus();
+		wxWindow* root = f != nullptr ? wxGetTopLevelParent(f) : nullptr;
+		if (root == nullptr)
+			root = wxTheApp != nullptr ? wxTheApp->GetTopWindow() : nullptr;
+		return root;
+	}
+
+	wxTreeCtrl* FindTreeCtrl(wxWindow* root)
+	{
+		if (root == nullptr)
+			return nullptr;
+		if (wxTreeCtrl* t = wxDynamicCast(root, wxTreeCtrl))
+			return t;
+		for (wxWindowList::compatibility_iterator n = root->GetChildren().GetFirst();
+			 n != nullptr; n = n->GetNext())
+			if (wxTreeCtrl* t = FindTreeCtrl(n->GetData()))
+				return t;
+		return nullptr;
+	}
+
+	// Find an item by text, expanding lazily-loaded branches along the way so deep items are reachable.
+	wxTreeItemId FindTreeItem(wxTreeCtrl* tree, const wxTreeItemId& parent, const wxString& text)
+	{
+		if (tree == nullptr || !parent.IsOk())
+			return wxTreeItemId();
+		wxTreeItemIdValue cookie;
+		for (wxTreeItemId ch = tree->GetFirstChild(parent, cookie); ch.IsOk();
+			 ch = tree->GetNextChild(parent, cookie)) {
+			const wxString label = tree->GetItemText(ch);
+			if (label == text || label.Contains(text))
+				return ch;
+			if (tree->ItemHasChildren(ch)) {
+				tree->Expand(ch);   // trigger lazy population before recursing
+				if (wxTreeItemId sub = FindTreeItem(tree, ch, text); sub.IsOk())
+					return sub;
+			}
+		}
+		return wxTreeItemId();
+	}
+
+	json Cmd_ExpandTreeItem(const json& args)
+	{
+		wxTreeCtrl* tree = FindTreeCtrl(ResolveWindow(args));
+		if (tree == nullptr)
+			throw std::runtime_error("no tree control in window");
+		const wxString text = FromUtf8(args.at("text"));
+		wxTreeItemId item = FindTreeItem(tree, tree->GetRootItem(), text);
+		if (!item.IsOk())
+			throw std::runtime_error("tree item not found: " + ToUtf8(text));
+		tree->Expand(item);
+		tree->EnsureVisible(item);
+		return json{ {"expanded", true} };
+	}
+
+	json Cmd_ClickTreeItem(const json& args)
+	{
+		wxTreeCtrl* tree = FindTreeCtrl(ResolveWindow(args));
+		if (tree == nullptr)
+			throw std::runtime_error("no tree control in window");
+		const wxString text = FromUtf8(args.at("text"));
+		wxTreeItemId item = FindTreeItem(tree, tree->GetRootItem(), text);
+		if (!item.IsOk())
+			throw std::runtime_error("tree item not found: " + ToUtf8(text));
+
+		tree->EnsureVisible(item);
+		tree->SelectItem(item);
+		wxRect rc;
+		if (!tree->GetBoundingRect(item, rc, true))
+			throw std::runtime_error("tree item has no on-screen rect (not visible)");
+		const wxPoint pt = tree->ClientToScreen(wxPoint(rc.x + rc.width / 2, rc.y + rc.height / 2));
+
+		RaiseToForeground(tree);
+		const int steps = args.value("steps", 20);
+		const int delayMs = args.value("delayMs", 8);
+		const bool dbl = args.value("double", false);
+		// Deferred: a double-click may open a form / run handlers — keep it off the socket callback.
+		if (wxTheApp != nullptr) {
+			wxTheApp->CallAfter([pt, steps, delayMs, dbl]() {
+				wxUIActionSimulator sim;
+				SmoothMoveTo(sim, pt, steps, delayMs);
+				wxMilliSleep(40);
+				if (dbl) sim.MouseDblClick();
+				else     sim.MouseClick();
+			});
+		}
+		return json{ {"clicked", true}, {"double", dbl}, {"deferred", true} };
+	}
+
 	json Cmd_ListMenus()
 	{
 		wxFrame* fr = MainFrame();
@@ -929,6 +1029,8 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	// generic wx-UI driving (designer: menus / dialogs / widgets)
 	else if (cmd == "listWindows")         result = Cmd_ListWindows();
 	else if (cmd == "listWidgets")         result = Cmd_ListWidgets(args);
+	else if (cmd == "expandTreeItem")      result = Cmd_ExpandTreeItem(args);
+	else if (cmd == "clickTreeItem")       result = Cmd_ClickTreeItem(args);
 	else if (cmd == "listMenus")           result = Cmd_ListMenus();
 	else if (cmd == "openMenu")            result = Cmd_OpenMenu(args);
 	else if (cmd == "invokeMenu")          result = Cmd_InvokeMenu(args);

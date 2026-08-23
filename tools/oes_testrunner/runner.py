@@ -320,6 +320,21 @@ def _click_widget(ctx: Context, label):
     ctx.current.call("clickWidget", by="label", value=label)
 
 
+@step(r'^Я разворачиваю узел дерева "(.+)"$')
+def _expand_tree(ctx: Context, text):
+    ctx.current.call("expandTreeItem", text=text)
+
+
+@step(r'^Я кликаю по элементу дерева "(.+)"$')
+def _click_tree(ctx: Context, text):
+    ctx.current.call("clickTreeItem", text=text)
+
+
+@step(r'^Я дважды кликаю по элементу дерева "(.+)"$')
+def _dclick_tree(ctx: Context, text):
+    ctx.current.call("clickTreeItem", text=text, double=True)
+
+
 @step(r'^Я вижу окно "(.+)"$')
 def _assert_window(ctx: Context, title):
     wins = ctx.current.call("listWindows").get("windows", [])
