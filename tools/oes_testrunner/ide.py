@@ -248,6 +248,7 @@ class TestIDE(tk.Tk):
         ttk.Label(parent, text="Двойной клик — вставить шаг по элементу").pack(anchor=tk.W)
         self.inspector = ttk.Treeview(parent, show="tree", height=28)
         self.inspector.pack(fill=tk.BOTH, expand=True)
+        self.inspector.tag_configure("active", background="#ffe9a8")   # focused control highlight
         self.inspector.bind("<Double-1>", self._insert_from_inspector)
         self._insp_meta: dict[str, tuple[str, str]] = {}   # node -> (kind, payload)
 
@@ -338,10 +339,26 @@ class TestIDE(tk.Tk):
             try:
                 controls = c.call("listControls").get("controls", [])
                 if controls:
+                    node_by_name: dict[str, str] = {}
                     for ctl in controls:
-                        label = f"{ctl.get('name','')}  ({ctl.get('class','')})"
+                        cname = ctl.get("name", "")
+                        label = f"{cname}  ({ctl.get('class','')})"
                         node = self.inspector.insert(ctrls, tk.END, text=label)
-                        self._insp_meta[node] = ("control", ctl.get("name", ""))
+                        self._insp_meta[node] = ("control", cname)
+                        if cname:
+                            node_by_name[cname] = node
+                    # position on the currently focused control of the active form
+                    try:
+                        active = c.call("activeControl").get("name")
+                    except Exception:
+                        active = None
+                    if active and active in node_by_name:
+                        anode = node_by_name[active]
+                        self.inspector.item(anode, tags=("active",))
+                        self.inspector.selection_set(anode)
+                        self.inspector.focus(anode)
+                        self.inspector.see(anode)
+                        self.status.set(f"Инспектор: активный элемент — {active}")
                 else:
                     self.inspector.insert(ctrls, tk.END, text="(нет активной формы)")
             except Exception:
