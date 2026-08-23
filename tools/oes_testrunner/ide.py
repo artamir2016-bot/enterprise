@@ -362,7 +362,8 @@ class TestIDE(tk.Tk):
                     node = self.inspector.insert(wnode, tk.END, text=text)
                     payload = w.get("label") or w.get("name") or ""
                     if payload:
-                        self._insp_meta[node] = ("widget", payload)
+                        kind = "treeitem" if w.get("class") == "wxTreeItem" else "widget"
+                        self._insp_meta[node] = (kind, payload)
             except Exception as exc:
                 self.inspector.insert(wnode, tk.END, text=f"(нет: {exc})")
         finally:
@@ -387,6 +388,8 @@ class TestIDE(tk.Tk):
             line = f'Когда Я устанавливаю значение поля "{payload}" равным ""'
         elif kind == "widget":
             line = f'Когда Я кликаю по виджету "{payload}"'
+        elif kind == "treeitem":
+            line = f'Когда Я дважды кликаю по элементу дерева "{payload}"'
         else:
             return
         self._insert_at_cursor(line)
