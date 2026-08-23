@@ -56,9 +56,11 @@ Command set (JSON over the framed channel):
   dialogs, designer panels) show their real contents; `listControls` only sees `ibValueForm` runtime
   forms. The inspector shows this as «Виджеты активного окна».
 - **Tree navigation**: `expandTreeItem {text, window?}` expands a tree node by text (loading lazy
-  branches); `clickTreeItem {text, window?, double?}` real-clicks an item by text (finds it, auto-
-  expanding ancestors, then a deferred mouse click) — e.g. double-click «Товары» in «Все функции» to
-  open its list. Steps: «Я разворачиваю узел дерева "…"», «Я (дважды) кликаю по элементу дерева "…"».
+  branches); `collapseTreeItem {text, window?}` collapses it; `treeItemState {text, window?}` reports
+  `{found, hasChildren, expanded}` **without** altering the tree; `clickTreeItem {text, window?, double?}`
+  real-clicks an item by text (finds it, auto-expanding ancestors, then a deferred mouse click) — e.g.
+  double-click «Товары» in «Все функции» to open its list. Steps: «Я разворачиваю/сворачиваю узел
+  дерева "…"», «Узел дерева "…" развёрнут/свёрнут», «Я (дважды) кликаю по элементу дерева "…"».
 - **Lifecycle / workspace**: `closeAllWindows` — close every open form and secondary window (e.g.
   «Все функции»), leaving the app running; a "reset the workspace" step for a feature's context.
   The runner **never auto-closes** the app: the test client is closed only by an explicit

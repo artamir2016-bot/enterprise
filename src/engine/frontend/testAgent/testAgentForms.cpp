@@ -746,6 +746,40 @@ namespace {
 		return wxTreeItemId();
 	}
 
+	// Find an item by text WITHOUT expanding anything (so a state query doesn't change the state);
+	// only already-loaded children are traversed.
+	wxTreeItemId FindTreeItemNoExpand(wxTreeCtrl* tree, const wxTreeItemId& parent, const wxString& text)
+	{
+		if (tree == nullptr || !parent.IsOk())
+			return wxTreeItemId();
+		wxTreeItemIdValue cookie;
+		for (wxTreeItemId ch = tree->GetFirstChild(parent, cookie); ch.IsOk();
+			 ch = tree->GetNextChild(parent, cookie)) {
+			const wxString label = tree->GetItemText(ch);
+			if (label == text || label.Contains(text))
+				return ch;
+			if (wxTreeItemId sub = FindTreeItemNoExpand(tree, ch, text); sub.IsOk())
+				return sub;
+		}
+		return wxTreeItemId();
+	}
+
+	// OES-TEST: is a tree node open (expanded) or closed? Does not alter the tree.
+	json Cmd_TreeItemState(const json& args)
+	{
+		wxTreeCtrl* tree = FindTreeCtrl(ResolveWindow(args));
+		if (tree == nullptr)
+			throw std::runtime_error("no tree control in window");
+		const wxString text = FromUtf8(args.at("text"));
+		wxTreeItemId item = FindTreeItemNoExpand(tree, tree->GetRootItem(), text);
+		if (!item.IsOk())
+			return json{ {"found", false} };
+		const bool hasChildren = tree->ItemHasChildren(item);
+		return json{ {"found", true},
+			{"hasChildren", hasChildren},
+			{"expanded", hasChildren && tree->IsExpanded(item)} };
+	}
+
 	json Cmd_ExpandTreeItem(const json& args)
 	{
 		wxTreeCtrl* tree = FindTreeCtrl(ResolveWindow(args));
@@ -758,6 +792,19 @@ namespace {
 		tree->Expand(item);
 		tree->EnsureVisible(item);
 		return json{ {"expanded", true} };
+	}
+
+	json Cmd_CollapseTreeItem(const json& args)
+	{
+		wxTreeCtrl* tree = FindTreeCtrl(ResolveWindow(args));
+		if (tree == nullptr)
+			throw std::runtime_error("no tree control in window");
+		const wxString text = FromUtf8(args.at("text"));
+		wxTreeItemId item = FindTreeItemNoExpand(tree, tree->GetRootItem(), text);
+		if (!item.IsOk())
+			throw std::runtime_error("tree item not found: " + ToUtf8(text));
+		tree->Collapse(item);
+		return json{ {"collapsed", true} };
 	}
 
 	json Cmd_ClickTreeItem(const json& args)
@@ -1056,7 +1103,9 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "listWindows")         result = Cmd_ListWindows();
 	else if (cmd == "activeControl")       result = Cmd_ActiveControl(args);
 	else if (cmd == "listWidgets")         result = Cmd_ListWidgets(args);
+	else if (cmd == "treeItemState")       result = Cmd_TreeItemState(args);
 	else if (cmd == "expandTreeItem")      result = Cmd_ExpandTreeItem(args);
+	else if (cmd == "collapseTreeItem")    result = Cmd_CollapseTreeItem(args);
 	else if (cmd == "clickTreeItem")       result = Cmd_ClickTreeItem(args);
 	else if (cmd == "listMenus")           result = Cmd_ListMenus();
 	else if (cmd == "openMenu")            result = Cmd_OpenMenu(args);
