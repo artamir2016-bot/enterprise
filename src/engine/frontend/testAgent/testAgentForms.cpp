@@ -38,6 +38,7 @@
 #include <wx/frame.h>      // wxFrame / GetMenuBar (generic UI driving)
 #include <wx/menu.h>       // wxMenuBar / wxMenu / wxMenuItem
 #include <wx/settings.h>   // wxSystemSettings (menu-bar font for hit-testing top menus)
+#include <wx/treectrl.h>   // wxTreeCtrl item enumeration (Все функции, designer navigator)
 
 #ifdef __WXMSW__
 #include <windows.h>       // OES-TEST: force the target window to the foreground for real input
@@ -603,6 +604,70 @@ namespace {
 		return json{ {"windows", arr} };
 	}
 
+	// OES-TEST: walk the raw wxWindow tree of a window — works for ANY window (dialogs, «Все функции»,
+	// designer panels), not just ibValueForm runtime forms that Cmd_ListControls handles.
+	// Enumerate ALREADY-LOADED items of a wxTreeCtrl (e.g. «Все функции»); collapsed/lazy branches
+	// that haven't populated their children yet are simply not listed.
+	void CollectTreeItems(wxTreeCtrl* tree, const wxTreeItemId& parent, json& arr, int depth)
+	{
+		if (tree == nullptr || !parent.IsOk())
+			return;
+		wxTreeItemIdValue cookie;
+		for (wxTreeItemId ch = tree->GetFirstChild(parent, cookie); ch.IsOk();
+			 ch = tree->GetNextChild(parent, cookie)) {
+			arr.push_back({ {"name", std::string()}, {"label", ToUtf8(tree->GetItemText(ch))},
+				{"class", std::string("wxTreeItem")}, {"depth", depth}, {"shown", true} });
+			CollectTreeItems(tree, ch, arr, depth + 1);
+		}
+	}
+
+	void CollectWidgets(wxWindow* node, json& arr, int depth)
+	{
+		if (node == nullptr)
+			return;
+		for (wxWindowList::compatibility_iterator n = node->GetChildren().GetFirst();
+			 n != nullptr; n = n->GetNext()) {
+			wxWindow* c = n->GetData();
+			if (c == nullptr)
+				continue;
+			const wxString cls = wxString(c->GetClassInfo()->GetClassName());
+			if (!cls.Contains(wxT("Sizer"))) {   // skip layout wrappers
+				const wxRect r = c->GetScreenRect();
+				arr.push_back({ {"name", ToUtf8(c->GetName())}, {"label", ToUtf8(c->GetLabel())},
+					{"class", ToUtf8(cls)}, {"depth", depth}, {"shown", c->IsShown()},
+					{"x", r.x}, {"y", r.y}, {"w", r.width}, {"h", r.height} });
+			}
+			if (wxTreeCtrl* tree = wxDynamicCast(c, wxTreeCtrl))
+				CollectTreeItems(tree, tree->GetRootItem(), arr, depth + 1);
+			CollectWidgets(c, arr, depth + 1);
+		}
+	}
+
+	json Cmd_ListWidgets(const json& args)
+	{
+		wxWindow* root = nullptr;
+		if (args.contains("window") && args["window"].is_string()) {
+			const wxString want = FromUtf8(args["window"]);
+			for (wxWindowList::iterator it = wxTopLevelWindows.begin(); it != wxTopLevelWindows.end(); ++it) {
+				wxWindow* w = *it;
+				if (w != nullptr && (w->GetLabel() == want || w->GetLabel().Contains(want))) {
+					root = w; break;
+				}
+			}
+			if (root == nullptr)
+				throw std::runtime_error("window not found: " + ToUtf8(want));
+		} else {
+			// the focused window's top-level parent — i.e. the window the user is actually looking at
+			wxWindow* f = wxWindow::FindFocus();
+			root = f != nullptr ? wxGetTopLevelParent(f) : nullptr;
+			if (root == nullptr)
+				root = wxTheApp != nullptr ? wxTheApp->GetTopWindow() : nullptr;
+		}
+		json arr = json::array();
+		CollectWidgets(root, arr, 0);
+		return json{ {"widgets", arr}, {"window", root != nullptr ? ToUtf8(root->GetLabel()) : std::string()} };
+	}
+
 	json Cmd_ListMenus()
 	{
 		wxFrame* fr = MainFrame();
@@ -863,6 +928,7 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "screenshot")          result = Cmd_Screenshot(args);
 	// generic wx-UI driving (designer: menus / dialogs / widgets)
 	else if (cmd == "listWindows")         result = Cmd_ListWindows();
+	else if (cmd == "listWidgets")         result = Cmd_ListWidgets(args);
 	else if (cmd == "listMenus")           result = Cmd_ListMenus();
 	else if (cmd == "openMenu")            result = Cmd_OpenMenu(args);
 	else if (cmd == "invokeMenu")          result = Cmd_InvokeMenu(args);
