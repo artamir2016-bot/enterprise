@@ -244,6 +244,39 @@ namespace {
 		return json{ {"opened", true} };
 	}
 
+	// OES-TEST: close every open form and every secondary top-level window (e.g. «Все функции»),
+	// leaving only the main application frame — a "reset the workspace" step for a feature's context.
+	// Deferred: closing a dirty form may raise a modal save prompt (auto-answered by the interceptor);
+	// running that inside the socket callback would block the agent.
+	json Cmd_CloseAllWindows()
+	{
+		std::vector<ibValueForm*> forms;
+		for (ibValueForm* f : ibFormVisualDocument::GetOpenForms())
+			if (f != nullptr) forms.push_back(f);
+
+		wxWindow* main = wxTheApp != nullptr ? wxTheApp->GetTopWindow() : nullptr;
+		std::vector<wxWindow*> tops;
+		for (wxWindowList::iterator it = wxTopLevelWindows.begin(); it != wxTopLevelWindows.end(); ++it) {
+			wxWindow* w = *it;
+			if (w != nullptr && w != main && w->IsShown())
+				tops.push_back(w);
+		}
+
+		const int nForms = static_cast<int>(forms.size());
+		const int nTops = static_cast<int>(tops.size());
+		if (wxTheApp != nullptr) {
+			wxTheApp->CallAfter([forms, tops]() {
+				for (ibValueForm* f : forms) {
+					try { if (f != nullptr) f->CloseForm(); } catch (...) {}
+				}
+				for (wxWindow* w : tops) {
+					try { if (w != nullptr) w->Close(true); } catch (...) {}
+				}
+			});
+		}
+		return json{ {"forms", nForms}, {"windows", nTops}, {"deferred", true} };
+	}
+
 	json Cmd_PressCommand(const json& args)
 	{
 		ibValueForm* form = ResolveForm(args);
@@ -805,6 +838,7 @@ void ibTestAgentInstallMessageTap()
 bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& result)
 {
 	if      (cmd == "getForms")        result = Cmd_GetForms();
+	else if (cmd == "closeAllWindows") result = Cmd_CloseAllWindows();
 	else if (cmd == "activeForm")      result = Cmd_ActiveForm();
 	else if (cmd == "findControl")     result = Cmd_FindControl(args);
 	else if (cmd == "listControls")    result = Cmd_ListControls(args);
