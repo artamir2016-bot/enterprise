@@ -56,17 +56,22 @@ class TestIDE(tk.Tk):
         self._build_ui()
         self._refresh_feature_list()
         self.after(80, self._drain_output)
+        self.after(300, self._inspect_refresh)   # show the launch node from the start
+        self.bind_all("<Control-w>", lambda e: (self.close_tab(), "break")[1])
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # -- layout ----------------------------------------------------------------------------------
     def _build_ui(self):
         mono = tkfont.Font(family="Consolas", size=11)
+        self.mono = mono
+        self.tabs: list[dict] = []
 
         toolbar = ttk.Frame(self)
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=6, pady=4)
         ttk.Button(toolbar, text="Новая", command=self.new_feature).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="Открыть…", command=self.open_feature).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="Сохранить", command=self.save_feature).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="Закрыть", command=self.close_tab).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
         self.run_btn = ttk.Button(toolbar, text="▶ Запустить", command=lambda: self.run(video=False))
         self.run_btn.pack(side=tk.LEFT)
@@ -89,18 +94,15 @@ class TestIDE(tk.Tk):
         self.feat_list.bind("<<ListboxSelect>>", self._on_pick_feature)
         main.add(left, weight=1)
 
-        # center: editor + output
+        # center: editor tabs + output
         center = ttk.Panedwindow(main, orient=tk.VERTICAL)
         edit_frame = ttk.Frame(center)
-        self.editor = tk.Text(edit_frame, wrap=tk.NONE, font=mono, undo=True)
-        yscroll = ttk.Scrollbar(edit_frame, command=self.editor.yview)
-        self.editor.configure(yscrollcommand=yscroll.set)
-        yscroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.editor.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.editor.bind("<KeyRelease>", lambda e: self._highlight())
-        self.editor.tag_configure("kw", foreground="#0057b7", font=(mono.actual("family"), 11, "bold"))
-        self.editor.tag_configure("str", foreground="#b76e00")
-        self.editor.tag_configure("comment", foreground="#7a7a7a")
+        self.editors_nb = ttk.Notebook(edit_frame)
+        self.editors_nb.pack(fill=tk.BOTH, expand=True)
+        self.editors_nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self.editors_nb.bind("<Button-2>", self._on_tab_middle_click)  # middle-click closes a tab
+        self.editor: tk.Text | None = None
+        self._new_editor_tab()  # start with one empty tab; sets self.editor
         center.add(edit_frame, weight=3)
 
         out_frame = ttk.Frame(center)
@@ -137,6 +139,73 @@ class TestIDE(tk.Tk):
         self.status = tk.StringVar(value="Готово")
         ttk.Label(self, textvariable=self.status, anchor=tk.W, relief=tk.SUNKEN).pack(side=tk.BOTTOM, fill=tk.X)
 
+    def _enable_clipboard(self, widget: tk.Text):
+        """Layout-independent copy/paste/cut/select-all + right-click menu.
+
+        Tk's default <Control-c>/<Control-v> bindings key off the Latin keysym, so
+        under a Cyrillic layout Ctrl+С/Ctrl+М never fire. We bind on the physical
+        keycode instead (C=67, V=86, X=88, A=65) so it works in any layout.
+        """
+        def do_copy(_e=None):
+            try:
+                widget.event_generate("<<Copy>>")
+            except tk.TclError:
+                pass
+            return "break"
+
+        def do_paste(_e=None):
+            try:
+                if widget.tag_ranges(tk.SEL):
+                    widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+            except tk.TclError:
+                pass
+            widget.event_generate("<<Paste>>")
+            self._highlight()
+            return "break"
+
+        def do_cut(_e=None):
+            widget.event_generate("<<Cut>>")
+            self._highlight()
+            return "break"
+
+        def do_select_all(_e=None):
+            widget.tag_add(tk.SEL, "1.0", tk.END)
+            widget.mark_set(tk.INSERT, "1.0")
+            return "break"
+
+        def on_ctrl_key(e):
+            kc = e.keycode
+            if kc == 67:      # C
+                return do_copy()
+            if kc == 86:      # V
+                return do_paste()
+            if kc == 88:      # X
+                return do_cut()
+            if kc == 65:      # A
+                return do_select_all()
+            return None
+
+        widget.bind("<Control-KeyPress>", on_ctrl_key)
+        # keep the Latin bindings too (harmless, helps on some Tk builds)
+        widget.bind("<Control-c>", do_copy)
+        widget.bind("<Control-v>", do_paste)
+        widget.bind("<Control-x>", do_cut)
+        widget.bind("<Control-a>", do_select_all)
+
+        menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(label="Копировать", command=do_copy)
+        menu.add_command(label="Вставить", command=do_paste)
+        menu.add_command(label="Вырезать", command=do_cut)
+        menu.add_separator()
+        menu.add_command(label="Выделить всё", command=do_select_all)
+
+        def popup(e):
+            try:
+                menu.tk_popup(e.x_root, e.y_root)
+            finally:
+                menu.grab_release()
+        widget.bind("<Button-3>", popup)
+
     def _fill_palette(self):
         cats: dict[str, str] = {}
         for cat, template, desc in STEP_CATALOG:
@@ -158,6 +227,7 @@ class TestIDE(tk.Tk):
         ttk.Button(launch, text="▶ Запустить", command=self._live_launch).pack(side=tk.LEFT, padx=2)
         ttk.Button(launch, text="■ Остановить", command=self._live_stop).pack(side=tk.LEFT)
 
+
         base_bar = ttk.Frame(parent)
         base_bar.pack(fill=tk.X, pady=2)
         ttk.Label(base_bar, text="база:").pack(side=tk.LEFT)
@@ -170,6 +240,10 @@ class TestIDE(tk.Tk):
         self.insp_port = tk.StringVar(value="1651")
         ttk.Entry(bar, textvariable=self.insp_port, width=6).pack(side=tk.LEFT, padx=2)
         ttk.Button(bar, text="Обновить", command=self._inspect_refresh).pack(side=tk.LEFT, padx=2)
+        ttk.Label(bar, text="слово:").pack(side=tk.LEFT, padx=(8, 2))
+        self.launch_kw = tk.StringVar(value="Дано")
+        ttk.Combobox(bar, textvariable=self.launch_kw, width=6, state="readonly",
+                     values=["Дано", "И", "Когда"]).pack(side=tk.LEFT)
         ttk.Label(parent, text="Двойной клик — вставить шаг по элементу").pack(anchor=tk.W)
         self.inspector = ttk.Treeview(parent, show="tree", height=28)
         self.inspector.pack(fill=tk.BOTH, expand=True)
@@ -229,10 +303,18 @@ class TestIDE(tk.Tk):
         for n in self.inspector.get_children(""):
             self.inspector.delete(n)
         self._insp_meta.clear()
+
+        # launch steps live at the top of the tree — always available, even offline
+        launch = self.inspector.insert("", tk.END, text="Запуск приложения", open=True)
+        ent = self.inspector.insert(launch, tk.END, text="Я запускаю предприятие (база из полей выше)")
+        self._insp_meta[ent] = ("launch", "предприятие")
+        des = self.inspector.insert(launch, tk.END, text="Я запускаю дизайнер (база из полей выше)")
+        self._insp_meta[des] = ("launch", "дизайнер")
+
         try:
             c = TestAgentClient(port=port, timeout=8).connect(retries=1)
         except Exception as exc:
-            self.status.set(f"Инспектор: нет подключения к :{port} ({exc})")
+            self.status.set(f"Инспектор: нет подключения к :{port} ({exc}) — шаги запуска доступны")
             return
         try:
             info = c.app_info()
@@ -267,7 +349,10 @@ class TestIDE(tk.Tk):
         if not meta:
             return
         kind, payload = meta
-        if kind == "window":
+        if kind == "launch":
+            kw = self.launch_kw.get() or "Дано"
+            line = f'{kw} Я запускаю {payload} на базе "{self.live_base.get()}"'
+        elif kind == "window":
             line = f'Тогда Я вижу окно "{payload}"'
         elif kind == "menu":
             line = f'Когда Я выбираю меню "{payload}"'
@@ -294,22 +379,112 @@ class TestIDE(tk.Tk):
         path = os.path.join(self.features_dir, self.feat_list.get(sel[0]))
         self._load(path)
 
-    def _load(self, path: str):
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-        self.editor.delete("1.0", tk.END)
-        self.editor.insert("1.0", text)
+    # -- editor tabs -----------------------------------------------------------------------------
+    def _new_editor_tab(self, path: str | None = None, text: str = "") -> dict:
+        frame = ttk.Frame(self.editors_nb)
+        ed = tk.Text(frame, wrap=tk.NONE, font=self.mono, undo=True)
+        ys = ttk.Scrollbar(frame, command=ed.yview)
+        ed.configure(yscrollcommand=ys.set)
+        ys.pack(side=tk.RIGHT, fill=tk.Y)
+        ed.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        ed.tag_configure("kw", foreground="#0057b7", font=(self.mono.actual("family"), 11, "bold"))
+        ed.tag_configure("str", foreground="#b76e00")
+        ed.tag_configure("comment", foreground="#7a7a7a")
+        ed.bind("<KeyRelease>", self._on_edit_key)
+        self._enable_clipboard(ed)
+        if text:
+            ed.insert("1.0", text)
+            ed.edit_reset()   # so the initial fill is not an undo step
+        tab = {"frame": frame, "ed": ed, "path": path, "dirty": False}
+        self.tabs.append(tab)
+        self.editors_nb.add(frame, text=self._tab_label(tab))
+        self.editors_nb.select(frame)
+        self.editor = ed
         self.current_path = path
-        self.title(f"OES — Тестирование — {os.path.basename(path)}")
+        self._highlight()
+        return tab
+
+    def _tab_label(self, tab: dict) -> str:
+        name = os.path.basename(tab["path"]) if tab["path"] else "(без имени)"
+        return ("• " + name) if tab["dirty"] else name
+
+    def _update_tab_label(self, tab: dict):
+        self.editors_nb.tab(tab["frame"], text=self._tab_label(tab))
+
+    def _active_tab(self) -> dict | None:
+        cur = self.editors_nb.select()
+        for t in self.tabs:
+            if str(t["frame"]) == cur:
+                return t
+        return None
+
+    def _on_tab_changed(self, _evt=None):
+        t = self._active_tab()
+        if not t:
+            return
+        self.editor = t["ed"]
+        self.current_path = t["path"]
+        name = os.path.basename(t["path"]) if t["path"] else "(без имени)"
+        self.title(f"OES — Тестирование — {name}")
         self._highlight()
 
-    def new_feature(self):
-        self.editor.delete("1.0", tk.END)
-        self.editor.insert("1.0",
-            "# language: ru\n\nФункционал: Новый функционал\n\n  Сценарий: Новый сценарий\n    Дано \n")
-        self.current_path = None
-        self.title("OES — Тестирование — (без имени)")
+    def _on_edit_key(self, _evt=None):
         self._highlight()
+        t = self._active_tab()
+        if t and not t["dirty"]:
+            t["dirty"] = True
+            self._update_tab_label(t)
+
+    def _on_tab_middle_click(self, evt):
+        try:
+            idx = self.editors_nb.index(f"@{evt.x},{evt.y}")
+        except tk.TclError:
+            return
+        if 0 <= idx < len(self.tabs):
+            self.close_tab(self.tabs[idx])
+
+    def close_tab(self, tab: dict | None = None):
+        tab = tab or self._active_tab()
+        if not tab:
+            return
+        if tab["dirty"]:
+            name = os.path.basename(tab["path"]) if tab["path"] else "(без имени)"
+            ans = messagebox.askyesnocancel("Закрыть вкладку", f"Сохранить изменения в «{name}»?")
+            if ans is None:
+                return
+            if ans:
+                self.editors_nb.select(tab["frame"])
+                if self.save_feature() is None:
+                    return
+        self.editors_nb.forget(tab["frame"])
+        self.tabs.remove(tab)
+        if not self.tabs:
+            self._new_editor_tab()
+
+    def _load(self, path: str):
+        # already open? just switch to it
+        for t in self.tabs:
+            if t["path"] and os.path.normcase(t["path"]) == os.path.normcase(path):
+                self.editors_nb.select(t["frame"])
+                return
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        # reuse a single pristine untitled tab instead of stacking an empty one
+        cur = self._active_tab()
+        if cur and cur["path"] is None and not cur["dirty"] and not cur["ed"].get("1.0", "end-1c").strip():
+            cur["ed"].delete("1.0", tk.END)
+            cur["ed"].insert("1.0", text)
+            cur["ed"].edit_reset()
+            cur["path"] = path
+            self._update_tab_label(cur)
+            self._on_tab_changed()
+        else:
+            self._new_editor_tab(path=path, text=text)
+
+    def new_feature(self):
+        self._new_editor_tab(
+            path=None,
+            text="# language: ru\n\nФункционал: Новый функционал\n\n  Сценарий: Новый сценарий\n    Дано \n")
 
     def open_feature(self):
         path = filedialog.askopenfilename(initialdir=self.features_dir,
@@ -320,19 +495,25 @@ class TestIDE(tk.Tk):
             self._load(path)
 
     def save_feature(self) -> str | None:
-        if self.current_path is None:
+        tab = self._active_tab()
+        path = tab["path"] if tab else self.current_path
+        if path is None:
             path = filedialog.asksaveasfilename(initialdir=self.features_dir, defaultextension=".feature",
                                                 filetypes=[("Feature", "*.feature")])
             if not path:
                 return None
-            self.current_path = path
-        with open(self.current_path, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(self.editor.get("1.0", "end-1c"))
-        self.features_dir = os.path.dirname(self.current_path)
+        if tab:
+            tab["path"] = path
+            tab["dirty"] = False
+            self._update_tab_label(tab)
+        self.current_path = path
+        self.features_dir = os.path.dirname(path)
         self._refresh_feature_list()
-        self.title(f"OES — Тестирование — {os.path.basename(self.current_path)}")
-        self.status.set(f"Сохранено: {self.current_path}")
-        return self.current_path
+        self.title(f"OES — Тестирование — {os.path.basename(path)}")
+        self.status.set(f"Сохранено: {path}")
+        return path
 
     # -- editor helpers --------------------------------------------------------------------------
     def _highlight(self):
