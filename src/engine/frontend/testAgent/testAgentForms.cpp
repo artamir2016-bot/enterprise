@@ -37,6 +37,7 @@
 #include <wx/toplevel.h>   // wxGetTopLevelParent / wxTopLevelWindows
 #include <wx/frame.h>      // wxFrame / GetMenuBar (generic UI driving)
 #include <wx/menu.h>       // wxMenuBar / wxMenu / wxMenuItem
+#include <wx/settings.h>   // wxSystemSettings (menu-bar font for hit-testing top menus)
 
 #ifdef __WXMSW__
 #include <windows.h>       // OES-TEST: force the target window to the foreground for real input
@@ -588,6 +589,81 @@ namespace {
 		return json{ {"menus", arr} };
 	}
 
+	// OES-TEST: click a TOP-LEVEL menu (Файл / Операции / …) so it drops open — a real mouse click
+	// on the menu-bar title when its rect is measurable, else keyboard navigation (Alt → Right → Down).
+	json Cmd_OpenMenu(const json& args)
+	{
+		wxFrame* fr = MainFrame();
+		wxMenuBar* mb = fr != nullptr ? fr->GetMenuBar() : nullptr;
+		if (mb == nullptr)
+			throw std::runtime_error("no menu bar");
+		const wxString top = FromUtf8(args.at("menu"));
+		int index = -1;
+		for (size_t i = 0; i < mb->GetMenuCount(); ++i)
+			if (mb->GetMenuLabelText(i) == top || mb->GetMenuLabelText(i).Contains(top)) {
+				index = static_cast<int>(i); break;
+			}
+		if (index < 0)
+			throw std::runtime_error("top menu not found: " + ToUtf8(top));
+
+		RaiseToForeground(fr);
+		Pump(80);
+
+		// A native top menu enters a MODAL tracking loop the instant it opens, which would block this
+		// socket callback forever. So compute the action here and run the real input DEFERRED on the
+		// event loop — the reply returns at once; the menu drops open just after.
+		const int steps = args.value("steps", 20);
+		const int delayMs = args.value("delayMs", 8);
+		const char* via = "keyboard";
+		wxPoint pt(-1, -1);
+#ifdef __WXMSW__
+		// Exact top-menu title rect from the OS — a wxMenuBar has no usable wx rect on MSW.
+		{
+			HWND hwnd = static_cast<HWND>(fr->GetHandle());
+			HMENU hmenu = hwnd != nullptr ? ::GetMenu(hwnd) : nullptr;
+			RECT rc{};
+			if (hmenu != nullptr && ::GetMenuItemRect(hwnd, hmenu, static_cast<UINT>(index), &rc)) {
+				pt = wxPoint((rc.left + rc.right) / 2, (rc.top + rc.bottom) / 2);  // already screen coords
+				via = "mouse";
+			}
+		}
+#endif
+		const wxRect mbr = mb->GetScreenRect();
+		if (pt.x < 0 && mbr.width > 0 && mbr.height > 0) {
+			// Estimate each title's x by accumulating measured label widths (wxMSW pads ~8px/side).
+			wxScreenDC dc;
+			dc.SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT));
+			const int padSide = 8;
+			int x = mbr.x, hitX = mbr.x, hitW = 0;
+			for (size_t i = 0; i <= static_cast<size_t>(index); ++i) {
+				const wxSize sz = dc.GetTextExtent(mb->GetMenuLabelText(i));
+				const int w = sz.x + padSide * 2;
+				if (static_cast<int>(i) == index) { hitX = x; hitW = w; }
+				x += w;
+			}
+			pt = wxPoint(hitX + hitW / 2, mbr.y + mbr.height / 2);
+			via = "mouse";
+		}
+
+		if (wxTheApp != nullptr) {
+			wxTheApp->CallAfter([pt, index, steps, delayMs]() {
+				wxUIActionSimulator sim;
+				if (pt.x >= 0) {                       // real mouse click on the menu-bar title
+					SmoothMoveTo(sim, pt, steps, delayMs);
+					wxMilliSleep(40);
+					sim.MouseClick();
+				} else {                               // keyboard: Alt → Right×index → Down
+					sim.KeyDown(WXK_ALT);
+					sim.KeyUp(WXK_ALT);
+					wxMilliSleep(120);
+					for (int k = 0; k < index; ++k) { sim.Char(WXK_RIGHT); wxMilliSleep(60); }
+					sim.Char(WXK_DOWN);
+				}
+			});
+		}
+		return json{ {"opened", true}, {"index", index}, {"via", via}, {"deferred", true} };
+	}
+
 	// Recursively find a menu item by displayed label within a wxMenu.
 	wxMenuItem* FindMenuItem(wxMenu* menu, const wxString& label)
 	{
@@ -754,6 +830,7 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	// generic wx-UI driving (designer: menus / dialogs / widgets)
 	else if (cmd == "listWindows")         result = Cmd_ListWindows();
 	else if (cmd == "listMenus")           result = Cmd_ListMenus();
+	else if (cmd == "openMenu")            result = Cmd_OpenMenu(args);
 	else if (cmd == "invokeMenu")          result = Cmd_InvokeMenu(args);
 	else if (cmd == "findWidget")          result = Cmd_FindWidget(args);
 	else if (cmd == "clickWidget")         result = Cmd_ClickWidget(args);

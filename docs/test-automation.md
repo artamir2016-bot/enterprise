@@ -46,6 +46,8 @@ A control server started when an app runs with `--testagent[=port]` (mirrors the
 Command set (JSON over the framed channel):
 - **Generic wx UI** (works in any OES app): `listWindows`, `findControl {by:name|label|type|id}`,
   `click`, `type`, `setValue`, `getValue`, `getState {enabled,visible,text,checked}`,
+  `openMenu {menu}` (real mouse click on a TOP-LEVEL menu title so it drops open — Файл / Операции;
+  falls back to Alt→Right→Down keyboard nav if the bar rect isn't measurable),
   `invokeMenu {path}`, `selectTreeItem {path}`, `waitFor {selector, timeoutMs}`, `screenshot`.
   Driving is **programmatic** (walk the `wxWindow` tree, match by `GetName()`/label/type, fire the
   control's own event) — robust, not pixel-based; `wxUIActionSimulator` only where unavoidable.
