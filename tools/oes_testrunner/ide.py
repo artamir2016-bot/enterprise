@@ -336,12 +336,35 @@ class TestIDE(tk.Tk):
 
             ctrls = self.inspector.insert("", tk.END, text="Контролы активной формы", open=True)
             try:
-                for ctl in c.call("listControls").get("controls", []):
-                    label = f"{ctl.get('name','')}  ({ctl.get('class','')})"
-                    node = self.inspector.insert(ctrls, tk.END, text=label)
-                    self._insp_meta[node] = ("control", ctl.get("name", ""))
+                controls = c.call("listControls").get("controls", [])
+                if controls:
+                    for ctl in controls:
+                        label = f"{ctl.get('name','')}  ({ctl.get('class','')})"
+                        node = self.inspector.insert(ctrls, tk.END, text=label)
+                        self._insp_meta[node] = ("control", ctl.get("name", ""))
+                else:
+                    self.inspector.insert(ctrls, tk.END, text="(нет активной формы)")
             except Exception:
                 self.inspector.insert(ctrls, tk.END, text="(нет активной формы)")
+
+            # Generic widget tree of the focused window — works for non-form windows (Все функции,
+            # диалоги, панели дизайнера) that listControls can't see.
+            wnode = self.inspector.insert("", tk.END, text="Виджеты активного окна", open=True)
+            try:
+                res = c.call("listWidgets")
+                win = res.get("window", "")
+                if win:
+                    self.inspector.item(wnode, text=f"Виджеты окна: {win}")
+                for w in res.get("widgets", []):
+                    lbl = w.get("label") or w.get("name") or ""
+                    indent = "  " * int(w.get("depth", 0))
+                    text = f"{indent}{lbl or '(без подписи)'}  ({w.get('class','')})"
+                    node = self.inspector.insert(wnode, tk.END, text=text)
+                    payload = w.get("label") or w.get("name") or ""
+                    if payload:
+                        self._insp_meta[node] = ("widget", payload)
+            except Exception as exc:
+                self.inspector.insert(wnode, tk.END, text=f"(нет: {exc})")
         finally:
             c.close()
 
@@ -362,6 +385,8 @@ class TestIDE(tk.Tk):
             line = f'Когда Я выбираю меню "{payload}"'
         elif kind == "control":
             line = f'Когда Я устанавливаю значение поля "{payload}" равным ""'
+        elif kind == "widget":
+            line = f'Когда Я кликаю по виджету "{payload}"'
         else:
             return
         self._insert_at_cursor(line)

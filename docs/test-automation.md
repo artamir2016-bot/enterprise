@@ -51,6 +51,10 @@ Command set (JSON over the framed channel):
   `invokeMenu {path}`, `selectTreeItem {path}`, `waitFor {selector, timeoutMs}`, `screenshot`.
   Driving is **programmatic** (walk the `wxWindow` tree, match by `GetName()`/label/type, fire the
   control's own event) — robust, not pixel-based; `wxUIActionSimulator` only where unavoidable.
+- **Widget tree of any window**: `listWidgets {window?}` — walks the raw `wxWindow` tree of the named
+  window (or the focused one) and enumerates `wxTreeCtrl` items too, so non-form windows (Все функции,
+  dialogs, designer panels) show their real contents; `listControls` only sees `ibValueForm` runtime
+  forms. The inspector shows this as «Виджеты активного окна».
 - **Lifecycle / workspace**: `closeAllWindows` — close every open form and secondary window (e.g.
   «Все функции»), leaving the app running; a "reset the workspace" step for a feature's context.
   The runner **never auto-closes** the app: the test client is closed only by an explicit
