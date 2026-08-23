@@ -113,25 +113,18 @@ class Context:
             self.agents.pop(role, None)
         self.current = None
 
-    def teardown(self):
+    def detach(self):
+        """Drop our control sockets but LEAVE the apps running.
+
+        The test client is closed only by an explicit step («Я закрываю приложение») or by the user
+        — never automatically at the end of a scenario. So between/after scenarios we just release the
+        sockets; any app the scenario opened stays on screen (video / manual inspection).
+        """
         for agent in self.agents.values():
             try:
-                agent.quit()
+                agent.close()
             except Exception:
                 pass
-            agent.close()
-        # Wait for each process to ACTUALLY exit before the next scenario reopens the same base —
-        # a Firebird file base is exclusive, so a lingering process makes the next open race/fail.
-        for proc in self.procs.values():
-            try:
-                proc.wait(timeout=10)
-            except Exception:
-                try:
-                    proc.terminate()
-                    proc.wait(timeout=5)
-                except Exception:
-                    pass
-        time.sleep(1.5)   # settle the file-base lock release
         self.agents.clear()
         self.procs.clear()
         self.current = None
@@ -331,6 +324,13 @@ def _assert_form(ctx: Context, caption):
         raise StepError(f'форма "{caption}" не открыта. Открыто: {caps}')
 
 
+@step(r'^Я закрываю все открытые окна$')
+@step(r'^Я закрываю все окна$')
+def _close_all_windows(ctx: Context):
+    # reset the workspace: close all forms + secondary windows, keep the app running
+    ctx.current.call("closeAllWindows")
+
+
 @step(r'^Я закрываю приложение$')
 def _close(ctx: Context):
     ctx.close_current()
@@ -459,7 +459,9 @@ def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | Non
                 srt_path = os.path.join(video_dir, safe + ".srt")
                 write_srt(srt_path, srt)
                 print(f"    субтитры: {srt_path}")
-            ctx.teardown()
+            # The app is NOT closed here — only an explicit «Я закрываю приложение» step or the user
+            # closes it. We just release our control sockets.
+            ctx.detach()
 
     total = len(feature.scenarios)
     print(f"\nИтого: {total - failures}/{total} сценариев пройдено")

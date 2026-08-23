@@ -51,6 +51,10 @@ Command set (JSON over the framed channel):
   `invokeMenu {path}`, `selectTreeItem {path}`, `waitFor {selector, timeoutMs}`, `screenshot`.
   Driving is **programmatic** (walk the `wxWindow` tree, match by `GetName()`/label/type, fire the
   control's own event) — robust, not pixel-based; `wxUIActionSimulator` only where unavoidable.
+- **Lifecycle / workspace**: `closeAllWindows` — close every open form and secondary window (e.g.
+  «Все функции»), leaving the app running; a "reset the workspace" step for a feature's context.
+  The runner **never auto-closes** the app: the test client is closed only by an explicit
+  «Я закрываю приложение» step or by the user (between scenarios the runner just drops its sockets).
 - **Enterprise runtime forms** (reuses the mapped API): `openForm`, `formFindControl`
   (`ibValueFrame::FindControlByName`), `getControlValue`/`setControlValue`, `pressCommand`
   (`CallAsAction` / command resolve), `readTable {rows,cols}`, `getFormList`
