@@ -105,7 +105,12 @@ Russian keywords (`Функционал`, `Контекст` / `Предысто
 `Когда`, `Тогда`, `И`, `Также`, `Примеры`), reusing the official Gherkin i18n Russian set for
 compatibility with existing 1C `.feature` files where reasonable. A **`Контекст:`** (Background)
 section holds steps that run **before every scenario** — the place for setup like launching the app
-and `Я закрываю все открытые окна` to reset the workspace.
+and `Я закрываю все открытые окна` to reset the workspace. Because a `Контекст` that launches the app
+runs on every scenario, the launch step **reuses the already-open client** instead of relaunching:
+one `Context` spans the whole feature, ports are fixed per role (enterprise 1651, designer 1652), and
+`Я запускаю …` first pings the running agent and reconnects if it is alive (a Firebird file base is
+exclusive, so relaunching the same base would conflict). A fresh instance is spawned only when nothing
+is running or after an explicit `Я закрываю приложение`.
 
 ## Reused vs new
 

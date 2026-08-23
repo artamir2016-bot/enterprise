@@ -68,21 +68,54 @@ class StepError(AssertionError):
 
 
 class Context:
-    """Shared state across a scenario's steps."""
+    """Shared state across a feature's scenarios (persists so apps can be REUSED, not relaunched)."""
+
+    # Fixed port per role so a launch can reconnect to an app left open by an earlier scenario/run.
+    _ROLE_PORTS = {"enterprise": 1651, "designer": 1652}
 
     def __init__(self, bin_dir: str):
         self.bin_dir = bin_dir
         self.procs: dict[str, subprocess.Popen] = {}
         self.agents: dict[str, TestAgentClient] = {}
         self.current: TestAgentClient | None = None
-        self._next_port = 1651
+        self._next_port = 1653
 
     def launch(self, role: str, exe: str, base: str) -> TestAgentClient:
-        port = self._next_port
-        self._next_port += 1
+        # 1) already connected in this run and still alive → reuse the same client
+        existing = self.agents.get(role)
+        if existing is not None:
+            try:
+                if existing.ping():
+                    self.current = existing
+                    print("      (переиспользую уже открытый клиент)", end="", flush=True)
+                    return existing
+            except Exception:
+                pass
+            try:
+                existing.close()
+            except Exception:
+                pass
+            self.agents.pop(role, None)
+
+        port = self._ROLE_PORTS.get(role, self._next_port)
+
+        # 2) an app from a previous scenario/run may still be up on the fixed port → reconnect
+        try:
+            agent = TestAgentClient(port=port, timeout=5).connect(retries=1)
+            if agent.ping():
+                self.agents[role] = agent
+                self.current = agent
+                print("      (реконнект к уже открытому клиенту)", end="", flush=True)
+                return agent
+            agent.close()
+        except Exception:
+            pass
+
+        # 3) nothing running → launch a fresh instance
+        if role not in self._ROLE_PORTS:
+            self._next_port += 1
         path = os.path.join(self.bin_dir, exe)
-        args = [path, f'--file={base}', f'--testagent={port}']
-        proc = subprocess.Popen(args)
+        proc = subprocess.Popen([path, f'--file={base}', f'--testagent={port}'])
         self.procs[role] = proc
         agent = TestAgentClient(port=port).connect()
         self.agents[role] = agent
@@ -413,10 +446,14 @@ def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | Non
     suite = ET.Element("testsuite", name=feature.name or "feature")
     failures = 0
 
+    # ONE context for the whole feature: apps opened in the Контекст/first scenario are REUSED by
+    # later scenarios (reconnect, not relaunch) — a Firebird file base is exclusive, so relaunching
+    # the same base would conflict.
+    ctx = Context(bin_dir)
+
     for sc in feature.scenarios:
         print(f"  Сценарий: {sc.name}")
         case = ET.SubElement(suite, "testcase", name=sc.name)
-        ctx = Context(bin_dir)
         recorder = VideoRecorder(video_dir)
         recorder.start(sc.name)
         rec0 = time.time()          # reference for subtitle timings (after capture spun up)
@@ -460,9 +497,10 @@ def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | Non
                 srt_path = os.path.join(video_dir, safe + ".srt")
                 write_srt(srt_path, srt)
                 print(f"    субтитры: {srt_path}")
-            # The app is NOT closed here — only an explicit «Я закрываю приложение» step or the user
-            # closes it. We just release our control sockets.
-            ctx.detach()
+
+    # The app is NOT closed automatically — only an explicit «Я закрываю приложение» step or the user
+    # closes it. After the whole feature we just release our control sockets; open apps stay on screen.
+    ctx.detach()
 
     total = len(feature.scenarios)
     print(f"\nИтого: {total - failures}/{total} сценариев пройдено")
