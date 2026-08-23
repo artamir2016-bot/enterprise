@@ -3,6 +3,7 @@
 Supports the core Vanessa-style constructs:
     # comment / language header
     Функционал: <name>            (also: Feature:)
+    Контекст:                     (also: Предыстория / Background) — steps run before EVERY scenario
     Сценарий: <name>              (also: Scenario:)
     Дано / Когда / Тогда / И / Также / *  step lines  (also Given/When/Then/And)
 Doc-strings, data tables and Scenario Outline (Структура сценария / Примеры) are NOT parsed yet —
@@ -16,6 +17,7 @@ from dataclasses import dataclass, field
 
 _FEATURE = ("функционал", "feature", "функция", "функциональность")
 _SCENARIO = ("сценарий", "scenario")
+_BACKGROUND = ("контекст", "предыстория", "background")
 _STEP = ("дано", "когда", "тогда", "и", "также", "затем", "*",
          "given", "when", "then", "and", "but")
 
@@ -38,6 +40,7 @@ class Scenario:
 class Feature:
     name: str
     scenarios: list[Scenario] = field(default_factory=list)
+    background: list[Step] = field(default_factory=list)
 
 
 def _split_keyword(line: str):
@@ -58,6 +61,7 @@ def _split_keyword(line: str):
 def parse_feature(text: str) -> Feature:
     feature = Feature(name="")
     current: Scenario | None = None
+    in_background = False        # steps go into feature.background, run before EVERY scenario
 
     for i, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
@@ -73,14 +77,25 @@ def parse_feature(text: str) -> Feature:
             feature.name = line.split(":", 1)[1].strip()
             continue
 
+        # Background / Контекст / Предыстория (with or without a trailing name)
+        if any(low == k or low.startswith(k + ":") for k in _BACKGROUND):
+            in_background = True
+            current = None
+            continue
+
         # Scenario: / Сценарий:
         if any(low.startswith(k + ":") for k in _SCENARIO):
+            in_background = False
             current = Scenario(name=line.split(":", 1)[1].strip(), line=i)
             feature.scenarios.append(current)
             continue
 
         kw, rest = _split_keyword(line)
-        if kw is not None and current is not None:
+        if kw is None:
+            continue
+        if in_background:
+            feature.background.append(Step(keyword=kw, text=rest, line=i))
+        elif current is not None:
             current.steps.append(Step(keyword=kw, text=rest, line=i))
 
     return feature
@@ -90,6 +105,10 @@ if __name__ == "__main__":
     import sys
     f = parse_feature(open(sys.argv[1], encoding="utf-8").read())
     print("Feature:", f.name)
+    if f.background:
+        print("  Background:")
+        for st in f.background:
+            print(f"    {st.keyword} {st.text}")
     for sc in f.scenarios:
         print("  Scenario:", sc.name)
         for st in sc.steps:

@@ -421,7 +421,8 @@ def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | Non
         recorder.start(sc.name)
         rec0 = time.time()          # reference for subtitle timings (after capture spun up)
         t0 = time.time()
-        groups = group_steps(sc.steps, wpm)
+        # Background / Контекст runs before EVERY scenario (prepended, so it shares video pacing).
+        groups = group_steps(feature.background + sc.steps, wpm)
         srt: list[tuple[float, float, str]] = []
         try:
             for g in groups:

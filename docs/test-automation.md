@@ -101,9 +101,11 @@ routes each step to the right agent, sequences cross-app flow, and emits a repor
   `tools/*.py`). A native `oes_testrunner.exe` can follow once the protocol is stable.
 
 ### 3. Gherkin dialect
-Russian keywords (`Функционал`, `Сценарий`, `Структура сценария`, `Дано`, `Когда`, `Тогда`, `И`,
-`Также`, `Примеры`), reusing the official Gherkin i18n Russian set for compatibility with existing
-1C `.feature` files where reasonable.
+Russian keywords (`Функционал`, `Контекст` / `Предыстория`, `Сценарий`, `Структура сценария`, `Дано`,
+`Когда`, `Тогда`, `И`, `Также`, `Примеры`), reusing the official Gherkin i18n Russian set for
+compatibility with existing 1C `.feature` files where reasonable. A **`Контекст:`** (Background)
+section holds steps that run **before every scenario** — the place for setup like launching the app
+and `Я закрываю все открытые окна` to reset the workspace.
 
 ## Reused vs new
 
