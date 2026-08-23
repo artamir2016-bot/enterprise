@@ -328,6 +328,7 @@ class TestIDE(tk.Tk):
             menus = self.inspector.insert("", tk.END, text="Меню", open=False)
             for m in c.call("listMenus").get("menus", []):
                 mnode = self.inspector.insert(menus, tk.END, text=m.get("menu", ""), open=False)
+                self._insp_meta[mnode] = ("topmenu", m.get("menu", ""))
                 for item in m.get("items", []):
                     inode = self.inspector.insert(mnode, tk.END, text=item)
                     self._insp_meta[inode] = ("menu", f"{m.get('menu','')} -> {item}")
@@ -354,6 +355,8 @@ class TestIDE(tk.Tk):
             line = f'{kw} Я запускаю {payload} на базе "{self.live_base.get()}"'
         elif kind == "window":
             line = f'Тогда Я вижу окно "{payload}"'
+        elif kind == "topmenu":
+            line = f'Когда Я открываю меню "{payload}"'
         elif kind == "menu":
             line = f'Когда Я выбираю меню "{payload}"'
         elif kind == "control":

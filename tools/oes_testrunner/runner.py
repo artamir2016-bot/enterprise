@@ -275,6 +275,13 @@ def _screenshot(ctx: Context, path):
 
 
 # ---- generic UI (designer): menus / widgets / windows ------------------------------------------
+@step(r'^Я открываю меню "(.+)"$')
+@step(r'^Я кликаю по меню "(.+)"$')
+def _open_menu(ctx: Context, menu):
+    # click the TOP-LEVEL menu (Файл / Операции / …) so it drops open
+    ctx.current.call("openMenu", menu=menu)
+
+
 @step(r'^Я выбираю меню "(.+)"$')
 def _invoke_menu(ctx: Context, path):
     # "Конфигурация -> Обновите конфигурацию базы данных" or "Конфигурация | ..."
