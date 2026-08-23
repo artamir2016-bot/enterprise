@@ -320,9 +320,32 @@ def _click_widget(ctx: Context, label):
     ctx.current.call("clickWidget", by="label", value=label)
 
 
+@step(r'^Узел дерева "(.+)" (развёрнут|развернут|раскрыт)$')
+def _assert_tree_expanded(ctx: Context, text, _word):
+    st = ctx.current.call("treeItemState", text=text)
+    if not st.get("found"):
+        raise StepError(f'узел дерева "{text}" не найден')
+    if not st.get("expanded"):
+        raise StepError(f'узел дерева "{text}" свёрнут (ожидался развёрнутым)')
+
+
+@step(r'^Узел дерева "(.+)" (свёрнут|свернут|закрыт)$')
+def _assert_tree_collapsed(ctx: Context, text, _word):
+    st = ctx.current.call("treeItemState", text=text)
+    if not st.get("found"):
+        raise StepError(f'узел дерева "{text}" не найден')
+    if st.get("expanded"):
+        raise StepError(f'узел дерева "{text}" развёрнут (ожидался свёрнутым)')
+
+
 @step(r'^Я разворачиваю узел дерева "(.+)"$')
 def _expand_tree(ctx: Context, text):
     ctx.current.call("expandTreeItem", text=text)
+
+
+@step(r'^Я сворачиваю узел дерева "(.+)"$')
+def _collapse_tree(ctx: Context, text):
+    ctx.current.call("collapseTreeItem", text=text)
 
 
 @step(r'^Я кликаю по элементу дерева "(.+)"$')
