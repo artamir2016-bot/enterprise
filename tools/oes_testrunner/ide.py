@@ -32,6 +32,7 @@ RUNNER = os.path.join(HERE, "runner.py")
 
 GHERKIN_KW = [
     "Функционал", "Функциональность", "Feature",
+    "Контекст", "Предыстория", "Background",
     "Структура сценария", "Сценарий", "Scenario",
     "Дано", "Когда", "Тогда", "Также", "Затем", "И", "Но",
     "Given", "When", "Then", "And", "But",
@@ -537,6 +538,7 @@ class TestIDE(tk.Tk):
 
     # -- indentation / context-aware editing -----------------------------------------------------
     _DEEPEN = ("функционал", "функциональность", "функция", "feature",
+               "контекст", "предыстория", "background",
                "структура сценария", "сценарий", "scenario")
 
     def _indent_unit(self) -> str:
