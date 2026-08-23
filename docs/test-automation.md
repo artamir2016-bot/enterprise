@@ -63,6 +63,9 @@ Command set (JSON over the framed channel):
   «Все функции»), leaving the app running; a "reset the workspace" step for a feature's context.
   The runner **never auto-closes** the app: the test client is closed only by an explicit
   «Я закрываю приложение» step or by the user (between scenarios the runner just drops its sockets).
+- **Active control**: `activeControl {form?}` — the FOCUSED control of the active form (name + class),
+  by mapping the focused `wxWindow` back to its `ibValueFrame` through the form host's object index.
+  The inspector uses it to **select and scroll to** the focused element (highlighted) on refresh.
 - **Enterprise runtime forms** (reuses the mapped API): `openForm`, `formFindControl`
   (`ibValueFrame::FindControlByName`), `getControlValue`/`setControlValue`, `pressCommand`
   (`CallAsAction` / command resolve), `readTable {rows,cols}`, `getFormList`

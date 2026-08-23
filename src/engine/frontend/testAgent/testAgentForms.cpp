@@ -150,6 +150,32 @@ namespace {
 		return json{ {"caption", ToUtf8(form->GetCaption())} };
 	}
 
+	// OES-TEST: the FOCUSED control of the active form — name + class, so the inspector can position
+	// on it. Maps the focused wxWindow back to its ibValueFrame via the form host's object index.
+	json Cmd_ActiveControl(const json& args)
+	{
+		ibValueForm* form = ResolveForm(args);
+		wxWindow* focus = wxWindow::FindFocus();
+		if (focus == nullptr)
+			return json{ {"name", nullptr} };
+
+		ibFormVisualDocument* doc = form->GetVisualDocument();
+		ibVisualHostClient* host = (doc != nullptr && doc->GetFirstView() != nullptr)
+			? doc->GetFirstView()->GetVisualHost() : nullptr;
+		if (host == nullptr)
+			return json{ {"name", nullptr} };
+
+		for (wxWindow* w = focus; w != nullptr; w = w->GetParent()) {
+			ibValueFrame* base = host->GetObjectBase(w);
+			if (base != nullptr) {
+				const wxString nm = base->GetControlName();
+				if (!nm.IsEmpty())
+					return json{ {"name", ToUtf8(nm)}, {"class", ToUtf8(base->GetClassName())} };
+			}
+		}
+		return json{ {"name", nullptr} };
+	}
+
 	json Cmd_FindControl(const json& args)
 	{
 		ibValueForm* form = ResolveForm(args);
@@ -1028,6 +1054,7 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "screenshot")          result = Cmd_Screenshot(args);
 	// generic wx-UI driving (designer: menus / dialogs / widgets)
 	else if (cmd == "listWindows")         result = Cmd_ListWindows();
+	else if (cmd == "activeControl")       result = Cmd_ActiveControl(args);
 	else if (cmd == "listWidgets")         result = Cmd_ListWidgets(args);
 	else if (cmd == "expandTreeItem")      result = Cmd_ExpandTreeItem(args);
 	else if (cmd == "clickTreeItem")       result = Cmd_ClickTreeItem(args);
