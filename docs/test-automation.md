@@ -58,12 +58,18 @@ Command set (JSON over the framed channel):
 - **Lifecycle**: `ping`, `appInfo`, `quit`.
 
 ### 2a. IDE / feature workbench (`tools/oes_testrunner/ide.py`)
-A dependency-free Tkinter desktop UI (Vanessa-like): feature list (open/new/save), a Gherkin editor
-with Russian keyword highlighting, a **step palette** (grouped by category from `steps_catalog.py`;
-double-click inserts a step template), a **live inspector** tab — **launch an app for live view** right from the IDE (pick Предприятие /
+A dependency-free Tkinter desktop UI (Vanessa-like): feature list (open/new/save), a **tabbed**
+Gherkin editor — several `.feature` files open at once, switch between them, a `•` marks unsaved
+tabs, close via **Закрыть** / **Ctrl+W** / middle-click (prompts to save if dirty); Russian keyword
+highlighting; **layout-independent copy/paste** (Ctrl+C/V/X/A bound by keycode so they work under a
+Cyrillic layout too, plus a right-click menu); a **step palette** (grouped by category from
+`steps_catalog.py`; double-click inserts a step template), a **live inspector** tab —
+**launch an app for live view** right from the IDE (pick Предприятие /
 Дизайнер + base + port → the IDE starts it with `--testagent` and auto-refreshes), then it lists the
 running app's Окна / Меню / Контролы активной формы (double-click inserts a step referencing that
-element; uses `listWindows` / `listMenus` / `listControls`); a **Остановить** button quits it cleanly,
+element; uses `listWindows` / `listMenus` / `listControls`); the tree's top **«Запуск приложения»**
+node inserts a launch step (`Я запускаю предприятие/дизайнер на базе "…"`) with the base + keyword
+picked in the inspector; a **Остановить** button quits it cleanly,
 and the IDE terminates any launched app on close, and **Run / Run with video** buttons
 that drive `runner.py` as a subprocess and stream its output live (OK green / FAIL red / summary).
 Launch: `python tools/oes_testrunner/ide.py`.
