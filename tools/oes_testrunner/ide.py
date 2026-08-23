@@ -360,9 +360,7 @@ class TestIDE(tk.Tk):
             line = f'Когда Я устанавливаю значение поля "{payload}" равным ""'
         else:
             return
-        self.editor.insert(tk.INSERT, "\n    " + line)
-        self._highlight()
-        self.editor.focus_set()
+        self._insert_at_cursor(line)
 
     # -- feature files ---------------------------------------------------------------------------
     def _refresh_feature_list(self):
@@ -391,6 +389,7 @@ class TestIDE(tk.Tk):
         ed.tag_configure("str", foreground="#b76e00")
         ed.tag_configure("comment", foreground="#7a7a7a")
         ed.bind("<KeyRelease>", self._on_edit_key)
+        ed.bind("<Return>", self._on_return)
         self._enable_clipboard(ed)
         if text:
             ed.insert("1.0", text)
@@ -533,16 +532,72 @@ class TestIDE(tk.Tk):
             for sm in re.finditer(r'"[^"]*"', text):
                 self.editor.tag_add("str", f"{ln}.{sm.start()}", f"{ln}.{sm.end()}")
 
+    # -- indentation / context-aware editing -----------------------------------------------------
+    _DEEPEN = ("функционал", "функциональность", "функция", "feature",
+               "структура сценария", "сценарий", "scenario")
+
+    def _indent_unit(self) -> str:
+        """One nesting step, inferred from the document: a TAB, else the smallest space indent."""
+        text = self.editor.get("1.0", "end-1c")
+        min_sp = None
+        for line in text.splitlines():
+            stripped = line.lstrip(" \t")
+            if not stripped:
+                continue
+            lead = line[:len(line) - len(stripped)]
+            if lead.startswith("\t"):
+                return "\t"
+            if lead:
+                min_sp = len(lead) if min_sp is None else min(min_sp, len(lead))
+        return " " * (min_sp or 2)
+
+    def _deepens(self, stripped: str) -> bool:
+        """A line whose following line should be indented one level deeper."""
+        if stripped.startswith("*"):
+            return True
+        low = stripped.lower()
+        return any(low.startswith(k) for k in self._DEEPEN)
+
+    def _on_return(self, _evt):
+        """Enter keeps the caller's indent; after Функционал/Сценарий/* it indents one level deeper."""
+        ed = self.editor
+        ln = int(ed.index("insert").split(".")[0])
+        line = ed.get(f"{ln}.0", f"{ln}.end")
+        stripped = line.lstrip(" \t")
+        lead = line[:len(line) - len(stripped)]
+        indent = (lead + self._indent_unit()) if self._deepens(stripped) else lead
+        ed.insert("insert", "\n" + indent)
+        ed.see("insert")
+        self._on_edit_key()
+        return "break"
+
+    def _insert_at_cursor(self, text: str):
+        """Drop a step at the cursor: fill a blank line, else add a line below it, context-indented."""
+        ed = self.editor
+        ln = int(ed.index("insert").split(".")[0])
+        line = ed.get(f"{ln}.0", f"{ln}.end")
+        stripped = line.lstrip(" \t")
+        lead = line[:len(line) - len(stripped)]
+        unit = self._indent_unit()
+        if not stripped:
+            indent = lead if lead else unit
+            ed.delete(f"{ln}.0", f"{ln}.end")
+            ed.insert(f"{ln}.0", indent + text)
+            ed.mark_set("insert", f"{ln}.end")
+        else:
+            indent = (lead + unit) if self._deepens(stripped) else lead
+            ed.insert(f"{ln}.end", "\n" + indent + text)
+            ed.mark_set("insert", f"{ln + 1}.end")
+        ed.see("insert")
+        self._on_edit_key()
+        ed.focus_set()
+
     def _insert_step(self, _evt):
         node = self.palette.focus()
         info = getattr(self, "_step_by_node", {}).get(node)
         if not info:
             return
-        template = info[0]
-        # insert on a fresh, 4-space-indented line
-        self.editor.insert(tk.INSERT, "\n    " + template)
-        self._highlight()
-        self.editor.focus_set()
+        self._insert_at_cursor(info[0])
 
     # -- run -------------------------------------------------------------------------------------
     def run(self, video: bool):

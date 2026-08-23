@@ -63,7 +63,10 @@ Gherkin editor — several `.feature` files open at once, switch between them, a
 tabs, close via **Закрыть** / **Ctrl+W** / middle-click (prompts to save if dirty); Russian keyword
 highlighting; **layout-independent copy/paste** (Ctrl+C/V/X/A bound by keycode so they work under a
 Cyrillic layout too, plus a right-click menu); a **step palette** (grouped by category from
-`steps_catalog.py`; double-click inserts a step template), a **live inspector** tab —
+`steps_catalog.py`; double-click inserts a step **at the cursor**, context-indented). The editor is
+**context-aware**: Enter keeps the current indent, and after a `Функционал` / `Сценарий` / `*` line it
+indents one level deeper; the nesting unit (TAB vs N spaces) is inferred from the file. Steps dropped
+from the palette or the inspector land at the caret with the right indent. A **live inspector** tab —
 **launch an app for live view** right from the IDE (pick Предприятие /
 Дизайнер + base + port → the IDE starts it with `--testagent` and auto-refreshes), then it lists the
 running app's Окна / Меню / Контролы активной формы (double-click inserts a step referencing that
@@ -73,6 +76,15 @@ picked in the inspector; a **Остановить** button quits it cleanly,
 and the IDE terminates any launched app on close, and **Run / Run with video** buttons
 that drive `runner.py` as a subprocess and stream its output live (OK green / FAIL red / summary).
 Launch: `python tools/oes_testrunner/ide.py`.
+
+### 2b. Narration groups & video sync (`*` lines)
+A step line starting with `*` is a **narration marker**: it names a group and carries the voice-over
+text; the steps that follow (until the next `*`) belong to it. When recording video (`--video`), the
+runner **paces** each group's steps so the on-screen segment lasts as long as the narration would take
+to speak, and writes an **`.srt` subtitle track** next to the `.mp4` with each narration timed to its
+segment — so a feature doubles as a captioned video walkthrough. Narration duration = an explicit
+`(5s)` / `[5]` / `{5}` prefix if present, else word-count ÷ `--narration-wpm` (default 150 wpm). Off
+the video path, `*` lines are non-executable markers (no pacing).
 
 ### 2. Runner / Orchestrator (`oes_testrunner`)
 Parses Russian Gherkin, owns the **step library** (phrase → agent command mapping — extensible in

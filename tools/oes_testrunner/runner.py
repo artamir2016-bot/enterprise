@@ -329,6 +329,66 @@ def _close(ctx: Context):
     ctx.close_current()
 
 
+# ---- narration groups (video sync) -------------------------------------------------------------
+# A step line starting with '*' is a NARRATION marker: it names a group and carries the voice-over
+# text. The steps that follow (until the next '*') belong to that group. When recording video, the
+# group's steps are paced so the on-screen segment lasts as long as the narration would take to
+# speak — and an .srt subtitle track is written next to the .mp4 with each narration timed to its
+# segment. Duration = explicit "(5s)"/"[5]" prefix if present, else word-count / words-per-minute.
+
+_DUR_RE = re.compile(r'^\s*[\(\[\{]\s*(\d+(?:[.,]\d+)?)\s*(?:s|с|сек)?\s*[\)\]\}]\s*')
+
+
+def parse_narration(text: str, wpm: float) -> tuple[float, str]:
+    """Return (seconds, clean_text) for a '*' narration line."""
+    m = _DUR_RE.match(text)
+    if m:
+        return float(m.group(1).replace(",", ".")), text[m.end():].strip()
+    words = len(text.split())
+    secs = words / (wpm / 60.0) if words else 0.0
+    return secs, text.strip()
+
+
+def group_steps(steps: list[Step], wpm: float) -> list[dict]:
+    """Split a scenario's steps into narration groups. First group may have no narration (secs=0)."""
+    groups: list[dict] = []
+    cur = {"narr": "", "secs": 0.0, "steps": []}
+    for st in steps:
+        if st.keyword == "*":
+            if cur["steps"] or cur["narr"]:
+                groups.append(cur)
+            secs, narr = parse_narration(st.text, wpm)
+            cur = {"narr": narr, "secs": secs, "steps": []}
+        else:
+            cur["steps"].append(st)
+    groups.append(cur)
+    return groups
+
+
+def _fmt_srt_time(sec: float) -> str:
+    if sec < 0:
+        sec = 0.0
+    h = int(sec // 3600)
+    m = int((sec % 3600) // 60)
+    s = int(sec % 60)
+    ms = int(round((sec - int(sec)) * 1000))
+    if ms == 1000:
+        ms = 0
+        s += 1
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def write_srt(path: str, entries: list[tuple[float, float, str]]) -> None:
+    lines = []
+    for i, (start, end, text) in enumerate(entries, 1):
+        lines.append(str(i))
+        lines.append(f"{_fmt_srt_time(start)} --> {_fmt_srt_time(end)}")
+        lines.append(text)
+        lines.append("")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
 def run_step(ctx: Context, st: Step) -> None:
     for pattern, fn in STEPS:
         m = pattern.match(st.text)
@@ -338,7 +398,8 @@ def run_step(ctx: Context, st: Step) -> None:
     raise StepError(f"нет обработчика для шага: {st.keyword} {st.text}")
 
 
-def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | None = None) -> int:
+def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | None = None,
+        wpm: float = 150.0) -> int:
     feature = parse_feature(open(feature_path, encoding="utf-8").read())
     print(f"Функционал: {feature.name}")
 
@@ -351,12 +412,33 @@ def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | Non
         ctx = Context(bin_dir)
         recorder = VideoRecorder(video_dir)
         recorder.start(sc.name)
+        rec0 = time.time()          # reference for subtitle timings (after capture spun up)
         t0 = time.time()
+        groups = group_steps(sc.steps, wpm)
+        srt: list[tuple[float, float, str]] = []
         try:
-            for st in sc.steps:
-                print(f"    {st.keyword} {st.text}", end="", flush=True)
-                run_step(ctx, st)
-                print("  ... OK")
+            for g in groups:
+                if g["narr"]:
+                    print(f"    * {g['narr']}  [~{g['secs']:.1f}s]")
+                g_start = time.time()
+                n = len(g["steps"])
+                for idx, st in enumerate(g["steps"], 1):
+                    print(f"    {st.keyword} {st.text}", end="", flush=True)
+                    run_step(ctx, st)
+                    print("  ... OK")
+                    # pace to the narration timeline (video only): hold each step to its slot
+                    if video_dir and g["secs"] > 0 and n:
+                        target = g["secs"] * idx / n
+                        drift = target - (time.time() - g_start)
+                        if drift > 0:
+                            time.sleep(drift)
+                # a narration group with no steps (or steps finished early) still holds the segment
+                if video_dir and g["secs"] > 0:
+                    drift = g["secs"] - (time.time() - g_start)
+                    if drift > 0:
+                        time.sleep(drift)
+                if g["narr"] and video_dir:
+                    srt.append((g_start - rec0, time.time() - rec0, g["narr"]))
         except Exception as exc:  # noqa: BLE001
             failures += 1
             print(f"  ... FAIL\n      {exc}")
@@ -365,6 +447,11 @@ def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | Non
         finally:
             case.set("time", f"{time.time() - t0:.2f}")
             recorder.stop()
+            if video_dir and srt:
+                safe = re.sub(r"[^\w.-]+", "_", sc.name).strip("_") or "scenario"
+                srt_path = os.path.join(video_dir, safe + ".srt")
+                write_srt(srt_path, srt)
+                print(f"    субтитры: {srt_path}")
             ctx.teardown()
 
     total = len(feature.scenarios)
@@ -385,8 +472,10 @@ def main() -> int:
     ap.add_argument("--bin", default=DEFAULT_BIN, help="directory with designer.exe/enterprise.exe")
     ap.add_argument("--junit", default=None, help="write JUnit XML report to this path")
     ap.add_argument("--video", default=None, help="record each scenario to MP4 in this dir (needs ffmpeg)")
+    ap.add_argument("--narration-wpm", type=float, default=150.0,
+                    help="speaking rate for '*' narration groups (words/min; sets video pacing)")
     args = ap.parse_args()
-    return run(args.feature, args.bin, args.junit, args.video)
+    return run(args.feature, args.bin, args.junit, args.video, args.narration_wpm)
 
 
 if __name__ == "__main__":
