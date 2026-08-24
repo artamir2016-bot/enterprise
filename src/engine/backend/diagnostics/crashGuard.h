@@ -87,6 +87,14 @@ BACKEND_API int WrapStartup(const wxString& exeName,
 // this path in its background-thread "we crashed, look here" message.
 BACKEND_API wxString GetCrashDir();
 
+// Automation / background mode. When true, the wx-aware layer (oesApp.h) SUPPRESSES user-visible
+// error dialogs — the wxMessageBox in OnExceptionInMainLoop and the wxDebugReport preview in
+// OnUnhandledException — so a background/automated run never has a modal pop over every window (even
+// when the app is minimized) or block the test agent. Errors are still LOGGED and captured by the
+// diagnostic/message taps. Apps launched with --minimized / --testagent set this at startup.
+BACKEND_API void SetSuppressDialogs(bool suppress);
+BACKEND_API bool SuppressDialogs();
+
 } // namespace ibCrashGuard
 
 #endif // __IB_CRASH_GUARD_H__

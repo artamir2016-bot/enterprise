@@ -115,9 +115,13 @@ public:
 		}
 		catch (const ibBackendException& e) {
 			wxLogError(wxT("%s"), e.GetErrorDescription());
-			wxMessageBox(e.GetErrorDescription(),
-				wxT("OES ") + exe,
-				wxOK | wxICON_ERROR);
+			// Background/automated run (--minimized / --testagent): the error is already logged and
+			// captured by the taps — do NOT pop a modal that would steal the screen (even minimized)
+			// or block the test agent. Continue the loop.
+			if (!ibCrashGuard::SuppressDialogs())
+				wxMessageBox(e.GetErrorDescription(),
+					wxT("OES ") + exe,
+					wxOK | wxICON_ERROR);
 			return true;
 		}
 		catch (const std::exception& e) {
@@ -153,6 +157,11 @@ public:
 
 		ibCrashGuard::LogUnhandledException(GetExeName(), diag);
 		wxLogError("%s", diag);
+
+		// Background/automated run: the crash is logged (and a minidump is written by the SEH filter);
+		// skip the interactive debug-report dialog that would block/steal focus.
+		if (ibCrashGuard::SuppressDialogs())
+			return;
 
 		wxDebugReportCompress report;
 		report.AddAll(wxDebugReport::Context_Current);

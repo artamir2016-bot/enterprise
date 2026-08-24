@@ -10,6 +10,7 @@
 #include "frontend/session/guiSession.h"   // transitively pulls backend/session/session.h
 #include "backend/session/sessionRegistry.h"
 #include "frontend/testAgent/testAgent.h"  // OES-TEST: embedded test-automation agent (--testagent)
+#include "backend/diagnostics/crashGuard.h" // OES-TEST: SetSuppressDialogs (background runs)
 
 #include <wx/clipbrd.h>
 #include <wx/fs_arc.h>
@@ -98,6 +99,11 @@ bool ibAppEnterprise::OnCmdLineParsed(wxCmdLineParser& parser)
 
 	// OES-TEST: --minimized
 	m_startMinimized = parser.Found(wxT("minimized"));
+
+	// OES-TEST: a background/automated run (minimized or driven by the test agent) must never pop a
+	// critical-error dialog over every window — suppress them; errors are logged + captured by taps.
+	if (m_startMinimized || m_testAgentPort >= 0)
+		ibCrashGuard::SetSuppressDialogs(true);
 
 	return wxApp::OnCmdLineParsed(parser);
 }

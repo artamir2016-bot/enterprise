@@ -239,6 +239,9 @@ void OesTerminateHandler()
 	std::abort();
 }
 
+// Automation / background mode — suppress user-visible error dialogs (oesApp.h reads this).
+std::atomic<bool> s_suppressDialogs{ false };
+
 } // namespace
 
 void Install(const wxString& exeName)
@@ -347,5 +350,8 @@ wxString GetCrashDir()
 	EnsureCrashDir();
 	return s_crashDir;
 }
+
+void SetSuppressDialogs(bool suppress) { s_suppressDialogs.store(suppress, std::memory_order_relaxed); }
+bool SuppressDialogs() { return s_suppressDialogs.load(std::memory_order_relaxed); }
 
 } // namespace ibCrashGuard
