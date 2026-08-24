@@ -170,6 +170,24 @@ public:
 	}
 #endif // wxUSE_EXCEPTIONS
 
+#if wxDEBUG_LEVEL
+	// wxASSERT failures pop a "Critical failure" dialog by default. In a background/automated run it
+	// steals the screen (even minimized) and blocks the test agent. Suppress it: log the assert and
+	// CONTINUE (the same "ignore" the dialog's button would do) so a non-fatal assert doesn't stop the
+	// run. Interactive runs keep the default dialog.
+	void OnAssertFailure(const wxChar* file, int line, const wxChar* func,
+		const wxChar* cond, const wxChar* msg) override
+	{
+		if (ibCrashGuard::SuppressDialogs()) {
+			wxLogDebug(wxT("assert @ %s:%d (%s): %s | %s"),
+				file ? file : wxT("?"), line, func ? func : wxT("?"),
+				cond ? cond : wxT(""), msg ? msg : wxT(""));
+			return;   // ignore-and-continue
+		}
+		wxApp::OnAssertFailure(file, line, func, cond, msg);
+	}
+#endif // wxDEBUG_LEVEL
+
 #if wxUSE_ON_FATAL_EXCEPTION && wxUSE_STACKWALKER
 	void OnFatalException() override
 	{

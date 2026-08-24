@@ -244,16 +244,32 @@ def _switch(ctx: Context, role):
     ctx.current = ctx.agents[key]
 
 
+def _wait_form_ready(ctx: Context, timeout: float = 6.0) -> None:
+    """openForm is deferred (modal-safe) so the form materialises on the event loop. Poll until a form
+    is active instead of a fixed sleep — under load a fixed pause races the form build (fields would
+    read as 'not found')."""
+    deadline = time.time() + timeout
+    time.sleep(0.3)
+    while time.time() < deadline:
+        try:
+            if ctx.current.call("activeForm").get("caption") is not None:
+                time.sleep(0.2)   # let the control tree finish building
+                return
+        except Exception:
+            pass
+        time.sleep(0.2)
+
+
 @step(r'^Я открываю форму объекта справочника "(.+)"$')
 def _open_object(ctx: Context, name):
     ctx.current.call("openForm", name=name, kind="object")
-    time.sleep(1.2)   # openForm is deferred (modal-safe) — let the form materialize
+    _wait_form_ready(ctx)
 
 
 @step(r'^Я открываю форму списка справочника "(.+)"$')
 def _open_list(ctx: Context, name):
     ctx.current.call("openForm", name=name, kind="list")
-    time.sleep(1.0)
+    _wait_form_ready(ctx)
 
 
 @step(r'^Я устанавливаю значение поля "(.+)" равным "(.*)"$')
