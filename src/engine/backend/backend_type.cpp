@@ -2,6 +2,42 @@
 #include "backend/compiler/enumUnit.h"
 #include "backend/system/value/valueTable.h"   // g_valueTableCLSID (the _table default); the primitive value clsids come via value.h
 
+// OES-RU: 1C type name → OES ctor name. See declaration in backend_type.h. UTF-8 byte escapes — no /utf-8.
+BACKEND_API wxString ibTranslateRuTypeName(const wxString& name)
+{
+	struct Pair { const char* ru; const char* oes; };
+	// Reference kinds: match the LEADING prefix, keep the object name after the dot verbatim.
+	static const Pair kPrefix[] = {
+		{ "\xD0\xA1\xD0\xBF\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBE\xD1\x87\xD0\xBD\xD0\xB8\xD0\xBA\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "CatalogRef." },                                                 // СправочникСсылка.
+		{ "\xD0\x94\xD0\xBE\xD0\xBA\xD1\x83\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x82\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "DocumentRef." },                                                             // ДокументСсылка.
+		{ "\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD1\x87\xD0\xB8\xD1\x81\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "EnumerationRef." },                         // ПеречислениеСсылка.
+		{ "\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD0\x92\xD0\xB8\xD0\xB4\xD0\xBE\xD0\xB2\xD0\xA5\xD0\xB0\xD1\x80\xD0\xB0\xD0\xBA\xD1\x82\xD0\xB5\xD1\x80\xD0\xB8\xD1\x81\xD1\x82\xD0\xB8\xD0\xBA\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "ChartOfCharacteristicTypesRef." }, // ПланВидовХарактеристикСсылка.
+		{ "\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD0\xA1\xD1\x87\xD0\xB5\xD1\x82\xD0\xBE\xD0\xB2\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "ChartOfAccountsRef." },                                       // ПланСчетовСсылка.
+	};
+	for (const Pair& p : kPrefix) {
+		const wxString ru = wxString::FromUTF8(p.ru);
+		if (name.StartsWith(ru))
+			return wxString::FromAscii(p.oes) + name.Mid(ru.length());
+	}
+	// Built-in creatable types: whole-name match.
+	static const Pair kType[] = {
+		{ "\xD0\x9C\xD0\xB0\xD1\x81\xD1\x81\xD0\xB8\xD0\xB2", "Array" },                                                                             // Массив
+		{ "\xD0\xA1\xD1\x82\xD1\x80\xD1\x83\xD0\xBA\xD1\x82\xD1\x83\xD1\x80\xD0\xB0", "Structure" },                                                 // Структура
+		{ "\xD0\xA1\xD0\xBE\xD0\xBE\xD1\x82\xD0\xB2\xD0\xB5\xD1\x82\xD1\x81\xD1\x82\xD0\xB2\xD0\xB8\xD0\xB5", "Container" },                          // Соответствие
+		{ "\xD0\xA2\xD0\xB0\xD0\xB1\xD0\xBB\xD0\xB8\xD1\x86\xD0\xB0\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB9", "Table" },      // ТаблицаЗначений
+		{ "\xD0\x97\xD0\xB0\xD0\xBF\xD1\x80\xD0\xBE\xD1\x81", "Query" },                                                                            // Запрос
+		{ "\xD0\xA2\xD0\xB0\xD0\xB1\xD0\xBB\xD0\xB8\xD1\x87\xD0\xBD\xD1\x8B\xD0\xB9\xD0\x94\xD0\xBE\xD0\xBA\xD1\x83\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x82", "SpreadsheetDocument" },                              // ТабличныйДокумент
+		{ "\xD0\x9E\xD0\xBF\xD0\xB8\xD1\x81\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5\xD0\xA2\xD0\xB8\xD0\xBF\xD0\xBE\xD0\xB2", "TypeDescription" },            // ОписаниеТипов
+		{ "\xD0\x9C\xD0\xBE\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x82\xD0\x92\xD1\x80\xD0\xB5\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB8", "PointInTime" },                // МоментВремени
+		{ "\xD0\x93\xD1\x80\xD0\xB0\xD0\xBD\xD0\xB8\xD1\x86\xD0\xB0", "Boundary" },                                                                  // Граница
+	};
+	for (const Pair& p : kType) {
+		if (name == wxString::FromUTF8(p.ru))
+			return wxString::FromAscii(p.oes);
+	}
+	return name;
+}
+
 //***********************************************************************
 //*                         Type factory                                *
 //***********************************************************************

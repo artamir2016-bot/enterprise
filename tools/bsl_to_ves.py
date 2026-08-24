@@ -20,6 +20,94 @@ import os
 import json
 from collections import Counter
 
+# --- 1C conditional compilation (#Если … Тогда / #ИначеЕсли / #Иначе / #КонецЕсли) --------------
+# OES has no client/server compile split — an object/manager module runs server-side, one runtime.
+# So we RESOLVE 1C conditional compilation at import under a server context: keep the active branch,
+# drop the directives and the dead branches. Also strips #Область/#КонецОбласти region markers and
+# lone &-compilation-attribute lines (OES doesn't use them). This resolves compile-time directives
+# only — it does NOT translate identifiers, so binding to verbatim metadata is unaffected.
+_ONEC_COMPILE_TRUE = {
+    "сервер", "насервере", "внешнеесоединение",
+    "толстыйклиентобычноеприложение", "толстыйклиентуправляемоеприложение",
+    "мобильноеприложениесервер",
+}
+
+
+def _eval_onec_condition(expr: str) -> bool:
+    py = []
+    for tok in re.findall(r"[^\W\d]+|\(|\)", expr, re.UNICODE):
+        low = tok.lower()
+        if low == "и":
+            py.append(" and ")
+        elif low == "или":
+            py.append(" or ")
+        elif low == "не":
+            py.append(" not ")
+        elif tok in ("(", ")"):
+            py.append(tok)
+        elif low in _ONEC_COMPILE_TRUE:
+            py.append("True")
+        else:
+            py.append("False")   # unknown or client-only symbol → false in a server module
+    try:
+        return bool(eval("".join(py) or "True"))
+    except Exception:
+        return True   # unparseable condition → keep the code (safer than dropping)
+
+
+def _strip_cond(line: str, prefix_len: int) -> str:
+    """Return the condition text of a #Если/#ИначеЕсли line (drop the directive and trailing Тогда)."""
+    body = line.strip()[prefix_len:].strip()
+    if body.lower().endswith("тогда"):
+        body = body[:-len("тогда")].strip()
+    return body
+
+
+def preprocess_onec_module(code: str) -> str:
+    if not code:
+        return code
+    out = []
+    stack = []   # each: {"active": bool, "taken": bool, "parent": bool}
+
+    def emitting():
+        return stack[-1]["active"] if stack else True
+
+    for line in code.splitlines():
+        low = line.strip().lower()
+        if low.startswith("#если"):
+            parent = emitting()
+            cond = parent and _eval_onec_condition(_strip_cond(line, len("#если")))
+            stack.append({"active": cond, "taken": cond, "parent": parent})
+            continue
+        if low.startswith("#иначеесли"):
+            if stack:
+                top = stack[-1]
+                if top["taken"]:
+                    top["active"] = False
+                else:
+                    cond = top["parent"] and _eval_onec_condition(_strip_cond(line, len("#иначеесли")))
+                    top["active"] = cond
+                    top["taken"] = top["taken"] or cond
+            continue
+        if low.startswith("#иначе"):
+            if stack:
+                top = stack[-1]
+                top["active"] = top["parent"] and (not top["taken"])
+                top["taken"] = True
+            continue
+        if low.startswith("#конецесли"):
+            if stack:
+                stack.pop()
+            continue
+        # region markers and lone compilation attributes carry no OES semantics — drop them
+        if low.startswith("#область") or low.startswith("#конецобласти"):
+            continue
+        if line.strip().startswith("&"):
+            continue
+        if emitting():
+            out.append(line)
+    return "\n".join(out)
+
 # --- 1C keyword -> VES keyword (lower-cased 1C key) ------------------------
 # Multi-word "Для Каждого" is handled before single-word mapping.
 KEYWORDS = {

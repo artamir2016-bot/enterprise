@@ -37,7 +37,12 @@ TRANSLATE_BSL = False
 
 
 def maybe_translate(code):
-    if code and TRANSLATE_BSL:
+    if not code:
+        return code
+    # Always resolve 1C conditional compilation / region markers (OES has no client/server split);
+    # this touches directives only, never identifiers, so verbatim binding is preserved.
+    code = bsl_to_ves.preprocess_onec_module(code)
+    if TRANSLATE_BSL:
         return bsl_to_ves.translate(code)
     return code
 
