@@ -227,6 +227,13 @@ public:
 		return m_propertyGlobalModule->GetValueAsBoolean();
 	}
 
+	// OES-IMPORT: set the global-module flag (1C CommonModule.Global). Used by the
+	// JSON-spec builder; a global module merges into the global namespace and compiles
+	// eagerly at base open, so the importer only sets it for server-visible modules.
+	virtual void SetGlobalModule(bool bGlobal) {
+		m_propertyGlobalModule->SetValue(bGlobal);
+	}
+
 	// Manager-module flag — false on plain common module, true on
 	// ibValueMetaObjectManagerModule. Replaces the explicit managerModule
 	// argument that was passed to mm->AddCommonModule.

@@ -272,10 +272,18 @@ def _map_form_children(child_items, in_table):
             if title:
                 node["title"] = title
         elif kind == "group":
-            # A UsualGroup shows its title as a section header when ShowTitle is on
-            # (1C's default when the element is absent). Layout-only columns set
-            # ShowTitle=false and get no header. Carry the title only when shown;
-            # the group's layout is still flattened, but the header survives.
+            # A UsualGroup is now emitted as a REAL nested box (not flattened), so its
+            # child layout has to carry the group's own properties:
+            #   * <Group> child orientation — Vertical (default) / Horizontal /
+            #     AlwaysHorizontal. Drives the box sizer orientation.
+            #   * <ShowTitle> — whether a caption/frame is drawn. 1C's default (element
+            #     absent) is on. Layout-only groups set it false → a plain, untitled box.
+            #   * ColumnGroup lays its children out side-by-side → horizontal by nature.
+            grp = el.find(LF + "Group")
+            gval = _txt(grp).strip().lower() if grp is not None else ""
+            horizontal = ("horizontal" in gval) or (_local(el.tag) == "ColumnGroup")
+            node["orient"] = "horizontal" if horizontal else "vertical"
+
             show = el.find(LF + "ShowTitle")
             shown = (show is None) or (_txt(show).strip().lower() == "true")
             if shown:
@@ -519,6 +527,20 @@ def parse_register(root_el, dump_dir, kind_dir, base_name):
     return out
 
 
+# Import pure managed-client common modules too (OFF by default). A module that is
+# visible ONLY in the managed-client context (Server/ServerCall/ExternalConnection/
+# ClientOrdinaryApplication all false) holds thin-client UI code that references APIs
+# OES's single-process runtime does not have; importing it — and worse, letting it go
+# GLOBAL and compile eagerly at base open — risks crashing the whole session. So skip
+# such modules unless the caller opts in.
+INCLUDE_CLIENT_MODULES = False
+
+
+def _bool_prop(props, tag):
+    el = props.find(MD + tag) if props is not None else None
+    return _txt(el).strip().lower() == "true"
+
+
 def parse_common_module(root_el, dump_dir, base_name):
     obj_el = next(iter(root_el), None)
     if obj_el is None:
@@ -526,8 +548,44 @@ def parse_common_module(root_el, dump_dir, base_name):
     name = parse_props_name(obj_el)
     if not name:
         return None
+
+    # Visibility context — 1C CommonModule compilation-context matrix. OES has no
+    # client/server split at runtime, so we do not carry the matrix verbatim; instead we
+    # (a) DECIDE whether the module belongs in a single-process runtime at all, and
+    # (b) map 1C Global -> OES GlobalModule, but only when the module is server-visible
+    #     (a global module compiles EAGERLY at base open — a client-only global would
+    #      fault the session), otherwise demote it to a plain, name-qualified module.
+    props = obj_el.find(MD + "Properties")
+    ctx = {
+        "global": _bool_prop(props, "Global"),
+        "server": _bool_prop(props, "Server"),
+        "serverCall": _bool_prop(props, "ServerCall"),
+        "externalConnection": _bool_prop(props, "ExternalConnection"),
+        "clientOrdinary": _bool_prop(props, "ClientOrdinaryApplication"),
+        "clientManaged": _bool_prop(props, "ClientManagedApplication"),
+        "privileged": _bool_prop(props, "Privileged"),
+    }
+    server_visible = (ctx["server"] or ctx["serverCall"]
+                      or ctx["externalConnection"] or ctx["clientOrdinary"])
+
+    if not server_visible and not INCLUDE_CLIENT_MODULES:
+        # Pure managed-client module — not runnable in OES's server-like runtime.
+        report["CommonModulesSkippedClient"] += 1
+        sys.stderr.write("SKIP client-only common module: %s\n" % name)
+        return None
+
+    is_global = ctx["global"] and server_visible
+    if ctx["global"] and not server_visible:
+        sys.stderr.write(
+            "NOTE %s: 1C Global but client-only -> imported as non-global\n" % name)
+
     code = read_file(os.path.join(dump_dir, "CommonModules", base_name, "Ext", "Module.bsl"))
-    return {"name": name, "code": maybe_translate(code)}
+    return {
+        "name": name,
+        "code": maybe_translate(code),
+        "global": is_global,
+        "context": ctx,
+    }
 
 
 def iter_object_xml(dump_dir, kind_dir, limit):
@@ -564,10 +622,15 @@ def main():
                          "natively; translation breaks handler/attribute binding)")
     ap.add_argument("--syntax", default="ves", choices=["ves", "ces"],
                     help="configuration script syntax (ves = Russian If/Then style; default)")
+    ap.add_argument("--include-client-modules", action="store_true",
+                    help="also import common modules visible ONLY in the managed-client "
+                         "context (skipped by default — thin-client code that OES's "
+                         "single-process runtime cannot resolve)")
     args = ap.parse_args()
 
-    global TRANSLATE_BSL
+    global TRANSLATE_BSL, INCLUDE_CLIENT_MODULES
     TRANSLATE_BSL = args.translate_bsl
+    INCLUDE_CLIENT_MODULES = args.include_client_modules
 
     only = set(x.strip() for x in args.only.split(",") if x.strip())
 

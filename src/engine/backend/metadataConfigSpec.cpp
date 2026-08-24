@@ -188,7 +188,14 @@ constexpr ibClassID kCtrlColumn   = control_to_clsid("CT_TBLC");  // TableboxCol
 constexpr ibClassID kCtrlNotebook = control_to_clsid("CT_NTBK");  // Notebook
 constexpr ibClassID kCtrlPage     = control_to_clsid("CT_NTPG");  // NotebookPage
 constexpr ibClassID kCtrlBox      = control_to_clsid("CT_BSZR");  // Boxsizer
+constexpr ibClassID kCtrlStaticBox = control_to_clsid("CT_SSZER"); // Staticboxsizer (titled/bordered group)
 constexpr ibClassID kCtrlSizerItem = control_to_clsid("CT_SIZR"); // SizerItem — the layout wrapper
+
+// wxOrientation values (wx/defs.h, stable ABI) — used for the box sizer "Orient" enum
+// (ibValueEnumOrient stores the raw wx constant). Hardcoded so this backend TU stays
+// GUI-header-free (no wx/defs.h include in backend.dll).
+constexpr int kOrientHorizontal = 4;   // wxHORIZONTAL
+constexpr int kOrientVertical   = 8;   // wxVERTICAL
 
 constexpr ibMetaID kFormMainAttrId = 1;   // object form's main attribute (ctor-assigned, first attribute)
 constexpr int      kFormRootId     = 1;   // the form control's own id (frontend defaultFormId)
@@ -287,38 +294,45 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	const wxString kind = JStr(c, "kind", wxT("field")).Lower();
 	const wxString name = JStr(c, "name");
 
-	// GROUPS (UsualGroup / ColumnGroup / box) are still emitted TRANSPARENTLY —
-	// their children are lifted into the parent instead of a nested Boxsizer.
-	// Nested Boxsizers in a LOADED tree are a separate, unverified layout path;
-	// flattening keeps a proven-flat shape while preserving field selection,
-	// order and bindings. A group inside a page therefore contributes its fields
-	// straight to that page (its section box is dropped, its tab is not).
+	// GROUPS (1C UsualGroup / ColumnGroup) are now emitted as REAL nested boxes,
+	// honouring the group's own layout properties:
+	//   * "orient" (from 1C <Group>) → the box sizer orientation. A ColumnGroup and
+	//     a Horizontal UsualGroup lay children side-by-side; the default is vertical.
+	//   * a shown title (ShowTitle on + Title present) → a Staticboxsizer (a bordered,
+	//     captioned group frame); a layout-only group → a plain Boxsizer.
+	// Children are laid out INSIDE the box (Host::Sizerable), so field grouping and
+	// side-by-side arrangement survive instead of collapsing into one flat column.
 	//
-	// NOTEBOOKS / PAGES are now emitted as REAL controls (a CT_NTBK holding
-	// CT_NTPG pages). The access violation that once forced flattening them was a
-	// SizerItem-misclassified-as-sizer bug in ibVisualHost::RefreshControl
-	// (SetSizer walking a bare wxObject sentinel), fixed separately; a notebook
-	// page's direct children — SizerItem cells whose parent is the page WINDOW —
-	// were exactly what tripped it, so tabs load correctly now.
+	// NOTEBOOKS / PAGES are likewise REAL controls (a CT_NTBK holding CT_NTPG pages).
 	if (kind == wxT("group") || kind == wxT("box")) {
-		// A 1C UsualGroup shown with a title (ShowTitle, default on) contributes a
-		// section HEADER. We keep the group's layout flattened but surface that
-		// header as an unbound Statictext before the group's fields, so the tab
-		// reads "Целая часть / <fields> / Дробная часть / <fields>" rather than one
-		// undifferentiated list. The importer only sets "title" when 1C actually
-		// shows it (layout-only columns set ShowTitle=false and carry none).
-		const wxString title = JStr(c, "title");
-		if (!title.IsEmpty()) {
-			json header;
-			header["kind"]  = "label";
-			header["name"]  = JStr(c, "name").utf8_str().data();  // group name → header id in the tree
-			header["title"] = title.utf8_str().data();
-			BuildControlNode(parent, header, maps, nextId, tableId, host);
-		}
 		auto ch = c.find("children");
-		if (ch != c.end() && ch->is_array())
-			for (const json& sub : *ch)
-				BuildControlNode(parent, sub, maps, nextId, tableId, host);
+		const bool hasChildren = (ch != c.end() && ch->is_array() && !ch->empty());
+		const wxString title = JStr(c, "title");
+		// An empty group (e.g. a ButtonGroup whose buttons aren't imported) has
+		// nothing to lay out — drop it rather than emit a stray empty box.
+		if (!hasChildren)
+			return;
+
+		const bool titled = !title.IsEmpty();
+		const int orient = (JStr(c, "orient").Lower() == wxT("horizontal"))
+			? kOrientHorizontal : kOrientVertical;
+
+		// The box rides a SizerItem cell in a Sizerable parent (expanded to fill it);
+		// in the degenerate non-sizerable case it attaches directly.
+		ibDataNode* boxParent = &parent;
+		if (host == Host::Sizerable)
+			boxParent = &AddSizerItem(parent, nextId, Layout::Sizer);
+		const int id = nextId++;
+		ibDataNode& box = boxParent->AddChild(titled ? kCtrlStaticBox : kCtrlBox, id);
+		box.SetValue(wxT("ControlId"), (s32)id);
+		box.SetValue(wxT("Name"), name);
+		box.SetValue(wxT("Expanded"), true);
+		box.SetProperty(wxT("Orient"), ibDataValue::Int(orient));
+		if (titled)
+			box.SetProp<wxString>(wxT("Title"), title);
+
+		for (const json& sub : *ch)
+			BuildControlNode(box, sub, maps, nextId, tableId, Host::Sizerable);
 		return;
 	}
 
@@ -526,6 +540,31 @@ bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
 				owner->GetMetaID(), refMap, owner->GetMetaData());
 			if (!formData.IsEmpty())
 				form->SetFormData(formData);
+
+			// Assign the imported form as the owner's DEFAULT form for its kind.
+			// Without this the catalog/document has no default-form property set, so
+			// GetObjectForm() synthesises a flat auto-form and the imported control
+			// tree (its groups / layout) is never shown. 1C form type -> OES FormType
+			// id + the owner default-form property (ids match across record metatypes:
+			// eFormObject=1, eFormList=2; catalog-only eFormSelect=3 / eFormFolder=4).
+			const wxString ftype = JStr(f, "type", wxT("object")).Lower();
+			int      formTypeId = 0;
+			wxString defProp;
+			if      (ftype == wxT("object")) { formTypeId = 1; defProp = wxT("DefaultFormObject"); }
+			else if (ftype == wxT("list"))   { formTypeId = 2; defProp = wxT("DefaultFormList");   }
+			else if (ftype == wxT("select")) { formTypeId = 3; defProp = wxT("DefaultFormSelect");  }
+			else if (ftype == wxT("folder")) { formTypeId = 4; defProp = wxT("DefaultFormFolder");  }
+
+			if (formTypeId != 0) {
+				// Tag the form with its OES type first — the default-form list validates
+				// candidates by GetTypeForm(), so this must precede the assignment.
+				if (ibProperty* ftp = form->GetProperty(wxT("FormType")))
+					ftp->SetValue(wxVariant((long)formTypeId));
+				// First imported form of each kind wins (leave a user-set default alone).
+				if (ibProperty* dfp = owner->GetProperty(defProp))
+					if (dfp->IsEmptyProperty())
+						dfp->SetValue(wxVariant((long)obj->GetMetaID()));
+			}
 		}
 	}
 	return true;
@@ -696,6 +735,15 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 				auto* mod = dynamic_cast<ibValueMetaObjectCommonModule*>(obj);
 				if (mod == nullptr) { err = wxString::Format(wxT("'%s' is not a common module"), name); return false; }
 				mod->SetModuleText(JStr(node, "code"));
+				// OES-IMPORT: honour the 1C CommonModule visibility context. A global module
+				// merges into the global namespace (unqualified calls) and compiles eagerly at
+				// base open; a plain one is bound by name (qualified Name.Method()). The importer
+				// only marks server-visible modules global.
+				{
+					auto gi = node.find("global");
+					if (gi != node.end() && gi->is_boolean())
+						mod->SetGlobalModule(gi->get<bool>());
+				}
 			}
 		}
 	}
