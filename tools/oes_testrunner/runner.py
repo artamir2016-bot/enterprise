@@ -82,10 +82,11 @@ class Context:
         self._next_port = 1653
         self._launches: dict[str, int] = {}   # role -> how many times we've spawned it this run
 
-    # A file base is EXCLUSIVE — at most ONE live instance per role, ever. If a launched instance
-    # dies/hangs (a bad module can crash it on form open), we must NOT keep spawning replacements
-    # (that stampede N zombie processes onto the locked base). Cap spawns per role.
-    _MAX_LAUNCHES = 2
+    # A file base is EXCLUSIVE — at most ONE live instance per role at a time. A launched instance can
+    # crash on a specific form open; we terminate the dead/stuck proc before spawning a replacement
+    # (never two at once), so a long run recovers from occasional crashes instead of the whole tail
+    # failing. The cap is only a runaway backstop (a form that crashes EVERY relaunch still stops).
+    _MAX_LAUNCHES = 300
 
     def _reap_dead(self, role: str):
         proc = self.procs.get(role)
