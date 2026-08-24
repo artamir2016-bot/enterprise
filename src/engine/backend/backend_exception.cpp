@@ -305,7 +305,11 @@ void ibBackendException::ProcessError(const wxString& strFileName,
 	//throw this exception
 	// COMPILE side: the only caller is ibCompileCode::DoSetError, i.e. the text
 	// was refused before it ever ran.
-	ibBackendCoreException::Error(
+	// The assembled message is DATA — it embeds the offending source line, which can contain '%'
+	// (e.g. НСтр("… 20 %…")). Error() is a printf-style vararg (first arg IS the format), so passing
+	// the message as the format made '%' a bogus conversion → FormatV read a non-existent arg and the
+	// process fast-failed (0xC0000409). Pass it as a "%s" ARGUMENT. See CLAUDE.md / docs/exceptions.md.
+	ibBackendCoreException::Error(wxT("%s"),
 		ibBackendException::ProcessExceptionError(strFileName, strModuleName, strDocPath, currPos, currLine, strCodeError, codeError, strErrorDesc,
 			ibDiagnosticKind::Compile));
 }
