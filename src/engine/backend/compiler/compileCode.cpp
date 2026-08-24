@@ -8,6 +8,7 @@
 #include "lambdaQueryAst.h"   // L4-2 — lambda body -> L4 query AST (pushdown)
 
 #include "system/systemManager.h"
+#include "backend/backend_type.h"  // OES-RU: ibTranslateRuTypeName (New <type> / Type(...) 1C names)
 #include "backend/guid.h"  // wxNewUniqueGuid for anonymous-lambda synthetic naming
 
 #pragma warning(push)
@@ -4883,7 +4884,8 @@ ibParamUnit ibCompileCode::GetExpression(ibCompileContext* context, int nPriorit
 	}
 	else if ((lex.m_lexType == KEYWORD && lex.m_numData == KEY_NEW)) {
 
-		const wxString strObjectName = GETIdentifier(true);
+		// OES-RU: accept 1C type names for `Новый` — Массив→Array, ДокументСсылка.X→DocumentRef.X, …
+		const wxString strObjectName = ibTranslateRuTypeName(GETIdentifier(true));
 		const int numConst = GetConstString(strObjectName);
 
 		std::vector <ibParamUnit> listParam;

@@ -7,6 +7,7 @@
 
 #include "backend/metaCollection/metaFormObject.h"
 #include "backend/metadataConfiguration.h"
+#include "backend/backend_type.h"   // OES-RU: ibTranslateRuTypeName (Type("…") 1C type names)
 
 #include "backend/backend_mainFrame.h"
 #include "backend/backend_form.h"
@@ -810,30 +811,6 @@ wxString ibValueSystemFunction::Format(ibValue& cData, const wxString& fmt)
 
 #include "backend/system/value/valueType.h"
 
-// OES-RU: map a 1C-style reference type name ("ДокументСсылка.X", "СправочникСсылка.Y", …) to the
-// OES ctor name ("DocumentRef.X", "CatalogRef.Y", …). The OES reference type is
-// <KindClassName> + "Ref." + <Name> (objCtor.h: prefixReference = "Ref."; kind names are the
-// METADATA_TYPE_REGISTER spellings Catalog/Document/Enumeration/…). Only the leading kind-prefix is
-// rewritten; the object name after the dot is imported verbatim and already matches. Non-matching
-// names pass through unchanged.
-static wxString ibTranslateOnecTypeName(const wxString& name)
-{
-	struct Pair { const char* ru; const char* oes; };
-	static const Pair k[] = {
-		{ "\xD0\xA1\xD0\xBF\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBE\xD1\x87\xD0\xBD\xD0\xB8\xD0\xBA\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "CatalogRef." },                                                 // СправочникСсылка.
-		{ "\xD0\x94\xD0\xBE\xD0\xBA\xD1\x83\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x82\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "DocumentRef." },                                                             // ДокументСсылка.
-		{ "\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD1\x87\xD0\xB8\xD1\x81\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "EnumerationRef." },                         // ПеречислениеСсылка.
-		{ "\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD0\x92\xD0\xB8\xD0\xB4\xD0\xBE\xD0\xB2\xD0\xA5\xD0\xB0\xD1\x80\xD0\xB0\xD0\xBA\xD1\x82\xD0\xB5\xD1\x80\xD0\xB8\xD1\x81\xD1\x82\xD0\xB8\xD0\xBA\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "ChartOfCharacteristicTypesRef." }, // ПланВидовХарактеристикСсылка.
-		{ "\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD0\xA1\xD1\x87\xD0\xB5\xD1\x82\xD0\xBE\xD0\xB2\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "ChartOfAccountsRef." },                                       // ПланСчетовСсылка.
-	};
-	for (const Pair& p : k) {
-		const wxString ru = wxString::FromUTF8(p.ru);
-		if (name.StartsWith(ru))
-			return wxString::FromAscii(p.oes) + name.Mid(ru.length());
-	}
-	return name;
-}
-
 ibValue ibValueSystemFunction::Type(const ibValue& cTypeName)
 {
 	if (cTypeName.GetType() != ibValueTypes::TYPE_STRING) {
@@ -841,8 +818,8 @@ ibValue ibValueSystemFunction::Type(const ibValue& cTypeName)
 		return ibValue();
 	}
 
-	// Accept 1C-style reference type names natively (ДокументСсылка.X → DocumentRef.X).
-	const wxString strTypeName = ibTranslateOnecTypeName(cTypeName.GetString());
+	// Accept 1C-style type names natively (ДокументСсылка.X → DocumentRef.X, Массив → Array, …).
+	const wxString strTypeName = ibTranslateRuTypeName(cTypeName.GetString());
 	if (!activeMetaData->IsRegisterCtor(strTypeName))
 		ibBackendCoreException::Error(_("Type not found '%s'"), strTypeName);
 

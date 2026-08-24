@@ -7,6 +7,12 @@
 #include "backend/query/queryColumn.h"     // ibBackendAbstractColumn (name/synonym/comment) + ibBackendSourceColumn
 #include "backend/sourceDescription.h"     // ibSourceDescription — control's bound source path (GetSourceDesc / SetDefaultSourceType)
 
+// OES-RU: map a 1C-style type name to its OES ctor name so raw Russian modules resolve types
+// natively. Reference kinds by leading prefix (ДокументСсылка.X → DocumentRef.X); built-in creatable
+// types as whole words (Массив → Array, ТаблицаЗначений → Table, …). Non-matching names pass
+// through unchanged. Used by the compiler's `New <type>` and by the Type("…") built-in.
+BACKEND_API wxString ibTranslateRuTypeName(const wxString& name);
+
 //////////////////////////////////////////////////////////////
 
 class BACKEND_API ibBackendTypeFactory {
