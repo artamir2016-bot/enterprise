@@ -41,9 +41,19 @@ ibFrontendMainFrameEnterprise::~ibFrontendMainFrameEnterprise()
 
 #include "backend/appData.h"
 #include "backend/session/sessionRegistry.h"
+#include "backend/diagnostics/crashGuard.h"   // OES-TEST: SuppressDialogs (background runs)
 
 void ibFrontendMainFrameEnterprise::BackendError(const wxString& strFileName, const wxString& strDocPath, const long currLine, const wxString& strErrorMessage) const
 {
+	// OES-TEST: background/automated run (--minimized / --testagent) — the "Critical failure" modal
+	// (ibDialogError, STAY_ON_TOP) would pop over every window even minimized and block the test
+	// agent. Suppress it: route the error to the output window (the non-destructive "Close window"
+	// path) and continue. The error is also captured by the diagnostic tap.
+	if (ibCrashGuard::SuppressDialogs()) {
+		outputWindow->OutputError(strErrorMessage);
+		return;
+	}
+
 	//open error dialog
 	std::shared_ptr<ibDialogError> errDlg(new ibDialogError(mainFrame, wxID_ANY));
 	
