@@ -100,7 +100,21 @@ enum
 	enChartsOfAccounts,
 	enAccountingRegisters,
 	enScheduledJobs,
-	enSessionParameters
+	enSessionParameters,
+	// OES-RU: Russian aliases for the global collection namespaces (1C-style module code:
+	// Перечисления.X.Value, Справочники.Y, Документы.Z …). Same managers as the English props.
+	enRuConstants,
+	enRuCatalogs,
+	enRuDocuments,
+	enRuEnumerations,
+	enRuDataProcessors,
+	enRuReports,
+	enRuInformationRegisters,
+	enRuAccumulationRegisters,
+	enRuChartsOfCharacteristicTypes,
+	enRuChartsOfAccounts,
+	enRuAccountingRegisters,
+	enRuSessionParameters
 };
 
 void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
@@ -124,6 +138,20 @@ void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
 	// The configuration's own declared parameters of this session. Read anywhere,
 	// written only by the session module (metaSessionParameterObject.h).
 	helper.AppendProp(wxT("SessionParameters"));
+
+	// OES-RU: Russian aliases (order must match the enRu* enum block). UTF-8 byte escapes — no /utf-8.
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9A\xD0\xBE\xD0\xBD\xD1\x81\xD1\x82\xD0\xB0\xD0\xBD\xD1\x82\xD1\x8B"));                                         // Константы
+	helper.AppendProp(wxString::FromUTF8("\xD0\xA1\xD0\xBF\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBE\xD1\x87\xD0\xBD\xD0\xB8\xD0\xBA\xD0\xB8"));                         // Справочники
+	helper.AppendProp(wxString::FromUTF8("\xD0\x94\xD0\xBE\xD0\xBA\xD1\x83\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x82\xD1\x8B"));                                         // Документы
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD1\x87\xD0\xB8\xD1\x81\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"));                 // Перечисления
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9E\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD0\xBA\xD0\xB8"));                                         // Обработки
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9E\xD1\x82\xD1\x87\xD0\xB5\xD1\x82\xD1\x8B"));                                                                 // Отчеты
+	helper.AppendProp(wxString::FromUTF8("\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD1\x8B\xD0\xA1\xD0\xB2\xD0\xB5\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB9"));                 // РегистрыСведений
+	helper.AppendProp(wxString::FromUTF8("\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD1\x8B\xD0\x9D\xD0\xB0\xD0\xBA\xD0\xBE\xD0\xBF\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"));   // РегистрыНакопления
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD1\x8B\xD0\x92\xD0\xB8\xD0\xB4\xD0\xBE\xD0\xB2\xD0\xA5\xD0\xB0\xD1\x80\xD0\xB0\xD0\xBA\xD1\x82\xD0\xB5\xD1\x80\xD0\xB8\xD1\x81\xD1\x82\xD0\xB8\xD0\xBA")); // ПланыВидовХарактеристик
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD1\x8B\xD0\xA1\xD1\x87\xD0\xB5\xD1\x82\xD0\xBE\xD0\xB2"));                         // ПланыСчетов
+	helper.AppendProp(wxString::FromUTF8("\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD1\x8B\xD0\x91\xD1\x83\xD1\x85\xD0\xB3\xD0\xB0\xD0\xBB\xD1\x82\xD0\xB5\xD1\x80\xD0\xB8\xD0\xB8")); // РегистрыБухгалтерии
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xB0\xD1\x80\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x82\xD1\x80\xD1\x8B\xD0\xA1\xD0\xB5\xD0\xB0\xD0\xBD\xD1\x81\xD0\xB0")); // ПараметрыСеанса
 }
 
 #include "backend/metaCollection/metaSessionParameterObject.h"   // the metatype AND the value it yields
@@ -177,6 +205,44 @@ bool ibValueGlobalContextManager::GetPropVal(const long lPropNum, ibValue& pvarP
 		pvarPropVal = new ibValueScheduledJobsManager(m_metaData);
 		return true;
 	case enSessionParameters:
+		pvarPropVal = new ibValueSessionParameters(m_metaData);
+		return true;
+
+	// OES-RU: Russian-alias props resolve to the SAME managers as their English counterparts.
+	case enRuConstants:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaConstantCLSID, m_metaData);
+		return true;
+	case enRuCatalogs:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaCatalogCLSID, m_metaData);
+		return true;
+	case enRuDocuments:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaDocumentCLSID, m_metaData);
+		return true;
+	case enRuEnumerations:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaEnumerationCLSID, m_metaData);
+		return true;
+	case enRuDataProcessors:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaDataProcessorCLSID, m_metaData);
+		return true;
+	case enRuReports:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaReportCLSID, m_metaData);
+		return true;
+	case enRuInformationRegisters:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaInformationRegisterCLSID, m_metaData);
+		return true;
+	case enRuAccumulationRegisters:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaAccumulationRegisterCLSID, m_metaData);
+		return true;
+	case enRuChartsOfCharacteristicTypes:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaChartOfCharacteristicTypesCLSID, m_metaData);
+		return true;
+	case enRuChartsOfAccounts:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaChartOfAccountsCLSID, m_metaData);
+		return true;
+	case enRuAccountingRegisters:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaAccountingRegisterCLSID, m_metaData);
+		return true;
+	case enRuSessionParameters:
 		pvarPropVal = new ibValueSessionParameters(m_metaData);
 		return true;
 	}
