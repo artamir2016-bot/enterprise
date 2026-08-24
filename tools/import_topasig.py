@@ -49,13 +49,32 @@ def _src_count(kind: str) -> int:
     return len([f for f in os.listdir(d) if f.endswith(".xml")])
 
 
-def run_batch(kinds: list[str], limit: int, name: str) -> bool:
+def _strip_modules(spec_path: str) -> int:
+    """Drop object/manager/form modules from a spec — for a GUI-smoke base where forms must OPEN
+    regardless of BSL->VES module-translation quality (module compile errors are a separate concern)."""
+    with open(spec_path, encoding="utf-8") as f:
+        data = json.load(f)
+    n = 0
+    for key in ("catalogs", "documents"):
+        for obj in data.get(key, []):
+            for mk in ("objectModule", "managerModule"):
+                if mk in obj:
+                    del obj[mk]; n += 1
+            for form in obj.get("forms", []):
+                if form.get("module"):
+                    form["module"] = ""; n += 1
+    with open(spec_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    return n
+
+
+def run_batch(kinds: list[str], limit: int, name: str, no_modules: bool = False) -> bool:
     os.makedirs(OUT, exist_ok=True)
     spec = os.path.join(OUT, f"{name}.json")
     mcf = os.path.join(OUT, f"{name}.mcf")
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
 
-    print(f"\n=== batch '{name}': kinds={kinds} limit={limit} ===")
+    print(f"\n=== batch '{name}': kinds={kinds} limit={limit} no_modules={no_modules} ===")
 
     # 1. convert
     cmd = [PY, os.path.join(HERE, "onec_to_spec.py"), SRC, spec, "--only", ",".join(kinds)]
@@ -66,6 +85,10 @@ def run_batch(kinds: list[str], limit: int, name: str) -> bool:
         print("  [FAIL] convert:", r.stderr[-500:])
         return False
     print("  [ok] convert")
+
+    # 1b. optionally strip modules (GUI-smoke base: forms must open even if a module won't compile)
+    if no_modules:
+        print(f"  [ok] strip modules: {_strip_modules(spec)} removed")
 
     # 2. build
     r = subprocess.run([GEN, spec, mcf, "--verify"], capture_output=True, text=True, encoding="utf-8")
@@ -97,6 +120,9 @@ def main() -> int:
     ap.add_argument("--all", action="store_true", help="all supported kinds")
     ap.add_argument("--limit", type=int, default=5, help="max objects per kind (0 = all)")
     ap.add_argument("--name", default=None, help="output batch name (spec/.mcf basename)")
+    ap.add_argument("--no-modules", action="store_true",
+                    help="strip object/manager/form modules (GUI-smoke base: forms open regardless "
+                         "of BSL->VES module-translation quality)")
     args = ap.parse_args()
 
     kinds = ALL_KINDS if args.all else [k.strip() for k in args.kinds.split(",") if k.strip()]
@@ -106,7 +132,7 @@ def main() -> int:
         return 2
     name = args.name or ("all" if args.all else "_".join(kinds).lower()) + (f"_{args.limit}" if args.limit else "")
 
-    ok = run_batch(kinds, args.limit, name)
+    ok = run_batch(kinds, args.limit, name, args.no_modules)
     print("\nИТОГ:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 
