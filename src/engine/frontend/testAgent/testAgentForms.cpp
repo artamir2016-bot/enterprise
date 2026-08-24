@@ -264,11 +264,21 @@ namespace {
 		if (cat == nullptr)
 			throw std::runtime_error("catalog not found: " + ToUtf8(name));
 
-		ibBackendValueForm* form = (kind == "list") ? cat->GetListForm() : cat->GetObjectForm();
-		if (form == nullptr)
-			throw std::runtime_error("could not create form");
-		form->ShowForm();
-		return json{ {"opened", true} };
+		const bool listKind = (kind == "list");
+		// DEFERRED: opening an OBJECT form runs the ОбработкаЗаполнения (Filling) handler and compiles
+		// the object module — either can raise a modal error dialog. Run it inline in this socket
+		// callback and that modal blocks the agent forever. On the event loop the modal interceptor
+		// auto-answers it; the reply returns at once. The runner settles briefly before asserting.
+		if (wxTheApp != nullptr) {
+			wxTheApp->CallAfter([cat, listKind]() {
+				try {
+					ibBackendValueForm* form = listKind ? cat->GetListForm() : cat->GetObjectForm();
+					if (form != nullptr)
+						form->ShowForm();
+				} catch (...) { /* errors surface via the diagnostic/modal taps */ }
+			});
+		}
+		return json{ {"opened", true}, {"deferred", true} };
 	}
 
 	// OES-TEST: close every open form and every secondary top-level window (e.g. «Все функции»),

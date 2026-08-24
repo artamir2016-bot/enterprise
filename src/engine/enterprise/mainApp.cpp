@@ -62,6 +62,9 @@ void ibAppEnterprise::OnInitCmdLine(wxCmdLineParser& parser)
 
 	// OES-TEST: --testagent[=port] — embedded test-automation agent (docs/test-automation.md).
 	parser.AddOption(wxT("testagent"), wxT("testagent"), "Test-automation agent port", wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
+	// OES-TEST: --minimized — start iconified (background test runs that don't record video: no
+	// window steals focus; programmatic form/control commands need no visible window).
+	parser.AddSwitch(wxT("minimized"), wxT("minimized"), "Start with the main window minimized", wxCMD_LINE_PARAM_OPTIONAL);
 
 	return wxApp::OnInitCmdLine(parser);
 }
@@ -92,6 +95,9 @@ bool ibAppEnterprise::OnCmdLineParsed(wxCmdLineParser& parser)
 	wxString taPort;
 	if (parser.Found(wxT("testagent"), &taPort))
 		m_testAgentPort = taPort.IsEmpty() ? ibTestAgent::kDefaultTestAgentPort : wxAtoi(taPort);
+
+	// OES-TEST: --minimized
+	m_startMinimized = parser.Found(wxT("minimized"));
 
 	return wxApp::OnCmdLineParsed(parser);
 }
@@ -317,6 +323,10 @@ int ibAppEnterprise::DoOnRun()
 		frame->Destroy();
 		return 1;
 	}
+
+	// OES-TEST: --minimized — iconify so background test runs don't steal the screen/focus.
+	if (m_startMinimized)
+		frame->Iconize(true);
 
 	// OES-TEST: start the test-automation agent after the main frame exists. Off unless
 	// --testagent[=port] was passed. See docs/test-automation.md.

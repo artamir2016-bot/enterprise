@@ -29,6 +29,7 @@ class ibAppEnterprise : public ibWxApp {
 
 	// OES-TEST: --testagent[=port] starts the embedded test-automation agent (-1 = off).
 	int m_testAgentPort = -1;
+	bool m_startMinimized = false;   // OES-TEST: --minimized (background test runs, no video)
 
 #ifdef DEBUG
 	//LOCALE

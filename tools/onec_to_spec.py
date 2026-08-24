@@ -27,8 +27,13 @@ from collections import Counter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bsl_to_ves  # noqa: E402
 
-# Toggled by --no-translate-bsl; when True, BSL module code is translated to VES.
-TRANSLATE_BSL = True
+# Translation is OFF by default: OES natively runs Russian BSL (Cyrillic identifiers, ~35 Russian
+# keyword aliases, 64 Russian system-function aliases, event names ПередЗаписью… via ibRuEventAlias).
+# Translating identifiers to English BREAKS binding — an event handler ПередЗаписью becomes an
+# unrecognised "BeforeRecord", and an attribute reference НомерРейса becomes "NumberReysa" that no
+# longer matches the verbatim-Cyrillic metadata ("Переменная не определена"). Raw Russian modules
+# compile and bind natively (verified). Opt back into translation with --translate-bsl.
+TRANSLATE_BSL = False
 
 
 def maybe_translate(code):
@@ -549,14 +554,22 @@ def main():
     ap.add_argument("out_json")
     ap.add_argument("--only", default="", help="comma list of kinds to include")
     ap.add_argument("--limit", type=int, default=0, help="max objects per kind (smoke)")
+    ap.add_argument("--translate-bsl", action="store_true",
+                    help="translate module code to English VES (OFF by default — OES runs Russian "
+                         "natively; translation breaks handler/attribute binding)")
+    ap.add_argument("--syntax", default="ves", choices=["ves", "ces"],
+                    help="configuration script syntax (ves = Russian If/Then style; default)")
     args = ap.parse_args()
+
+    global TRANSLATE_BSL
+    TRANSLATE_BSL = args.translate_bsl
 
     only = set(x.strip() for x in args.only.split(",") if x.strip())
 
     def want(kind):
         return not only or kind in only
 
-    spec = {"name": "ImportedConfiguration"}
+    spec = {"name": "ImportedConfiguration", "syntax": args.syntax}
 
     # Configuration name
     cfg_xml = os.path.join(args.dump_dir, "Configuration.xml")

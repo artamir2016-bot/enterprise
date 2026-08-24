@@ -73,12 +73,25 @@ class Context:
     # Fixed port per role so a launch can reconnect to an app left open by an earlier scenario/run.
     _ROLE_PORTS = {"enterprise": 1651, "designer": 1652}
 
-    def __init__(self, bin_dir: str):
+    def __init__(self, bin_dir: str, minimized: bool = False):
         self.bin_dir = bin_dir
+        self.minimized = minimized            # start apps iconified (background runs, no video)
         self.procs: dict[str, subprocess.Popen] = {}
         self.agents: dict[str, TestAgentClient] = {}
         self.current: TestAgentClient | None = None
         self._next_port = 1653
+        self._launches: dict[str, int] = {}   # role -> how many times we've spawned it this run
+
+    # A file base is EXCLUSIVE — at most ONE live instance per role, ever. If a launched instance
+    # dies/hangs (a bad module can crash it on form open), we must NOT keep spawning replacements
+    # (that stampede N zombie processes onto the locked base). Cap spawns per role.
+    _MAX_LAUNCHES = 2
+
+    def _reap_dead(self, role: str):
+        proc = self.procs.get(role)
+        if proc is not None and proc.poll() is not None:   # process has exited
+            self.procs.pop(role, None)
+            self.agents.pop(role, None)
 
     def launch(self, role: str, exe: str, base: str) -> TestAgentClient:
         # 1) already connected in this run and still alive → reuse the same client
@@ -97,6 +110,7 @@ class Context:
                 pass
             self.agents.pop(role, None)
 
+        self._reap_dead(role)
         port = self._ROLE_PORTS.get(role, self._next_port)
 
         # 2) an app from a previous scenario/run may still be up on the fixed port → reconnect
@@ -111,13 +125,33 @@ class Context:
         except Exception:
             pass
 
-        # 3) nothing running → launch a fresh instance
+        # A still-tracked proc that we couldn't reach is hung — terminate it before spawning, so we
+        # never have two instances contending for the exclusive base.
+        stuck = self.procs.pop(role, None)
+        if stuck is not None:
+            try:
+                stuck.terminate(); stuck.wait(timeout=8)
+            except Exception:
+                pass
+            self.agents.pop(role, None)
+
+        # 3) launch a fresh instance — but only up to the cap (else the base is unusable; fail fast)
+        if self._launches.get(role, 0) >= self._MAX_LAUNCHES:
+            raise StepError(f"{role}: клиент не поднимается (уже {self._launches[role]} попытки) — "
+                            f"вероятно, объект роняет предприятие при открытии формы")
         if role not in self._ROLE_PORTS:
             self._next_port += 1
         path = os.path.join(self.bin_dir, exe)
-        proc = subprocess.Popen([path, f'--file={base}', f'--testagent={port}'])
+        cmd = [path, f'--file={base}', f'--testagent={port}']
+        if self.minimized:
+            cmd.append("--minimized")
+        proc = subprocess.Popen(cmd, cwd=self.bin_dir)
         self.procs[role] = proc
-        agent = TestAgentClient(port=port).connect()
+        self._launches[role] = self._launches.get(role, 0) + 1
+        try:
+            agent = TestAgentClient(port=port, timeout=30).connect(retries=40)
+        except Exception as exc:
+            raise StepError(f"{role}: агент не ответил после запуска: {exc}")
         self.agents[role] = agent
         self.current = agent
         return agent
@@ -212,11 +246,13 @@ def _switch(ctx: Context, role):
 @step(r'^Я открываю форму объекта справочника "(.+)"$')
 def _open_object(ctx: Context, name):
     ctx.current.call("openForm", name=name, kind="object")
+    time.sleep(1.2)   # openForm is deferred (modal-safe) — let the form materialize
 
 
 @step(r'^Я открываю форму списка справочника "(.+)"$')
 def _open_list(ctx: Context, name):
     ctx.current.call("openForm", name=name, kind="list")
+    time.sleep(1.0)
 
 
 @step(r'^Я устанавливаю значение поля "(.+)" равным "(.*)"$')
@@ -477,7 +513,7 @@ def run_step(ctx: Context, st: Step) -> None:
 
 
 def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | None = None,
-        wpm: float = 150.0) -> int:
+        wpm: float = 150.0, minimized: bool = False) -> int:
     feature = parse_feature(open(feature_path, encoding="utf-8").read())
     print(f"Функционал: {feature.name}")
 
@@ -487,7 +523,7 @@ def run(feature_path: str, bin_dir: str, junit: str | None, video_dir: str | Non
     # ONE context for the whole feature: apps opened in the Контекст/first scenario are REUSED by
     # later scenarios (reconnect, not relaunch) — a Firebird file base is exclusive, so relaunching
     # the same base would conflict.
-    ctx = Context(bin_dir)
+    ctx = Context(bin_dir, minimized=(video_dir is None and minimized))
 
     for sc in feature.scenarios:
         print(f"  Сценарий: {sc.name}")
@@ -560,8 +596,10 @@ def main() -> int:
     ap.add_argument("--video", default=None, help="record each scenario to MP4 in this dir (needs ffmpeg)")
     ap.add_argument("--narration-wpm", type=float, default=150.0,
                     help="speaking rate for '*' narration groups (words/min; sets video pacing)")
+    ap.add_argument("--minimized", action="store_true",
+                    help="run apps minimized in the background (ignored when --video is set)")
     args = ap.parse_args()
-    return run(args.feature, args.bin, args.junit, args.video, args.narration_wpm)
+    return run(args.feature, args.bin, args.junit, args.video, args.narration_wpm, args.minimized)
 
 
 if __name__ == "__main__":
