@@ -11,6 +11,7 @@
 #include "backend/session/sessionRegistry.h"
 #include "frontend/testAgent/testAgent.h"  // OES-TEST: embedded test-automation agent (--testagent)
 #include "backend/diagnostics/crashGuard.h" // OES-TEST: SetSuppressDialogs (background runs)
+#include <wx/log.h>                          // OES-TEST: route wxLog off the GUI target in background
 
 #include <wx/clipbrd.h>
 #include <wx/fs_arc.h>
@@ -102,8 +103,13 @@ bool ibAppEnterprise::OnCmdLineParsed(wxCmdLineParser& parser)
 
 	// OES-TEST: a background/automated run (minimized or driven by the test agent) must never pop a
 	// critical-error dialog over every window — suppress them; errors are logged + captured by taps.
-	if (m_startMinimized || m_testAgentPort >= 0)
+	if (m_startMinimized || m_testAgentPort >= 0) {
 		ibCrashGuard::SetSuppressDialogs(true);
+		// The default wxLog target is wxLogGui — any wxLogError (e.g. from OnExceptionInMainLoop) pops
+		// a message dialog on the next idle, which flashes over every window before the agent's
+		// closeAllWindows dismisses it. Route logging to stderr so nothing is shown.
+		delete wxLog::SetActiveTarget(new wxLogStderr());
+	}
 
 	return wxApp::OnCmdLineParsed(parser);
 }
