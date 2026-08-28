@@ -285,6 +285,28 @@ ibDataNode& AddSizerItem(ibDataNode& parent, int& nextId, Layout layout) {
 	return si;
 }
 
+// Set a control node's event handlers from the spec's "events" map (OES-event-name -> procedure
+// name). Each becomes an ibEventControl property — serialised as a Child node { Name, Value } — so
+// the loaded control fires that form-module procedure through CallAsEvent. The importer has already
+// mapped 1C event ids to OES's own per-kind ids, so this sets exactly what it is handed.
+void SetControlEvents(ibDataNode& node, const json& c) {
+	auto ev = c.find("events");
+	if (ev == c.end() || !ev->is_object())
+		return;
+	for (auto it = ev->begin(); it != ev->end(); ++it) {
+		if (!it.value().is_string())
+			continue;
+		const wxString evName  = wxString::FromUTF8(it.key().c_str());
+		const wxString handler = wxString::FromUTF8(it.value().get<std::string>().c_str());
+		if (evName.IsEmpty() || handler.IsEmpty())
+			continue;
+		auto evNode = std::make_shared<ibDataNode>();
+		evNode->SetValue(wxT("Name"),  evName);    // the event's binding name
+		evNode->SetValue(wxT("Value"), handler);   // the form-module procedure to call
+		node.SetProperty(evName, ibDataValue::Child(evNode));
+	}
+}
+
 // Emit one control (and its children) under `parent`. `host` says how the parent lays children out:
 // a Sizerable parent wraps each child in a SizerItem, a Notebook/Table parent adds pages/columns
 // directly. `tableId` is the enclosing tablebox's section metaId (0 otherwise) so a column resolves
@@ -365,6 +387,14 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	node.SetValue(wxT("ControlId"), (s32)id);
 	node.SetValue(wxT("Name"), name);
 	node.SetValue(wxT("Expanded"), true);
+
+	// EVENT HANDLERS. "events" is a map of OES-event-name -> form-module procedure. Each becomes an
+	// ibEventControl property (a Child node with Name + Value): serialised as the handler NAME, it is
+	// materialised at run time into a named ibValueEvent and fired through ibValueFrame::CallAsEvent ->
+	// CallAsProc(handler). So an imported OnChange / OnCheckboxClicked / Selection etc. actually runs
+	// the form procedure the 1C form bound to that event. The names are already mapped to OES's own
+	// event ids (per control kind) by the importer, so this just sets what it is handed.
+	SetControlEvents(node, c);
 
 	// Data binding. Field/checkbox/statictext bind to an object attribute; a
 	// table binds to its tabular section; a column adds the leaf column hop.

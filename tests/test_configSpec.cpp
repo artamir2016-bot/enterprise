@@ -308,6 +308,68 @@ TEST(ConfigSpec, BuildFromJson_CreatesFormControlTree) {
 	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
 }
 
+TEST(ConfigSpec, BuildFromJson_ControlEventBindsHandler) {
+	// A control's "events" map binds form-module procedures to OES control events. Each lands in
+	// the FormData blob as an ibEventControl property (a Child node { Name, Value=handler }), which
+	// the form runtime materialises into a named event and FIRES via CallAsEvent -> CallAsProc. So an
+	// imported OnChange / OnCheckboxClicked handler actually runs the procedure the 1C form bound.
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [ { "name": "Price", "type": "Number" }, { "name": "Active", "type": "Boolean" } ],
+	      "forms": [
+	        { "name": "ItemForm", "type": "object",
+	          "controls": [
+	            { "kind": "field",    "name": "PriceField", "attr": "Price",
+	              "events": { "OnChange": "PriceFieldOnChange" } },
+	            { "kind": "checkbox", "name": "ActiveFlag", "attr": "Active",
+	              "events": { "OnCheckboxClicked": "ActiveFlagOnChange" } }
+	          ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectForm* form = FindFirstForm(cfg.GetCommonMetaObject());
+	ASSERT_NE(form, nullptr);
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(form->GetFormData());
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+
+	// The control node carrying a given clsid, or null.
+	std::function<const ibDataNode*(const ibDataNode&, ibClassID)> findCtrl =
+		[&](const ibDataNode& n, ibClassID want) -> const ibDataNode* {
+			for (const ibDataNode& ch : n.Children()) {
+				if (ch.GetClsid() == want) return &ch;
+				if (const ibDataNode* r = findCtrl(ch, want)) return r;
+			}
+			return nullptr;
+		};
+	// The event property is a Child node whose "Value" is the handler procedure name.
+	auto handlerOf = [](const ibDataNode* ctrl, const wxString& ev) -> wxString {
+		if (ctrl == nullptr) return wxString();
+		const ibDataValue v = ctrl->GetProperty(ev);
+		if (v.Kind() != ibDataKind::Child || !v.AsChild()) return wxString();
+		return v.AsChild()->GetValue<wxString>(wxT("Value"));
+	};
+
+	const ibDataNode* field = findCtrl(*rootVal.AsChild(), control_to_clsid("CT_TXTC"));
+	ASSERT_NE(field, nullptr);
+	EXPECT_EQ(handlerOf(field, wxT("OnChange")), wxT("PriceFieldOnChange"));
+
+	const ibDataNode* chk = findCtrl(*rootVal.AsChild(), control_to_clsid("CT_CHKB"));
+	ASSERT_NE(chk, nullptr);
+	EXPECT_EQ(handlerOf(chk, wxT("OnCheckboxClicked")), wxT("ActiveFlagOnChange"));
+
+	// Config byte round-trip holds with the event bindings embedded.
+	wxMemoryBuffer b1; ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back; ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2; ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+}
+
 TEST(ConfigSpec, BuildFromJson_LabelCarriesTitleIntoBlob) {
 	// A 1C LabelDecoration (kind "label") with a caption must land in the FormData
 	// blob as a Statictext whose "Title" holds the raw-loc-text verbatim. Without
