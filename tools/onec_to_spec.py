@@ -187,6 +187,64 @@ _CTRL_KIND = {
 }
 
 
+# --- form-element event handlers (1C <Events>/<Event name=..> -> OES control events) ----------
+# OES borrowed 1C's English event ids, so most map by identity; only a few differ per control kind.
+# We only emit events the OES control actually declares (frontend widgets.h / tableBox.h / notebook.h),
+# so an unknown 1C event is dropped rather than producing a dead property. The HANDLER (the text of
+# the <Event>) is a form-module procedure name; module code is imported verbatim by default (OES runs
+# Russian natively), so the handler stays verbatim too — it must match the procedure name in the module.
+_OES_EVENTS = {
+    "field":    {"OnChange", "StartChoice", "StartListChoice", "Clearing", "Opening", "ChoiceProcessing"},
+    "checkbox": {"OnCheckboxClicked"},
+    "table":    {"Selection", "OnActivateRow", "BeforeAddRow", "BeforeDeleteRow", "OnAddRow",
+                 "OnDeleteRow", "OnChange", "StartChoice", "StartListChoice", "Clearing",
+                 "Opening", "ChoiceProcessing"},
+    "pages":    {"OnPageChanged"},
+}
+# 1C event id -> OES event id, per kind, only where they differ from identity.
+_EVENT_RENAME = {
+    "checkbox": {"OnChange": "OnCheckboxClicked"},
+    "pages":    {"OnCurrentPageChange": "OnPageChanged"},
+}
+
+# Report counters for imported / dropped form events.
+_EVENT_STATS = {"imported": 0, "dropped": {}}
+
+
+def _ev_handler(text):
+    """The handler procedure name, translated the same way module code is (verbatim by default)."""
+    name = (text or "").strip()
+    if not name:
+        return ""
+    return bsl_to_ves.translate_identifier(name) if TRANSLATE_BSL else name
+
+
+def _control_events(el, kind):
+    """Return {oes_event_name: handler_proc} for a control element's <Events>, or {}."""
+    evs = el.find(LF + "Events")
+    if evs is None:
+        return {}
+    allowed = _OES_EVENTS.get(kind)
+    if not allowed:
+        return {}
+    rename = _EVENT_RENAME.get(kind, {})
+    out = {}
+    for ev in evs:
+        if _local(ev.tag) != "Event":
+            continue
+        onec_name = ev.get("name") or ""
+        handler = _ev_handler(_txt(ev))
+        if not onec_name or not handler:
+            continue
+        oes_name = rename.get(onec_name, onec_name)
+        if oes_name in allowed:
+            out[oes_name] = handler
+            _EVENT_STATS["imported"] += 1
+        else:
+            _EVENT_STATS["dropped"][onec_name] = _EVENT_STATS["dropped"].get(onec_name, 0) + 1
+    return out
+
+
 def _last_seg(path):
     return path.rsplit(".", 1)[-1] if path else ""
 
@@ -290,6 +348,12 @@ def _map_form_children(child_items, in_table):
                 title = _title_loc(el)
                 if title:
                     node["title"] = title
+        # Event handlers — bind the 1C element's <Events> to the OES control's events so the
+        # imported form procedures actually fire (field OnChange, checkbox click, table selection…).
+        events = _control_events(el, kind)
+        if events:
+            node["events"] = events
+
         sub = el.find(LF + "ChildItems")
         if sub is not None:
             children = _map_form_children(sub, kind == "table")
@@ -732,6 +796,15 @@ def main():
     sys.stderr.write("=== import report ===\n")
     for k in sorted(report):
         sys.stderr.write("  %-24s %d\n" % (k, report[k]))
+
+    # Form event handlers: how many element events were bound, and which 1C events were dropped
+    # (no OES equivalent on that control — candidates for a future mapping).
+    sys.stderr.write("  %-24s %d\n" % ("FormEvents", _EVENT_STATS["imported"]))
+    if _EVENT_STATS["dropped"]:
+        drop = sorted(_EVENT_STATS["dropped"].items(), key=lambda kv: -kv[1])
+        sys.stderr.write("=== form events with no OES mapping (dropped) — top 20 ===\n")
+        for name, cnt in drop[:20]:
+            sys.stderr.write("  %-24s %d\n" % (name, cnt))
 
     if TRANSLATE_BSL:
         miss = bsl_to_ves.missing_report()
