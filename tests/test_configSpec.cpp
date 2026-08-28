@@ -273,9 +273,9 @@ TEST(ConfigSpec, BuildFromJson_CreatesFormControlTree) {
 	EXPECT_TRUE(has(control_to_clsid("CT_CHKB")));  // checkbox
 	EXPECT_TRUE(has(control_to_clsid("CT_TABL")));  // table
 	EXPECT_TRUE(has(control_to_clsid("CT_TBLC")));  // column
-	// Groups are flattened (their children lifted into the parent) — a nested Boxsizer
-	// tree crashes the visual host's loaded-tree layout, so no CT_BSZR is emitted.
-	EXPECT_FALSE(has(control_to_clsid("CT_BSZR")));
+	// Groups are emitted as REAL nested boxes: the untitled "Header" group -> a Boxsizer,
+	// its fields laid out inside it (via SizerItems). The 1C grouping is preserved.
+	EXPECT_TRUE(has(control_to_clsid("CT_BSZR")));
 
 	// A widget must sit inside a SizerItem — verify the parent chain is ... -> SizerItem -> control.
 	std::function<bool(const ibDataNode&, ibClassID)> hasChildClsid =
@@ -401,8 +401,8 @@ TEST(ConfigSpec, BuildFromJson_EmitsRealNotebookTabs) {
 	// Two pages emitted.
 	const long pageCount = std::count(clsids.begin(), clsids.end(), control_to_clsid("CT_NTPG"));
 	EXPECT_EQ(pageCount, 2);
-	// Groups inside a page are still flattened (no Boxsizer emitted).
-	EXPECT_FALSE(has(control_to_clsid("CT_BSZR")));
+	// A group inside a page is emitted as a real box too (not flattened).
+	EXPECT_TRUE(has(control_to_clsid("CT_BSZR")));
 
 	// A NotebookPage is added to the Notebook DIRECTLY (no SizerItem between
 	// them); the notebook itself and the page's fields DO ride SizerItem cells.
@@ -446,11 +446,11 @@ TEST(ConfigSpec, BuildFromJson_EmitsRealNotebookTabs) {
 	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
 }
 
-TEST(ConfigSpec, BuildFromJson_GroupTitleBecomesHeader) {
-	// A group carrying a "title" (1C UsualGroup shown with ShowTitle) contributes
-	// a section HEADER: an unbound Statictext emitted before the group's fields,
-	// while the group's own layout stays flattened (no Boxsizer). A group WITHOUT
-	// a title (a layout column) emits no header.
+TEST(ConfigSpec, BuildFromJson_GroupTitleBecomesStaticBox) {
+	// A group carrying a "title" (1C UsualGroup shown with ShowTitle) is emitted as a
+	// STATICBOX sizer (CT_SSZER) — a captioned/bordered frame whose "Title" holds the
+	// group caption. A group WITHOUT a title (a layout column) is a plain Boxsizer
+	// (CT_BSZR). Both wrap their children (the grouping is preserved, not flattened).
 	ibMetaDataConfigurationFile cfg;
 	wxString err;
 	const char* spec = R"JSON({
@@ -477,26 +477,27 @@ TEST(ConfigSpec, BuildFromJson_GroupTitleBecomesHeader) {
 	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(form->GetFormData());
 	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
 
-	// Groups stay flattened (no Boxsizer), and exactly ONE header Statictext is
-	// emitted — for the titled group only.
+	// The titled group -> exactly one StaticBox sizer (CT_SSZER); the plain group -> a
+	// plain Boxsizer (CT_BSZR). No header Statictext is emitted (the caption rides the box).
 	std::vector<ibClassID> clsids;
 	CollectClsids(*rootVal.AsChild(), clsids);
-	EXPECT_EQ(0, std::count(clsids.begin(), clsids.end(), control_to_clsid("CT_BSZR")));
-	const long statics = std::count(clsids.begin(), clsids.end(), control_to_clsid("CT_STTX"));
-	EXPECT_EQ(statics, 1) << "one header for the titled group, none for the plain one";
+	EXPECT_EQ(1, std::count(clsids.begin(), clsids.end(), control_to_clsid("CT_SSZER")))
+		<< "one static box for the titled group";
+	EXPECT_EQ(1, std::count(clsids.begin(), clsids.end(), control_to_clsid("CT_BSZR")))
+		<< "one plain box for the untitled group";
 
-	// That header carries the group's title as its caption.
-	std::function<const ibDataNode*(const ibDataNode&)> findStatic =
+	// The static box carries the group's title as its caption.
+	std::function<const ibDataNode*(const ibDataNode&)> findStaticBox =
 		[&](const ibDataNode& n) -> const ibDataNode* {
 			for (const ibDataNode& ch : n.Children()) {
-				if (ch.GetClsid() == control_to_clsid("CT_STTX")) return &ch;
-				if (const ibDataNode* r = findStatic(ch)) return r;
+				if (ch.GetClsid() == control_to_clsid("CT_SSZER")) return &ch;
+				if (const ibDataNode* r = findStaticBox(ch)) return r;
 			}
 			return nullptr;
 		};
-	const ibDataNode* hdr = findStatic(*rootVal.AsChild());
-	ASSERT_NE(hdr, nullptr);
-	const ibDataValue t = hdr->GetProperty(wxT("Title"));
+	const ibDataNode* box = findStaticBox(*rootVal.AsChild());
+	ASSERT_NE(box, nullptr);
+	const ibDataValue t = box->GetProperty(wxT("Title"));
 	ASSERT_EQ(t.Kind(), ibDataKind::String);
 	EXPECT_EQ(t.AsString(), wxT("ru = 'Section';"));
 }
