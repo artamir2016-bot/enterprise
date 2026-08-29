@@ -1143,11 +1143,17 @@ bool ibValueMetaObjectRegisterData::OnSaveMetaObject(int flags)
 	// Reported, not thrown, and here rather than on the schema declaration: the same reasoning as the
 	// chart of accounts' missing binding — the message belongs in the pane under the editor, the save
 	// refuses, and no exception leaves the configuration write transaction open.
+	// A subordinate register whose Recorder type is EMPTY (no document declares it posts here yet) is a
+	// legitimate INTERMEDIATE state, not a dead end: the register is created and can be reported on, and
+	// the recorder set fills in as the posting documents are written (or, for an IMPORTED configuration,
+	// as the RegisterRecords wiring lands). WARN rather than refuse — the SAME principle the empty-
+	// dimensions branch above and the accumulation register's no-resources / no-recorder branches apply.
+	// Refusing here made EVERY register that has no recorder yet unsavable, which blocked importing a real
+	// configuration register-first and any half-built register during ordinary editing. Nothing can post a
+	// row until a recorder exists, and the warning is what keeps that visible instead of silently broken.
 	if (HasRecorder() && (*m_propertyAttributeRecorder)->IsEmptyTypeDesc()) {
-		ibValueSystemFunction::Message(
-			wxString::Format(_("%s: no recorder - declare a document that posts into this register, or it can never be written to"), GetName()),
-			ibStatusMessage::ibStatusMessage_Error);
-		return false;
+		RestructureWarning(
+			wxString::Format(_("%s: no recorder yet - nothing can post movements into this register until a document declares it posts here"), GetName()));
 	}
 
 	if (!(*m_propertyAttributeLineActive)->OnSaveMetaObject(flags))

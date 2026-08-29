@@ -161,13 +161,10 @@ bool ibValueMetaObjectAccumulationRegister::OnSaveMetaObject(int flags)
 	if (!(*m_propertyObjectModule)->OnSaveMetaObject(flags))
 		return false;
 
-#if _USE_SAVE_METADATA_IN_TRANSACTION == 1
-	if (!((*m_propertyAttributeRecorder)->GetClsidCount() > 0)) {
-		RestructureError(_("! Doesn't have any recorder ") + GetFullName());
-		return false;
-	}
-#endif 
-
+	// The empty-recorder condition is handled once, in ibValueMetaObjectRegisterData::OnSaveMetaObject
+	// (a WARNING, not a refusal): a register with no recorder yet is a legitimate intermediate / freshly
+	// imported state. The old hard refusal here made every such register unsavable on the transactional
+	// path and duplicated the base check — dropped in favour of the single warning below.
 	return ibValueMetaObjectRegisterData::OnSaveMetaObject(flags);
 }
 

@@ -82,10 +82,14 @@ bool ApplyType(ibTypeDescription& td, const json& a, const RefMap& refMap,
 			}
 		}
 		if (refs.empty()) {
-			// Unresolved / out-of-MVP target — degrade to String so the import
-			// stays structural instead of failing.
+			// Unresolved / out-of-MVP target — degrade to a NARROW string placeholder so the
+			// import stays structural instead of failing. A GUID-width bound (36) — NOT length 0,
+			// which maps to VARCHAR(255): a wide document with dozens of unresolved refs (a
+			// partial import where the targets aren't in this slice) would otherwise blow past
+			// the DB's per-row byte limit and stall restructuring. A resolved ref is a 16-byte
+			// key, so 36 keeps a partial import's row width close to the real one.
 			td.SetDefaultMetaType(ibValueTypes::TYPE_STRING);
-			td.m_typeData.SetString(0);
+			td.m_typeData.SetString(36);
 			return true;
 		}
 		if (refs.size() == 1)

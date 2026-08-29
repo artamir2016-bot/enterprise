@@ -283,6 +283,10 @@ int ibAppDesigner::RunBatch()
 						emit(_("Database configuration updated."));
 					else {
 						emit(_("Failed to update the database configuration."));
+						// OES-IMPORT: surface the underlying schema/DB error in batch mode — SaveDatabase
+						// swallows the exception behind a bool, leaving CI/import with a bare "Failed".
+						for (const wxString& e : ibBackendException::DrainLastErrors())
+							emit(wxString::Format(wxT("  %s"), e));
 						exitCode = 1;
 					}
 				}
