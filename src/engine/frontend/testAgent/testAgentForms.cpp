@@ -23,6 +23,8 @@
 #include "frontend/visualView/ctrl/formCommand.h"              // ibFormCommandValue
 #include "frontend/visualView/ctrl/formAttribute.h"            // ibFormAttributeValue (GetValue/SetHeldValue)
 #include "frontend/visualView/visualHostClient.h"              // ibFormVisualDocument::GetOpenForms
+#include "frontend/docView/docView.h"                          // ibDocManager::OpenObjectForm (open a metaobject editor headless)
+#include "backend/metaCollection/metaFormObject.h"             // ibValueMetaObjectForm, g_metaFormCLSID
 
 #include <wx/uiaction.h>   // OES-TEST: REAL OS mouse/keyboard input (for video-able runs)
 #include <wx/window.h>
@@ -276,6 +278,30 @@ namespace {
 					if (form != nullptr)
 						form->ShowForm();
 				} catch (...) { /* errors surface via the diagnostic/modal taps */ }
+			});
+		}
+		return json{ {"opened", true}, {"deferred", true} };
+	}
+
+	// OES-TEST: open a metaobject's EDITOR (the designer form-editor canvas — where an imported
+	// control tree is rendered), by object NAME, WITHOUT a mouse. The tree double-click path goes
+	// through wxUIActionSimulator, whose real clicks only land when the app is the foreground window
+	// (unreliable in background automation); this calls the same entry point (ibDocManager::
+	// OpenObjectForm) the tree activation does, programmatically. Deferred to the event loop so any
+	// modal (a compile error) is auto-answered by the interceptor instead of blocking the socket.
+	json Cmd_OpenMetaEditor(const json& args)
+	{
+		const wxString name = FromUtf8(args.at("name"));
+		auto* md = ibApplicationData::GetActiveMetaData();
+		if (md == nullptr)
+			throw std::runtime_error("no active configuration");
+		auto* form = md->FindAnyObjectByFilter<ibValueMetaObjectForm>(name, g_metaFormCLSID, true);
+		if (form == nullptr)
+			throw std::runtime_error("form not found: " + ToUtf8(name));
+		if (wxTheApp != nullptr) {
+			wxTheApp->CallAfter([form]() {
+				try { ibDocManager::OpenObjectForm(form, ibDOC_NEW); }
+				catch (...) { /* errors surface via the diagnostic / modal taps */ }
 			});
 		}
 		return json{ {"opened", true}, {"deferred", true} };
@@ -1095,6 +1121,7 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "getAttribute")    result = Cmd_GetAttribute(args);
 	else if (cmd == "setAttribute")    result = Cmd_SetAttribute(args);
 	else if (cmd == "openForm")        result = Cmd_OpenForm(args);
+	else if (cmd == "openMetaEditor")  result = Cmd_OpenMetaEditor(args);
 	else if (cmd == "pressCommand")    result = Cmd_PressCommand(args);
 	else if (cmd == "getMessages")     result = Cmd_GetMessages();
 	else if (cmd == "clearMessages")   result = Cmd_ClearMessages();
