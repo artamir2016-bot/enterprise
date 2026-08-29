@@ -184,6 +184,7 @@ _CTRL_KIND = {
     "Pages":           "pages",
     "Page":            "page",
     "Table":           "table",
+    "Button":          "button",
 }
 
 
@@ -329,6 +330,17 @@ def _map_form_children(child_items, in_table):
             title = _title_loc(el)
             if title:
                 node["title"] = title
+        elif kind == "button":
+            # A button carries no data — it DELEGATES its click to a form command,
+            # referenced by <CommandName>Form.Command.XXX</CommandName>. Carry the
+            # command's own name (last segment) so the importer binds it to the
+            # emitted form command; its click then runs that command's Action handler.
+            cmd = el.find(LF + "CommandName")
+            if cmd is not None:
+                node["command"] = _last_seg(_txt(cmd).strip())
+            btitle = _title_loc(el)
+            if btitle:
+                node["title"] = btitle
         elif kind == "group":
             # A UsualGroup is now emitted as a REAL nested box (not flattened), so its
             # child layout has to carry the group's own properties:
@@ -375,6 +387,43 @@ def parse_form_controls(form_xml_path):
     if child_items is None:
         return []
     return _map_form_children(child_items, False)
+
+
+def parse_form_commands(form_xml_path):
+    """Return the form's COMMANDS as [{name, caption, action}], or [].
+
+    A 1C managed form declares its commands under a top-level <Commands> element;
+    each <Command name="X"> carries a <Title> (caption) and an <Action> naming the
+    form-module handler its buttons run. Buttons reference the command by name, so
+    this list plus the button's <CommandName> reconnect the click to its handler.
+    The handler is a form-module procedure name — imported verbatim (same as module
+    code), so it matches the procedure in the module."""
+    if not os.path.isfile(form_xml_path):
+        return []
+    try:
+        root = ET.parse(form_xml_path).getroot()
+    except ET.ParseError:
+        return []
+    cont = root.find(LF + "Commands")
+    if cont is None:
+        return []
+    out = []
+    for c in cont:
+        if _local(c.tag) != "Command":
+            continue
+        name = c.get("name") or ""
+        if not name:
+            continue
+        act = c.find(LF + "Action")
+        handler = _ev_handler(_txt(act)) if act is not None else ""
+        node = {"name": name}
+        if handler:
+            node["action"] = handler
+        title = _title_loc(c)
+        if title:
+            node["caption"] = title
+        out.append(node)
+    return out
 
 
 def parse_form_attributes(form_xml_path):
@@ -467,6 +516,11 @@ def parse_forms(dump_dir, kind_dir, base_name, limit=0):
             fattrs = parse_form_attributes(form_xml)
             if fattrs:
                 entry["formAttributes"] = fattrs
+            # Form commands — buttons in the control tree delegate their click to these.
+            commands = parse_form_commands(form_xml)
+            if commands:
+                entry["commands"] = commands
+                report["FormCommands"] += 1
         out.append(entry)
         report["Forms"] += 1
         if limit and len(out) >= limit:

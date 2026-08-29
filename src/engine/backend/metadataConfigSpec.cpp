@@ -16,6 +16,7 @@
 #include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm
 #include "backend/serialize/dataBuilder.h"                 // ibDataNode / ibDataValue (form control tree)
 #include "backend/sourceDescription.h"                     // ibSourceDescription / ibSourceDescriptionMemory (control Source binding)
+#include "backend/commandDescription.h"                    // ibCommandDescription / ibCommandDescriptionMemory (button -> form command)
 #include "backend/typeDescription.h"                        // ibTypeDescription / ibTypeDescriptionMemory (form main-attribute Type)
 
 #include "3rdparty/nlohmann/json.hpp"
@@ -190,6 +191,7 @@ constexpr ibClassID kCtrlPage     = control_to_clsid("CT_NTPG");  // NotebookPag
 constexpr ibClassID kCtrlBox      = control_to_clsid("CT_BSZR");  // Boxsizer
 constexpr ibClassID kCtrlStaticBox = control_to_clsid("CT_SSZER"); // Staticboxsizer (titled/bordered group)
 constexpr ibClassID kCtrlSizerItem = control_to_clsid("CT_SIZR"); // SizerItem — the layout wrapper
+constexpr ibClassID kCtrlButton    = control_to_clsid("CT_BUTN"); // Button — delegates its click to a form command
 
 // wxOrientation values (wx/defs.h, stable ABI) — used for the box sizer "Orient" enum
 // (ibValueEnumOrient stores the raw wx constant). Hardcoded so this backend TU stays
@@ -200,6 +202,10 @@ constexpr int kOrientVertical   = 8;   // wxVERTICAL
 constexpr ibMetaID kFormMainAttrId = 1;   // object form's main attribute (ctor-assigned, first attribute)
 constexpr int      kFormRootId     = 1;   // the form control's own id (frontend defaultFormId)
 const     ibClassID kFormAttrClsid = system_to_clsid("FormAttributeValue"); // node clsid of a form attribute (formAttribute.cpp)
+const     ibClassID kFormCommandClsid = system_to_clsid("FormCommandValue"); // node clsid of a form command (formCommand.cpp)
+// Form-command ids live in a HIGH id space so a command hop id never collides with a source / attribute
+// metaId — MUST match kFormCommandIdBase in frontend/visualView/ctrl/formCommand.h.
+constexpr ibMetaID kFormCommandIdBase = 0x40000000;
 
 // wxStretch flag for the SizerItem "Stretch" property (wx 3.3, stable ABI): the ctor default is
 // wxSHRINK (0x1000) — right for a plain widget — and a container/sizer wants wxEXPAND (0x2000) to
@@ -227,6 +233,7 @@ struct AttrMaps {
 	std::map<wxString, ibMetaID> attrs;      // owner attribute name -> metaId (bound via the main object, 2-hop)
 	std::map<wxString, TabInfo>  tabs;       // tabular-section name -> {id, cols}
 	std::map<wxString, ibMetaID> formAttrs;  // FORM attribute name -> its own attribute id (bound directly, 1-hop)
+	std::map<wxString, ibMetaID> commands;   // FORM command name -> its form-unique command id (button binds by 1-hop path)
 };
 
 void BuildAttrMaps(ibValueMetaObject* owner, AttrMaps& out) {
@@ -262,6 +269,16 @@ ibDataValue MakeSource(const std::vector<ibSourceId>& hops) {
 		desc.AppendSource(id);
 	ibDataValue value;
 	ibSourceDescriptionMemory::WriteNode(value, desc);
+	return value;
+}
+
+// Encode a button's command binding — a 1-hop path that binds STRAIGHT to a form command by its id
+// (ibCommandDescription, the command-door parallel of a Source path). The button's click walks this
+// path and runs the command's Action event (the imported form-module handler).
+ibDataValue MakeCommandDesc(ibMetaID commandId) {
+	ibCommandDescription desc(commandId);
+	ibDataValue value;
+	ibCommandDescriptionMemory::WriteNode(value, desc);
 	return value;
 }
 
@@ -369,6 +386,7 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	Host      childHost = Host::Sizerable;
 	if      (kind == wxT("field"))                                { clsid = kCtrlText; }
 	else if (kind == wxT("checkbox"))                            { clsid = kCtrlCheckbox; }
+	else if (kind == wxT("button"))                             { clsid = kCtrlButton; }
 	else if (kind == wxT("label") || kind == wxT("statictext")) { clsid = kCtrlStatic; }
 	else if (kind == wxT("table"))                              { clsid = kCtrlTable;    layout = Layout::Container; childHost = Host::Table; }
 	else if (kind == wxT("column"))                             { clsid = kCtrlColumn; }
@@ -425,6 +443,18 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 			node.SetProperty(wxT("Source"), MakeSource({ (ibSourceId)kFormMainAttrId, (ibSourceId)it->second.id }));
 			childTableId = it->second.id;   // columns resolve against this section
 		}
+	}
+	else if (kind == wxT("button")) {
+		// A button carries NO data source — it delegates its click to a form command. Bind by the
+		// command's name (1C ButtonName/CommandName) to the id EmitFormCommands assigned it; the
+		// "Command" property is a 1-hop command path the click walks to run the command's Action.
+		const wxString cmd = JStr(c, "command");
+		auto cit = maps.commands.find(cmd);
+		if (!cmd.IsEmpty() && cit != maps.commands.end())
+			node.SetProperty(wxT("Command"), MakeCommandDesc(cit->second));
+		const wxString title = JStr(c, "title");
+		if (!title.IsEmpty())
+			node.SetProp<wxString>(wxT("Title"), title);
 	}
 	else if (kind == wxT("page")) {
 		// The NotebookPage's Title is its TAB caption (default "New page" otherwise).
@@ -501,6 +531,40 @@ void EmitFormAttributes(ibDataNode& attrs, const json& f, const RefMap& refMap,
 	}
 }
 
+// Emit the form's COMMANDS (1C form commands: each a named "button pressed" event the buttons delegate
+// to). Each becomes an ibFormCommandValue node under the root's "FormCommands" collection, carrying its
+// Name / Caption and — the point of it — its Action event (a Child node { Name:"Action", Value:handler })
+// naming the form-module procedure the click runs. Records name -> form-unique id in maps.commands so a
+// Button can bind to it by a 1-hop command path. Ids come from the HIGH kFormCommandIdBase space.
+void EmitFormCommands(ibDataNode& root, const json& f, AttrMaps& maps) {
+	auto it = f.find("commands");
+	if (it == f.end() || !it->is_array() || it->empty())
+		return;
+	ibDataNode& cmds = root.Child(wxT("FormCommands"));
+	ibMetaID nextCmdId = kFormCommandIdBase;
+	for (const json& c : *it) {
+		const wxString name = JStr(c, "name");
+		if (name.IsEmpty())
+			continue;
+		const ibMetaID id = nextCmdId++;
+		ibDataNode& node = cmds.AddChild(kFormCommandClsid, id);
+		node.SetValue(wxT("CommandId"), (int)id);           // form-unique id (matches ibFormCommandValue::ReadProperty)
+		node.SetProp<wxString>(wxT("Name"), name);
+		const wxString caption = JStr(c, "caption");
+		if (!caption.IsEmpty())
+			node.SetProp<wxString>(wxT("Caption"), caption);
+		// The Action event — same shape as a control event: a Child { Name, Value } naming the handler.
+		const wxString handler = JStr(c, "action");
+		if (!handler.IsEmpty()) {
+			auto ev = std::make_shared<ibDataNode>();
+			ev->SetValue(wxT("Name"),  wxString(wxT("Action")));
+			ev->SetValue(wxT("Value"), handler);
+			node.SetProperty(wxT("Action"), ibDataValue::Child(ev));
+		}
+		maps.commands[name] = id;
+	}
+}
+
 // Build the whole FormData blob for a form node with a "controls" tree.
 // Returns an empty buffer when there are no controls (caller leaves FormData
 // empty -> auto-layout, the MVP-A behaviour).
@@ -524,6 +588,10 @@ wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const Attr
 	EmitMainAttribute(attrs, ownerMetaID, metaData);      // the object the controls bind through (id 1)
 	int nextAttrId = kFormMainAttrId + 1;                 // form attributes get ids after the main
 	EmitFormAttributes(attrs, f, refMap, metaData, nextAttrId, maps);
+
+	// Form commands (buttons delegate their click to these) — must precede the control walk so a
+	// Button node can resolve its command name to the emitted command's id.
+	EmitFormCommands(*root, f, maps);
 
 	int nextId = kFormRootId + 1;   // children start after the form
 	for (const json& c : *it)

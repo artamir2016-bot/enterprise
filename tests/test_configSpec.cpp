@@ -25,6 +25,7 @@
 #include "backend/metaCollection/metaFormObject.h"     // ibValueMetaObjectForm / FormBlobToNode
 #include "backend/serialize/dataBuilder.h"             // ibDataNode / ibDataValue (form control tree)
 #include "backend/clsid.h"                             // control_to_clsid
+#include "backend/commandDescription.h"                // ibCommandDescription / ibCommandDescriptionMemory (button binding)
 
 namespace {
 
@@ -363,6 +364,76 @@ TEST(ConfigSpec, BuildFromJson_ControlEventBindsHandler) {
 	EXPECT_EQ(handlerOf(chk, wxT("OnCheckboxClicked")), wxT("ActiveFlagOnChange"));
 
 	// Config byte round-trip holds with the event bindings embedded.
+	wxMemoryBuffer b1; ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back; ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2; ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+}
+
+// -----------------------------------------------------------------------------
+// A form "commands" list + a button that references one by name. The command becomes an
+// ibFormCommandValue node (under the root's "FormCommands" collection) carrying its Action
+// event; the button gets a 1-hop "Command" path binding straight to that command's id. At
+// runtime the button's click walks the path and runs the command's Action handler.
+// -----------------------------------------------------------------------------
+TEST(ConfigSpec, BuildFromJson_ButtonBindsToFormCommand) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [ { "name": "Price", "type": "Number" } ],
+	      "forms": [
+	        { "name": "ItemForm", "type": "object",
+	          "commands": [ { "name": "Recalc", "caption": "Recalc", "action": "RecalcCommand" } ],
+	          "controls": [
+	            { "kind": "field",  "name": "PriceField", "attr": "Price" },
+	            { "kind": "button", "name": "RecalcBtn",  "command": "Recalc" }
+	          ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectForm* form = FindFirstForm(cfg.GetCommonMetaObject());
+	ASSERT_NE(form, nullptr);
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(form->GetFormData());
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+	const ibDataNode& root = *rootVal.AsChild();
+
+	std::function<const ibDataNode*(const ibDataNode&, ibClassID)> findCtrl =
+		[&](const ibDataNode& n, ibClassID want) -> const ibDataNode* {
+			for (const ibDataNode& ch : n.Children()) {
+				if (ch.GetClsid() == want) return &ch;
+				if (const ibDataNode* r = findCtrl(ch, want)) return r;
+			}
+			return nullptr;
+		};
+
+	// The button carries a "Command" property — a 1-hop command path to the command's id.
+	const ibDataNode* btn = findCtrl(root, control_to_clsid("CT_BUTN"));
+	ASSERT_NE(btn, nullptr);
+	const ibDataValue cmdVal = btn->GetProperty(wxT("Command"));
+	ibCommandDescription desc;
+	ASSERT_TRUE(ibCommandDescriptionMemory::ReadNode(cmdVal, desc));
+	ASSERT_EQ(desc.GetHopCount(), 1u);
+	const ibMetaID boundId = desc.GetLeaf();
+
+	// The FormCommands collection holds a command with THAT id whose Action names the handler.
+	const ibDataNode* cmds = root.FindChild(wxT("FormCommands"));
+	ASSERT_NE(cmds, nullptr);
+	const ibDataNode* cmd = nullptr;
+	for (const ibDataNode& c : cmds->Children())
+		if ((ibMetaID)c.GetValue<int>(wxT("CommandId")) == boundId) { cmd = &c; break; }
+	ASSERT_NE(cmd, nullptr);
+	EXPECT_EQ(cmd->GetProperty(wxT("Name")).AsString(), wxT("Recalc"));
+	const ibDataValue action = cmd->GetProperty(wxT("Action"));
+	ASSERT_EQ(action.Kind(), ibDataKind::Child);
+	ASSERT_TRUE(action.AsChild());
+	EXPECT_EQ(action.AsChild()->GetValue<wxString>(wxT("Value")), wxT("RecalcCommand"));
+
+	// Config byte round-trip holds with the command + binding embedded.
 	wxMemoryBuffer b1; ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
 	ibMetaDataConfigurationFile back; ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
 	wxMemoryBuffer b2; ASSERT_TRUE(back.SaveConfigToBuffer(b2));
