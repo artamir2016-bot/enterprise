@@ -65,6 +65,10 @@ const ibDialectDictionary& ibDatabaseLayerFirebird::Dialect()
 		// `m_indexListQuery` behind it, were removed 2026-08-14. Do not revive either.
 		d.m_rowIdColumn    = wxT("RDB$DB_KEY");         // physical row id for the pre-UNIQUE dedup (keep one row per key)
 		d.m_maxIndexSegments = 16;                     // "too many keys defined for index" past this — and a failed DDL rolls the apply back
+		// Byte ceiling for an index key. Firebird bounds it at ~page_size/4; the base is created at
+		// m_pageSize = 16384 (firebirdDatabaseLayer.h), so ~4096. Kept conservative (a hashed key costs
+		// one field and a lookup index; an overflowed one takes the whole apply down). See m_pageSize.
+		d.m_maxIndexKeyBytes = 4000;
 
 		// --- period truncation: no date_trunc here, so every unit is arithmetic ---
 		// Truncate-to-midnight, the base every coarser unit builds on.

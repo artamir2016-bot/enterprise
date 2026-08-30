@@ -584,11 +584,19 @@ unsigned int ibIndexFieldCapacity(const ibDatabaseLayer& conn)
 	return conn.GetDialect().m_maxIndexSegments;
 }
 
-bool ibKeyNeedsHash(const ibDatabaseLayer& conn, size_t keyFieldCount)
+bool ibKeyNeedsHash(const ibDatabaseLayer& conn, size_t keyFieldCount, size_t keyByteWidth)
 {
-	const unsigned int ceiling = ibIndexFieldCapacity(conn);
-	if (ceiling == 0 || keyFieldCount <= ceiling)
-		return false;   // no ceiling declared, or the key is under it — the plain unique index stands
+	const unsigned int segCeiling  = ibIndexFieldCapacity(conn);
+	const unsigned int byteCeiling = conn.GetDialect().m_maxIndexKeyBytes;
+
+	// TWO ceilings, EITHER of which forces the hash: the field COUNT (a reference is three fields, so a
+	// key of a few columns can be many segments) and the byte WIDTH (a UTF8 VARCHAR(255) is 1020 bytes,
+	// so two of them overflow a two-field key). Firebird refuses CREATE INDEX for both, identically, and
+	// both are decided here — before any DDL — so the identity can move into the hashed field instead.
+	const bool overSegments = (segCeiling  != 0 && keyFieldCount > segCeiling);
+	const bool overBytes    = (byteCeiling != 0 && keyByteWidth  > byteCeiling);
+	if (!overSegments && !overBytes)
+		return false;   // no ceiling declared, or the key is under both — the plain unique index stands
 
 	// The ceiling is passed and the engine has no digest to offer. Say so by saying NO: the caller
 	// then declares the index it meant, and the engine refuses it at apply time in its own words. A
