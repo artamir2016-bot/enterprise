@@ -168,6 +168,12 @@ void ibValueMetaObjectAccumulationRegister::ContributeTables(ibSchemaSnapshot& o
 		m.Key(dimension);
 
 	// --- the stored columns + what a movement contributes to each ------------------------------
+	// m_name is the PHYSICAL base of the view columns (m_name + "_Turnover" …) — it becomes a real SQL
+	// identifier in CREATE VIEW, so it MUST be ASCII. It is the resource's physical field (fld<id>), NOT
+	// its user-facing name: a Cyrillic resource name spelled straight into the view alias made Firebird
+	// reject the deferred CREATE VIEW ("Dynamic SQL Error"), which then took the whole apply down (the
+	// failed maintenance rolled back and UndoCreatedTables' DROP deadlocked). The user-facing name stays
+	// the LOGICAL query name on the read side (`add` lambda below), which the query layer maps to this.
 	struct Pair { wxString m_in, m_out, m_name; };
 	std::vector<Pair> pairs;
 
@@ -192,7 +198,7 @@ void ibValueMetaObjectAccumulationRegister::ContributeTables(ibSchemaSnapshot& o
 			// No record type — nothing signs a movement, so there is no expense side to keep apart.
 			const ibBackendQueryColumn* c = ibRegAccumulatorColumn(t, inName, idIn, res);
 			m.Accumulate(c, wxT("{row}.") + resField, ibQueryColumnExpr::Col(res));
-			pairs.push_back({ inName, wxString(), res->GetName() });
+			pairs.push_back({ inName, wxString(), resField });   // resField (fld<id>) — ASCII physical base
 			continue;
 		}
 
@@ -225,7 +231,7 @@ void ibValueMetaObjectAccumulationRegister::ContributeTables(ibSchemaSnapshot& o
 				    ibQueryColumnExpr::Const(ibValue(0.0)) } },
 				ibQueryColumnExpr::Col(res)));
 
-		pairs.push_back({ inName, outName, res->GetName() });
+		pairs.push_back({ inName, outName, resField });   // resField (fld<id>) — ASCII physical base
 	}
 
 	// --- the totals table AS A SOURCE -----------------------------------------------------------
@@ -409,9 +415,13 @@ const ibBackendQueryable* ibValueMetaObjectAccumulationRegister::GetViewQueryabl
 	// a query, and the caption used to be built somewhere else entirely (in the manager, per figure,
 	// spelled by hand) — so the same number had a presentation through the script door and none at
 	// all through the query one. The word comes from the one list that already holds the figures.
+	// The QUERY name (what a query writes: Resource1Turnover) stays the resource's user-facing name — it
+	// is logical and may be Cyrillic. The TABLE name (the physical view column) is fld<id>-based and MUST
+	// be ASCII: it is a real SQL identifier, and it must equal the view-create alias above (Pair.m_name +
+	// suffix, also fld<id>-based) so the read resolves to the column the view actually declares.
 	auto add = [&](const ibValueMetaObjectAttributeBase* res, const wxString& suffix) {
 		columns.push_back(ibTempColumn(res->GetName() + suffix,
-		                               res->GetName() + wxT("_") + suffix,
+		                               ibRegValueField(res) + wxT("_") + suffix,
 		                               res->GetTypeDesc(), synthetic++,
 		                               ibRegFigureColumnCaption(res->GetSynonym(), ibRegFigureCaption(suffix))));
 	};

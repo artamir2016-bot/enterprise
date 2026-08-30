@@ -307,7 +307,11 @@ void ibValueMetaObjectAccountingRegister::ContributeTables(ibSchemaSnapshot& out
 				// flat, the column was NUMERIC(18,0) and a resource carrying kopecks lost them on the way
 				// INTO the totals, whatever the movements held.
 				const ibBackendQueryColumn* c = ibRegAccumulatorColumn(t, name, id, res);
-				figures.push_back({ name, res->GetName(), credit });
+				// m_name is the ASCII physical base of the view column (m_name + "TurnoverCr" …) — it
+				// becomes a real SQL identifier in CREATE VIEW, so it must NOT be the resource's (possibly
+				// Cyrillic) user name, which Firebird rejects ("Dynamic SQL Error"). Use the physical field
+				// (fld<id>); the user name stays the LOGICAL query name on the read side.
+				figures.push_back({ name, resField, credit });
 				return c;
 			};
 
