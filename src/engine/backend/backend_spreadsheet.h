@@ -239,7 +239,11 @@ public:
 	bool LoadFromFile(const wxString& strFileName);
 	bool SaveToFile(const wxString& strFileName);
 
-#pragma endregion 
+	// Export to Excel (Office Open XML / SpreadsheetML). Independent writer over the
+	// PUBLIC ECMA-376 format — see backend/export/xlsxExporter.h.
+	bool SaveToXlsx(const wxString& strFileName, const wxString& sheetName = wxT("Sheet1")) const;
+
+#pragma endregion
 
 	//guid 
 	ibGuid GetDocGuid() const { return m_docGuid; }

@@ -1,5 +1,6 @@
 #include "backend_spreadsheet.h"
 #include "backend/fileSystem/fs.h"
+#include "backend/export/xlsxExporter.h"   // SaveToXlsx — independent ECMA-376 writer
 
 #define spreadsheetNotify \
 	for (auto notify : m_spreadsheetNotifiers) notify
@@ -608,4 +609,9 @@ bool ibBackendSpreadsheetObject::SaveToFile(const wxString& strFileName)
 	return true;
 }
 
-#pragma endregion 
+bool ibBackendSpreadsheetObject::SaveToXlsx(const wxString& strFileName, const wxString& sheetName) const
+{
+	return ibXlsxExporter::Save(m_spreadsheetDesc, strFileName, sheetName);
+}
+
+#pragma endregion

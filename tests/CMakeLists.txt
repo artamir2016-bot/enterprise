@@ -55,6 +55,7 @@ add_executable(oes_tests
     test_gitService.cpp
     test_metadataSerialize.cpp
     test_configSpec.cpp
+    test_xlsxExport.cpp
     test_propertySerialized.cpp
     test_metadataTree.cpp
     test_commonAttribute.cpp
