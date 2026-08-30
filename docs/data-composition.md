@@ -76,15 +76,22 @@ returned type.
 
 The core is **DB-free**: it composes rows a caller already produced (query engine,
 script, or test). That is what makes the grouping/aggregation testable in isolation
-and is why the tests need no database.
+and is why the core tests need no database.
+
+- **`compositionSource.h/.cpp`** — the bridge to the query engine (the one file that
+  knows about the database layer): `ibCompositionSource::RowsFromResultSet(rs)`
+  drains a driver result set (`ibDatabaseResultSet` from
+  `ibDatabaseLayer::RunQueryWithResults` / a prepared statement) into typed rows
+  (numbers exact via `ibNumber`, NULL → empty), and `Compose(rs, schema)` drains +
+  composes in one call. Covered by a live in-memory SQLite test.
 
 ## Follow-ups (the rest of a full СКД)
 
 Built deliberately as a bounded, tested core. The remaining pieces, each its own step:
 
-1. **Query wiring** — feed rows from the query engine (`ibDatabaseQueryBuilder`
-   result set → `ibComposeRow`), so a schema names a query text/source instead of
-   pre-fetched rows.
+1. ~~Query wiring~~ — **done** (`ibCompositionSource`). Next: a schema that names a
+   query *text*/source and runs it through the L4 query language, rather than the
+   caller executing the query and handing over the result set.
 2. **Computed measures** — a measure with an expression over other measures
    (dependency-ordered evaluation), via our script/expression evaluator.
 3. **Filters & parameters** — declared parameters substituted into the query;

@@ -9,11 +9,15 @@
 
 #include "backend/dataComposer/dataComposer.h"
 #include "backend/dataComposer/compositionRenderer.h"
+#include "backend/dataComposer/compositionSource.h"
 #include "backend/spreadsheetDescription.h"
 #include "backend/export/xlsxExporter.h"
+#include "backend/databaseLayer/sqllite/sqliteDatabaseLayer.h"
+#include "backend/databaseLayer/databaseResultSet.h"
 
 #include <wx/filename.h>
 #include <wx/log.h>
+#include <memory>
 
 namespace {
 
@@ -139,4 +143,36 @@ TEST(DataComposer, RendersToSpreadsheetAndExportsXlsx)
 	ASSERT_TRUE(ibXlsxExporter::Save(doc, path, wxT("Report")));
 	EXPECT_TRUE(wxFileExists(path));
 	{ wxLogNull noLog; if (wxFileExists(path)) wxRemoveFile(path); }
+}
+
+// End to end from the QUERY ENGINE: a real in-memory SQLite query drained into
+// composition rows and composed. Proves the bridge (ibCompositionSource) over a
+// live result set, not just hand-built rows.
+TEST(DataComposer, ComposesFromLiveQueryResult)
+{
+	auto db = std::make_shared<ibDatabaseLayerSQLite>();
+	if (!db->Open(wxT(":memory:")))
+		GTEST_SKIP() << "in-memory SQLite open failed";
+
+	db->RunQuery(wxT("%s"), wxString(wxT("CREATE TABLE sales (category TEXT, amount REAL)")));
+	db->RunQuery(wxT("%s"), wxString(wxT("INSERT INTO sales VALUES ('Electronics', 2000)")));
+	db->RunQuery(wxT("%s"), wxString(wxT("INSERT INTO sales VALUES ('Electronics', 1000)")));
+	db->RunQuery(wxT("%s"), wxString(wxT("INSERT INTO sales VALUES ('Food', 50)")));
+
+	ibDatabaseResultSet* rs =
+		db->RunQueryWithResults(wxT("%s"), wxString(wxT("SELECT category, amount FROM sales")));
+	ASSERT_NE(rs, nullptr);
+
+	ibCompositionSchema schema;
+	schema.m_groupings = { wxT("category") };
+	schema.m_measures  = { ibCompositionMeasure(wxT("amount"), ibAggregate::Sum, wxT("Amount")) };
+
+	const ibCompositionResult res = ibCompositionSource::Compose(rs, schema);
+	db->CloseResultSet(rs);
+
+	ASSERT_EQ(res.m_groups.size(), 2u);
+	EXPECT_EQ(res.m_groups[0].m_key.GetString(), wxT("Electronics"));
+	EXPECT_DOUBLE_EQ(res.m_groups[0].m_subtotals.at(wxT("amount")).GetDouble(), 3000.0);
+	EXPECT_EQ(res.m_groups[1].m_key.GetString(), wxT("Food"));
+	EXPECT_DOUBLE_EQ(res.m_grandTotal.at(wxT("amount")).GetDouble(), 3050.0);
 }
