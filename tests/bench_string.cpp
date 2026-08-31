@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <string>
+#include <cstdlib>
 #include <iostream>
 #include <iomanip>
 
@@ -33,6 +34,12 @@ double TimeNsPerOp(int iters, F&& f) {
 }
 
 void Row(const char* name, double ib, double wx) {
+    // Machine-readable line for tools/perf/oes_perf.py (only when OES_PERF_JSON
+    // is set). oes=ibString figure, native=wxString baseline. See bench_runtime.cpp.
+    if (std::getenv("OES_PERF_JSON") != nullptr) {
+        std::cout << "@PERF{\"name\":\"str " << name << "\",\"oes\":" << ib
+                  << ",\"native\":" << wx << ",\"unit\":\"ns\"}\n";
+    }
     std::cout << "  " << std::left << std::setw(20) << name << std::right
               << "  ib=" << std::setw(8) << std::fixed << std::setprecision(1) << ib << "ns"
               << "  wx=" << std::setw(8) << wx << "ns"

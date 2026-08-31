@@ -1,0 +1,675 @@
+{
+  "timestamp": "2026-08-31T14:28:23.365666+00:00",
+  "commit": "085c4e7b",
+  "exe": "build-perf\\bin\\Release\\oes_bench.exe",
+  "repeat": 3,
+  "filter": "*Bench*",
+  "results": {
+    "arith loop (ns/iter)": {
+      "name": "arith loop (ns/iter)",
+      "oes": 118.61,
+      "native": 1.4839,
+      "unit": "ns",
+      "oes_wall_ns": 118610000.0,
+      "base_wall_ns": 1483900.0,
+      "oes_min": 117.669,
+      "samples": 3,
+      "ratio": 79.93126221443494
+    },
+    "recursion (ns/call)": {
+      "name": "recursion (ns/call)",
+      "oes": 257.982,
+      "native": 2.27253,
+      "unit": "ns",
+      "oes_wall_ns": 265324000.0,
+      "base_wall_ns": 2337200.0,
+      "oes_min": 255.478,
+      "samples": 3,
+      "ratio": 113.52193370384549
+    },
+    "host->script (ns/call)": {
+      "name": "host->script (ns/call)",
+      "oes": 251.747,
+      "native": 1.603,
+      "unit": "ns",
+      "oes_wall_ns": 50599200.0,
+      "base_wall_ns": 320600,
+      "oes_min": 251.547,
+      "samples": 3,
+      "ratio": 157.04741110417967
+    },
+    "string concat (ns/app)": {
+      "name": "string concat (ns/app)",
+      "oes": 85,
+      "native": 2.35,
+      "unit": "ns",
+      "oes_wall_ns": 170100,
+      "base_wall_ns": 4700,
+      "oes_min": 84.8,
+      "samples": 3,
+      "ratio": 36.170212765957444
+    },
+    "LINQ build+pipe (ns/el)": {
+      "name": "LINQ build+pipe (ns/el)",
+      "oes": 607.11,
+      "unit": "ns",
+      "oes_wall_ns": 6071100.0,
+      "oes_min": 596.65,
+      "samples": 3
+    },
+    "LINQ pipe 2 lambdas (ns/el)": {
+      "name": "LINQ pipe 2 lambdas (ns/el)",
+      "oes": 286.63,
+      "unit": "ns",
+      "oes_wall_ns": 2871200.0,
+      "oes_min": 279.24,
+      "samples": 3
+    },
+    "LINQ one lambda (ns/el)": {
+      "name": "LINQ one lambda (ns/el)",
+      "oes": 127.88,
+      "unit": "ns",
+      "oes_wall_ns": 1278800.0,
+      "oes_min": 127.79,
+      "samples": 3
+    },
+    "LINQ join (ns/row)": {
+      "name": "LINQ join (ns/row)",
+      "oes": 3137.45,
+      "unit": "ns",
+      "oes_wall_ns": 6254200.0,
+      "oes_min": 3127.1,
+      "samples": 3
+    },
+    "LINQ join n=250 (ns/row)": {
+      "name": "LINQ join n=250 (ns/row)",
+      "oes": 3068.4,
+      "unit": "ns",
+      "oes_wall_ns": 770800,
+      "oes_min": 3028,
+      "samples": 3
+    },
+    "LINQ join n=1000 (ns/row)": {
+      "name": "LINQ join n=1000 (ns/row)",
+      "oes": 3037.3,
+      "unit": "ns",
+      "oes_wall_ns": 3037300.0,
+      "oes_min": 3007.8,
+      "samples": 3
+    },
+    "LINQ join n=4000 (ns/row)": {
+      "name": "LINQ join n=4000 (ns/row)",
+      "oes": 3412.28,
+      "unit": "ns",
+      "oes_wall_ns": 13714000.0,
+      "oes_min": 3275.15,
+      "samples": 3
+    },
+    "LINQ join n=16000 (ns/row)": {
+      "name": "LINQ join n=16000 (ns/row)",
+      "oes": 3426.62,
+      "unit": "ns",
+      "oes_wall_ns": 56140700.0,
+      "oes_min": 3385.04,
+      "samples": 3
+    },
+    "block select n=250 (ns/row)": {
+      "name": "block select n=250 (ns/row)",
+      "oes": 366.4,
+      "unit": "ns",
+      "oes_wall_ns": 95300,
+      "oes_min": 358.4,
+      "samples": 3
+    },
+    "block select n=1000 (ns/row)": {
+      "name": "block select n=1000 (ns/row)",
+      "oes": 347.7,
+      "unit": "ns",
+      "oes_wall_ns": 362000,
+      "oes_min": 335.6,
+      "samples": 3
+    },
+    "block select n=4000 (ns/row)": {
+      "name": "block select n=4000 (ns/row)",
+      "oes": 349.9,
+      "unit": "ns",
+      "oes_wall_ns": 1465900.0,
+      "oes_min": 338.175,
+      "samples": 3
+    },
+    "block select n=16000 (ns/row)": {
+      "name": "block select n=16000 (ns/row)",
+      "oes": 358.281,
+      "unit": "ns",
+      "oes_wall_ns": 5732500.0,
+      "oes_min": 351.381,
+      "samples": 3
+    },
+    "join inner=2000 outer=250 (ns/outer-row)": {
+      "name": "join inner=2000 outer=250 (ns/outer-row)",
+      "oes": 15024.4,
+      "unit": "ns",
+      "oes_wall_ns": 3756100.0,
+      "oes_min": 14762,
+      "samples": 3
+    },
+    "join inner=2000 outer=1000 (ns/outer-row)": {
+      "name": "join inner=2000 outer=1000 (ns/outer-row)",
+      "oes": 4694.8,
+      "unit": "ns",
+      "oes_wall_ns": 4808100.0,
+      "oes_min": 4693,
+      "samples": 3
+    },
+    "join inner=2000 outer=4000 (ns/outer-row)": {
+      "name": "join inner=2000 outer=4000 (ns/outer-row)",
+      "oes": 1847.62,
+      "unit": "ns",
+      "oes_wall_ns": 7390500.0,
+      "oes_min": 1847.58,
+      "samples": 3
+    },
+    "join inner=2000 outer=16000 (ns/outer-row)": {
+      "name": "join inner=2000 outer=16000 (ns/outer-row)",
+      "oes": 870.406,
+      "unit": "ns",
+      "oes_wall_ns": 14431000.0,
+      "oes_min": 866.888,
+      "samples": 3
+    },
+    "group by n=250 (ns/row)": {
+      "name": "group by n=250 (ns/row)",
+      "oes": 5168.8,
+      "unit": "ns",
+      "oes_wall_ns": 1334300.0,
+      "oes_min": 5139.6,
+      "samples": 3
+    },
+    "group by n=1000 (ns/row)": {
+      "name": "group by n=1000 (ns/row)",
+      "oes": 5088.6,
+      "unit": "ns",
+      "oes_wall_ns": 5157200.0,
+      "oes_min": 5045,
+      "samples": 3
+    },
+    "group by n=4000 (ns/row)": {
+      "name": "group by n=4000 (ns/row)",
+      "oes": 5788.68,
+      "unit": "ns",
+      "oes_wall_ns": 23332500.0,
+      "oes_min": 5763.4,
+      "samples": 3
+    },
+    "group by n=16000 (ns/row)": {
+      "name": "group by n=16000 (ns/row)",
+      "oes": 6014.41,
+      "unit": "ns",
+      "oes_wall_ns": 96230500.0,
+      "oes_min": 5915.89,
+      "samples": 3
+    },
+    "select n=16000 (ns/row)": {
+      "name": "select n=16000 (ns/row)",
+      "oes": 344.144,
+      "unit": "ns",
+      "oes_wall_ns": 5744000.0,
+      "oes_min": 343.4,
+      "samples": 3
+    },
+    "select n=64000 (ns/row)": {
+      "name": "select n=64000 (ns/row)",
+      "oes": 386.366,
+      "unit": "ns",
+      "oes_wall_ns": 26249100.0,
+      "oes_min": 381.828,
+      "samples": 3
+    },
+    "select n=250000 (ns/row)": {
+      "name": "select n=250000 (ns/row)",
+      "oes": 388.877,
+      "unit": "ns",
+      "oes_wall_ns": 100866000.0,
+      "oes_min": 386.095,
+      "samples": 3
+    },
+    "select n=1000000 (ns/row)": {
+      "name": "select n=1000000 (ns/row)",
+      "oes": 380.98,
+      "unit": "ns",
+      "oes_wall_ns": 393731000.0,
+      "oes_min": 374.318,
+      "samples": 3
+    },
+    "join n=16000 (ns/row)": {
+      "name": "join n=16000 (ns/row)",
+      "oes": 3379.93,
+      "unit": "ns",
+      "oes_wall_ns": 54078800.0,
+      "oes_min": 3367.01,
+      "samples": 3
+    },
+    "join n=64000 (ns/row)": {
+      "name": "join n=64000 (ns/row)",
+      "oes": 3663.52,
+      "unit": "ns",
+      "oes_wall_ns": 234862000.0,
+      "oes_min": 3648.3,
+      "samples": 3
+    },
+    "join n=250000 (ns/row)": {
+      "name": "join n=250000 (ns/row)",
+      "oes": 3770.96,
+      "unit": "ns",
+      "oes_wall_ns": 951454000.0,
+      "oes_min": 3756.64,
+      "samples": 3
+    },
+    "join n=1000000 (ns/row)": {
+      "name": "join n=1000000 (ns/row)",
+      "oes": 3882.94,
+      "unit": "ns",
+      "oes_wall_ns": 3917110000.0,
+      "oes_min": 3863.1,
+      "samples": 3
+    },
+    "group by n=64000 (ns/row)": {
+      "name": "group by n=64000 (ns/row)",
+      "oes": 6208.42,
+      "unit": "ns",
+      "oes_wall_ns": 398004000.0,
+      "oes_min": 6160.77,
+      "samples": 3
+    },
+    "group by n=250000 (ns/row)": {
+      "name": "group by n=250000 (ns/row)",
+      "oes": 6271.34,
+      "unit": "ns",
+      "oes_wall_ns": 1567830000.0,
+      "oes_min": 6236.44,
+      "samples": 3
+    },
+    "group by n=1000000 (ns/row)": {
+      "name": "group by n=1000000 (ns/row)",
+      "oes": 6428.7,
+      "unit": "ns",
+      "oes_wall_ns": 6446380000.0,
+      "oes_min": 6386.17,
+      "samples": 3
+    },
+    "record build+walk n=16000 (ns/row)": {
+      "name": "record build+walk n=16000 (ns/row)",
+      "oes": 8560.75,
+      "unit": "ns",
+      "oes_wall_ns": 137520000.0,
+      "oes_min": 8550.84,
+      "samples": 3
+    },
+    "record build+walk n=64000 (ns/row)": {
+      "name": "record build+walk n=64000 (ns/row)",
+      "oes": 8661.61,
+      "unit": "ns",
+      "oes_wall_ns": 559108000.0,
+      "oes_min": 8643.06,
+      "samples": 3
+    },
+    "record build+walk n=250000 (ns/row)": {
+      "name": "record build+walk n=250000 (ns/row)",
+      "oes": 8765.9,
+      "unit": "ns",
+      "oes_wall_ns": 2228240000.0,
+      "oes_min": 8713.2,
+      "samples": 3
+    },
+    "record build+walk n=1000000 (ns/row)": {
+      "name": "record build+walk n=1000000 (ns/row)",
+      "oes": 9100.34,
+      "unit": "ns",
+      "oes_wall_ns": 9100340000.0,
+      "oes_min": 9006.44,
+      "samples": 3
+    },
+    "index build  ibValue n=2000 (ns/key)": {
+      "name": "index build  ibValue n=2000 (ns/key)",
+      "oes": 384.8,
+      "unit": "ns",
+      "oes_wall_ns": 769600,
+      "oes_min": 384.15,
+      "samples": 3
+    },
+    "index probe   ibValue n=2000 (ns/probe)": {
+      "name": "index probe   ibValue n=2000 (ns/probe)",
+      "oes": 129.9,
+      "unit": "ns",
+      "oes_wall_ns": 256400,
+      "oes_min": 128.2,
+      "samples": 3
+    },
+    "index build  long    n=2000 (ns/key)": {
+      "name": "index build  long    n=2000 (ns/key)",
+      "oes": 176.45,
+      "unit": "ns",
+      "oes_wall_ns": 342300,
+      "oes_min": 171.15,
+      "samples": 3
+    },
+    "index probe   long    n=2000 (ns/probe)": {
+      "name": "index probe   long    n=2000 (ns/probe)",
+      "oes": 49.8,
+      "unit": "ns",
+      "oes_wall_ns": 99600,
+      "oes_min": 49.55,
+      "samples": 3
+    },
+    "make one ibValue key n=2000 (ns)": {
+      "name": "make one ibValue key n=2000 (ns)",
+      "oes": 74.95,
+      "unit": "ns",
+      "oes_wall_ns": 149900,
+      "oes_min": 74.85,
+      "samples": 3
+    },
+    "index build  ibValue n=16000 (ns/key)": {
+      "name": "index build  ibValue n=16000 (ns/key)",
+      "oes": 457.794,
+      "unit": "ns",
+      "oes_wall_ns": 7409200.0,
+      "oes_min": 450.35,
+      "samples": 3
+    },
+    "index probe   ibValue n=16000 (ns/probe)": {
+      "name": "index probe   ibValue n=16000 (ns/probe)",
+      "oes": 158.463,
+      "unit": "ns",
+      "oes_wall_ns": 2626700.0,
+      "oes_min": 157.844,
+      "samples": 3
+    },
+    "index build  long    n=16000 (ns/key)": {
+      "name": "index build  long    n=16000 (ns/key)",
+      "oes": 191.925,
+      "unit": "ns",
+      "oes_wall_ns": 3070800.0,
+      "oes_min": 188.512,
+      "samples": 3
+    },
+    "index probe   long    n=16000 (ns/probe)": {
+      "name": "index probe   long    n=16000 (ns/probe)",
+      "oes": 58.9875,
+      "unit": "ns",
+      "oes_wall_ns": 943800,
+      "oes_min": 58.9875,
+      "samples": 3
+    },
+    "make one ibValue key n=16000 (ns)": {
+      "name": "make one ibValue key n=16000 (ns)",
+      "oes": 77.5312,
+      "unit": "ns",
+      "oes_wall_ns": 1240500.0,
+      "oes_min": 75.9188,
+      "samples": 3
+    },
+    "struct field read (ns)": {
+      "name": "struct field read (ns)",
+      "oes": 389.952,
+      "unit": "ns",
+      "oes_wall_ns": 78403100.0,
+      "oes_min": 387.533,
+      "samples": 3
+    },
+    "struct build 3 fields (ns)": {
+      "name": "struct build 3 fields (ns)",
+      "oes": 3156.68,
+      "unit": "ns",
+      "oes_wall_ns": 308422000.0,
+      "oes_min": 3084.22,
+      "samples": 3
+    },
+    "array Add (ns)": {
+      "name": "array Add (ns)",
+      "oes": 309.368,
+      "unit": "ns",
+      "oes_wall_ns": 61064300.0,
+      "oes_min": 305.322,
+      "samples": 3
+    },
+    "array [i] read (ns)": {
+      "name": "array [i] read (ns)",
+      "oes": 331.19,
+      "unit": "ns",
+      "oes_wall_ns": 63863800.0,
+      "oes_min": 319.319,
+      "samples": 3
+    },
+    "LINQ no lambda (ns/el)": {
+      "name": "LINQ no lambda (ns/el)",
+      "oes": 13.7,
+      "unit": "ns",
+      "oes_wall_ns": 139800,
+      "oes_min": 13.43,
+      "samples": 3
+    },
+    "method resolve (ns/call)": {
+      "name": "method resolve (ns/call)",
+      "oes": 291.319,
+      "unit": "ns",
+      "oes_wall_ns": 57654200.0,
+      "oes_min": 288.271,
+      "samples": 3
+    },
+    "record build+walk n=2500 (ns/row)": {
+      "name": "record build+walk n=2500 (ns/row)",
+      "oes": 9066.64,
+      "unit": "ns",
+      "oes_wall_ns": 21818300.0,
+      "oes_min": 8727.32,
+      "samples": 3
+    },
+    "record build+walk n=5000 (ns/row)": {
+      "name": "record build+walk n=5000 (ns/row)",
+      "oes": 9250.9,
+      "unit": "ns",
+      "oes_wall_ns": 44287300.0,
+      "oes_min": 8857.46,
+      "samples": 3
+    },
+    "record build+walk n=10000 (ns/row)": {
+      "name": "record build+walk n=10000 (ns/row)",
+      "oes": 9284.32,
+      "unit": "ns",
+      "oes_wall_ns": 89206400.0,
+      "oes_min": 8920.64,
+      "samples": 3
+    },
+    "record build+walk n=20000 (ns/row)": {
+      "name": "record build+walk n=20000 (ns/row)",
+      "oes": 9193.59,
+      "unit": "ns",
+      "oes_wall_ns": 179467000.0,
+      "oes_min": 8973.33,
+      "samples": 3
+    },
+    "New Structure only": {
+      "name": "New Structure only",
+      "oes": 952.82,
+      "unit": "ns",
+      "oes_wall_ns": 4581900.0,
+      "oes_min": 916.38,
+      "samples": 3
+    },
+    "New + 2 Insert": {
+      "name": "New + 2 Insert",
+      "oes": 7478.44,
+      "unit": "ns",
+      "oes_wall_ns": 35933500.0,
+      "oes_min": 7186.7,
+      "samples": 3
+    },
+    "Array.Add only": {
+      "name": "Array.Add only",
+      "oes": 341.98,
+      "unit": "ns",
+      "oes_wall_ns": 1689700.0,
+      "oes_min": 337.94,
+      "samples": 3
+    },
+    "Array.Get only": {
+      "name": "Array.Get only",
+      "oes": 285.22,
+      "unit": "ns",
+      "oes_wall_ns": 1426100.0,
+      "oes_min": 284.44,
+      "samples": 3
+    },
+    "dot access on Structure": {
+      "name": "dot access on Structure",
+      "oes": 339.8,
+      "unit": "ns",
+      "oes_wall_ns": 1703900.0,
+      "oes_min": 338.56,
+      "samples": 3
+    },
+    "type check: id vs cast": {
+      "name": "type check: id vs cast",
+      "oes": 89.0115,
+      "native": 13.726,
+      "unit": "ns",
+      "oes_min": 88.8715,
+      "samples": 3,
+      "ratio": 6.484882704356695
+    },
+    "25 vs 3 ibValue slots (ns)": {
+      "name": "25 vs 3 ibValue slots (ns)",
+      "oes": 178.436,
+      "native": 24.8896,
+      "unit": "ns",
+      "oes_wall_ns": 90364600.0,
+      "base_wall_ns": 12444800.0,
+      "oes_min": 178.078,
+      "samples": 3,
+      "ratio": 7.169098740035999
+    },
+    "add immediate": {
+      "name": "add immediate",
+      "oes": 7.1909,
+      "native": 1.6535,
+      "unit": "ns",
+      "oes_min": 7.0819,
+      "samples": 3,
+      "ratio": 4.348896280616874
+    },
+    "mul immediate": {
+      "name": "mul immediate",
+      "oes": 7.4767,
+      "native": 1.4773,
+      "unit": "ns",
+      "oes_min": 7.3693,
+      "samples": 3,
+      "ratio": 5.061057334326136
+    },
+    "compare immediate": {
+      "name": "compare immediate",
+      "oes": 3.5505,
+      "native": 1.5428,
+      "unit": "ns",
+      "oes_min": 3.523,
+      "samples": 3,
+      "ratio": 2.30133523463832
+    },
+    "div non-exact (10^6/7)": {
+      "name": "div non-exact (10^6/7)",
+      "oes": 4800.83,
+      "native": 1.6392,
+      "unit": "ns",
+      "oes_min": 4794.32,
+      "samples": 3,
+      "ratio": 2928.7640312347485
+    },
+    "div exact int (fast)": {
+      "name": "div exact int (fast)",
+      "oes": 18.1899,
+      "native": 8.2169,
+      "unit": "ns",
+      "oes_min": 17.8712,
+      "samples": 3,
+      "ratio": 2.213718068858085
+    },
+    "mul 30x30 digits (heap)": {
+      "name": "mul 30x30 digits (heap)",
+      "oes": 855.742,
+      "unit": "ns",
+      "oes_min": 385.364,
+      "samples": 3
+    },
+    "mul 200-frac-digit": {
+      "name": "mul 200-frac-digit",
+      "oes": 387.074,
+      "unit": "ns",
+      "oes_min": 385.1,
+      "samples": 3
+    },
+    "ToString": {
+      "name": "ToString",
+      "oes": 340.513,
+      "native": 598.132,
+      "unit": "ns",
+      "oes_min": 337.644,
+      "samples": 3,
+      "ratio": 0.5692940688677416
+    },
+    "FromString (parse)": {
+      "name": "FromString (parse)",
+      "oes": 179.435,
+      "native": 117.947,
+      "unit": "ns",
+      "oes_min": 172.998,
+      "samples": 3,
+      "ratio": 1.521318897470898
+    },
+    "str ctor+dtor (heap)": {
+      "name": "str ctor+dtor (heap)",
+      "oes": 36,
+      "native": 83,
+      "unit": "ns",
+      "oes_min": 35,
+      "samples": 3,
+      "ratio": 0.43373493975903615
+    },
+    "str copy (heap)": {
+      "name": "str copy (heap)",
+      "oes": 17.53,
+      "native": 63.15,
+      "unit": "ns",
+      "oes_min": 17.51,
+      "samples": 3,
+      "ratio": 0.27759303246239114
+    },
+    "str concat": {
+      "name": "str concat",
+      "oes": 42.32,
+      "native": 126.12,
+      "unit": "ns",
+      "oes_min": 40.9,
+      "samples": 3,
+      "ratio": 0.3355534411671424
+    },
+    "str utf8 decode": {
+      "name": "str utf8 decode",
+      "oes": 133.51,
+      "native": 422.2,
+      "unit": "ns",
+      "oes_min": 132.13,
+      "samples": 3,
+      "ratio": 0.316224538133586
+    },
+    "str find+mid": {
+      "name": "str find+mid",
+      "oes": 33.3,
+      "native": 89.72,
+      "unit": "ns",
+      "oes_min": 32.71,
+      "samples": 3,
+      "ratio": 0.37115470352206864
+    }
+  }
+}

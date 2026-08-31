@@ -509,3 +509,38 @@ if(OES_USE_POSTGRESQL)
 
     gtest_discover_tests(oes_pg_dialect_test)
 endif()
+
+# ---------------------------------------------------------------------------
+# oes_bench — lightweight benchmark-only executable for the perf harness
+# (tools/perf/oes_perf.py). Links backend + the bench TUs ONLY, so it does not
+# pull in the driver-specific test files (Firebird/Postgres) and builds/links
+# fast regardless of which DB drivers are enabled. Run with:
+#   oes_bench --gtest_also_run_disabled_tests --gtest_filter=*Bench*
+# and OES_PERF_JSON=1 in the environment for machine-readable @PERF lines.
+# ---------------------------------------------------------------------------
+add_executable(oes_bench
+    bench_runtime.cpp
+    bench_string.cpp
+)
+
+target_link_libraries(oes_bench
+    PRIVATE
+        backend
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_compile_definitions(oes_bench PRIVATE OES_TESTING)
+
+target_include_directories(oes_bench PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}/src/engine"
+    "${CMAKE_SOURCE_DIR}/src/engine/backend"
+)
+
+set_target_properties(oes_bench PROPERTIES
+    CXX_STANDARD          17
+    CXX_STANDARD_REQUIRED ON
+    BUILD_RPATH            "${CMAKE_BINARY_DIR}/bin"
+    INSTALL_RPATH          "${CMAKE_BINARY_DIR}/bin"
+)

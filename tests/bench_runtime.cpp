@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -103,11 +104,34 @@ std::string FmtWall(double ns) {
     return o.str();
 }
 
+// Machine-readable emission for the perf harness (tools/perf/oes_perf.py).
+// Printed ONLY when OES_PERF_JSON is set in the environment, so the normal
+// human-readable rows are untouched. One self-describing line per figure:
+//   @PERF{"name":"...","oes":12.3,"native":4.5,"unit":"ns","oes_wall_ns":...,"base_wall_ns":...}
+// The harness greps for the "@PERF" prefix and json-parses the rest, so the
+// format is a contract independent of the human columns' spacing.
+void EmitPerf(const char* name, double oes, double base, const char* unit,
+              double oesWallNs, double baseWallNs) {
+    static const bool on = (std::getenv("OES_PERF_JSON") != nullptr);
+    if (!on)
+        return;
+    std::ostringstream o;
+    o << std::setprecision(6);
+    o << "@PERF{\"name\":\"" << name << "\",\"oes\":" << oes;
+    if (base > 0) o << ",\"native\":" << base;
+    o << ",\"unit\":\"" << unit << "\"";
+    if (oesWallNs > 0)  o << ",\"oes_wall_ns\":" << oesWallNs;
+    if (baseWallNs > 0) o << ",\"base_wall_ns\":" << baseWallNs;
+    o << "}";
+    std::cout << o.str() << "\n";
+}
+
 // One labelled row: OES figure, native baseline, ratio (oes/base). When wall
 // totals are given (>0), also print how long one full run of the scenario
 // actually took — the "in seconds" view next to the per-op overhead factor.
 void Row(const char* name, double oes, double base, const char* unit,
          double oesWallNs = 0, double baseWallNs = 0) {
+    EmitPerf(name, oes, base, unit, oesWallNs, baseWallNs);
     std::cout << "  " << std::left << std::setw(26) << name << std::right
               << "  oes=" << std::setw(10) << std::fixed << std::setprecision(1) << oes << unit
               << "  native=" << std::setw(10) << base << unit;
@@ -149,6 +173,7 @@ std::string FmtBytes(size_t bytes) {
 
 // OES-only row (no meaningful native equivalent, e.g. 200-digit decimal).
 void RowOes(const char* name, double oes, const char* unit, double oesWallNs = 0) {
+    EmitPerf(name, oes, 0, unit, oesWallNs, 0);
     std::cout << "  " << std::left << std::setw(26) << name << std::right
               << "  oes=" << std::setw(10) << std::fixed << std::setprecision(1) << oes << unit;
     if (oesWallNs > 0)
@@ -160,6 +185,11 @@ void RowOes(const char* name, double oes, const char* unit, double oesWallNs = 0
 // and nothing else — which is how DISABLED_LinqJoin sat red in CI while the
 // numbers around it were read as fine. The compiler knows why; keep the message.
 ::testing::AssertionResult Build(ibCompileCode& cc, const wxString& src) {
+    // These bench scripts are written in VES syntax (While…Do…EndDo). The
+    // process-global code style defaults to CES, so set VES here — in the full
+    // oes_tests suite another TU happened to set it, but oes_bench links only the
+    // bench TUs and must be self-sufficient.
+    ibCompileCode::SetCodeStyle(CODE_VES);
     try {
         if (cc.Compile(src))
             return ::testing::AssertionSuccess();
