@@ -96,10 +96,17 @@ Built deliberately as a bounded, tested core. The remaining pieces, each its own
    So a report carries its own query and runs it — the caller no longer has to
    execute it. (A source-less `SELECT` runs in RAM; a real `Kind.Name` source needs
    a live configuration + session, as any query does.)
-2. **Computed measures** — a measure with an expression over other measures
-   (dependency-ordered evaluation), via our script/expression evaluator.
-3. **Filters & parameters** — declared parameters substituted into the query;
-   user row filters (`eq/ne/gt/…/contains`) applied before grouping.
+2. ~~Computed measures~~ — **done**. `ibCompositionMeasure::Computed(field, expr)` —
+   evaluated once per group / grand total over the other measures' values by a small
+   arithmetic evaluator (`+ - * / ()`, measure names, literals). So a rate/ratio is
+   computed from the summed numerator and denominator, not row by row. Declaration
+   order: a computed measure sees earlier base and computed measures. *Next:*
+   dependency ordering + the full script evaluator for richer expressions.
+3. **Filters** — **done** (row filters); **parameters** — partial. `m_filters`
+   (`Eq/Ne/Gt/Ge/Lt/Le/Contains`) applied before grouping (numeric columns compare
+   numerically, strings lexically, `Contains` case-insensitive). *Next:* declared
+   report parameters substituted into the query (`&Param`; the runner already passes
+   a params map to the L4 executor).
 4. **Cross-tabulation** — column dimensions (a pivot), producing a second axis.
 5. **Conditional appearance** — per-row/cell styling rules evaluated on subtotals.
 6. **A Composer metaobject + settings persistence + designer UI** — so a report is

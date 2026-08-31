@@ -50,14 +50,36 @@ enum class ibAggregate {
 	Max,     // greatest value
 };
 
-// A measure: a field that is aggregated, with a display title.
+// A measure: a field that is aggregated, with a display title. A COMPUTED measure
+// carries an expression instead of aggregating rows — it is evaluated once per group
+// (and the grand total) over the other measures' values, so a rate/ratio is computed
+// from the summed numerator and denominator, not row by row.
 struct ibCompositionMeasure {
 	wxString    m_field;
 	ibAggregate m_agg   = ibAggregate::Sum;
 	wxString    m_title;                        // column caption; m_field if empty
+	wxString    m_expression;                   // non-empty => computed (e.g. "Amount / Qty")
 	ibCompositionMeasure() = default;
 	ibCompositionMeasure(const wxString& field, ibAggregate agg = ibAggregate::Sum, const wxString& title = wxEmptyString)
 		: m_field(field), m_agg(agg), m_title(title) {}
+	// A computed measure: `field` names the output, `expression` computes it.
+	static ibCompositionMeasure Computed(const wxString& field, const wxString& expression, const wxString& title = wxEmptyString) {
+		ibCompositionMeasure m; m.m_field = field; m.m_expression = expression; m.m_title = title; return m;
+	}
+};
+
+// A row FILTER (a user's отбор). Applied to source rows BEFORE grouping — engine-
+// and dialect-independent, and it references result column names (which may be
+// query aliases), exactly as onebase does.
+enum class ibCompareOp { Eq, Ne, Gt, Ge, Lt, Le, Contains };
+
+struct ibCompositionFilter {
+	wxString     m_field;
+	ibCompareOp  m_op = ibCompareOp::Eq;
+	ibValue      m_value;
+	ibCompositionFilter() = default;
+	ibCompositionFilter(const wxString& field, ibCompareOp op, const ibValue& value)
+		: m_field(field), m_op(op), m_value(value) {}
 };
 
 // One ordering key over the composed groups. The field may be a grouping field
@@ -77,7 +99,8 @@ struct ibCompositionSchema {
 	wxString                          m_queryText;
 
 	std::vector<wxString>             m_groupings;   // ordered grouping fields (hierarchical)
-	std::vector<ibCompositionMeasure> m_measures;    // aggregated fields
+	std::vector<ibCompositionMeasure> m_measures;    // aggregated + computed fields
+	std::vector<ibCompositionFilter>  m_filters;     // row filters, applied before grouping
 	std::vector<ibCompositionSort>    m_sort;        // ordering of groups at each level
 	bool m_grandTotal = true;                        // emit the grand total
 	bool m_detail     = false;                       // emit leaf detail rows under the deepest group

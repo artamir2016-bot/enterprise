@@ -90,13 +90,129 @@ ibValue AggregateMeasure(const std::vector<const ibComposeRow*>& rows, const ibC
 	}
 }
 
+// --- a tiny arithmetic evaluator for computed measures -----------------------
+// Grammar: expr = term (('+'|'-') term)* ; term = factor (('*'|'/') factor)* ;
+// factor = number | identifier | '(' expr ')' | '-' factor. An identifier is a
+// measure name looked up in `vals` (absent -> 0). Cyrillic names are fine — an
+// identifier is any run that is not an operator, parenthesis, space or a number.
+struct ExprEval {
+	const wxString& m_s;
+	const std::map<wxString, ibValue>& m_vals;
+	size_t m_pos = 0;
+	bool   m_ok = true;
+
+	ExprEval(const wxString& s, const std::map<wxString, ibValue>& vals) : m_s(s), m_vals(vals) {}
+
+	void Skip() { while (m_pos < m_s.size() && (m_s[m_pos] == ' ' || m_s[m_pos] == '\t')) ++m_pos; }
+	wxUniChar Peek() { Skip(); return m_pos < m_s.size() ? m_s[m_pos] : wxUniChar(0); }
+
+	double Parse() { const double v = Expr(); Skip(); if (m_pos != m_s.size()) m_ok = false; return v; }
+
+	double Expr() {
+		double v = Term();
+		for (;;) {
+			const wxUniChar c = Peek();
+			if (c == '+') { ++m_pos; v += Term(); }
+			else if (c == '-') { ++m_pos; v -= Term(); }
+			else break;
+		}
+		return v;
+	}
+	double Term() {
+		double v = Factor();
+		for (;;) {
+			const wxUniChar c = Peek();
+			if (c == '*') { ++m_pos; v *= Factor(); }
+			else if (c == '/') { ++m_pos; const double d = Factor(); v = (d != 0.0) ? v / d : 0.0; }
+			else break;
+		}
+		return v;
+	}
+	double Factor() {
+		wxUniChar c = Peek();
+		if (c == '-') { ++m_pos; return -Factor(); }
+		if (c == '(') {
+			++m_pos; const double v = Expr();
+			if (Peek() == ')') ++m_pos; else m_ok = false;
+			return v;
+		}
+		if (wxIsdigit(c) || c == '.') {
+			const size_t start = m_pos;
+			while (m_pos < m_s.size() && (wxIsdigit(m_s[m_pos]) || m_s[m_pos] == '.')) ++m_pos;
+			double d = 0.0; m_s.Mid(start, m_pos - start).ToCDouble(&d);
+			return d;
+		}
+		// identifier -> measure value
+		const size_t start = m_pos;
+		while (m_pos < m_s.size()) {
+			const wxUniChar ic = m_s[m_pos];
+			if (ic == '+' || ic == '-' || ic == '*' || ic == '/' || ic == '(' || ic == ')' || ic == ' ' || ic == '\t')
+				break;
+			++m_pos;
+		}
+		if (m_pos == start) { m_ok = false; return 0.0; }
+		const wxString name = m_s.Mid(start, m_pos - start);
+		auto it = m_vals.find(name);
+		if (it != m_vals.end())
+			return it->second.GetNumber().ToDouble();
+		for (const auto& kv : m_vals)                     // case-insensitive fallback
+			if (kv.first.IsSameAs(name, false))
+				return kv.second.GetNumber().ToDouble();
+		return 0.0;   // unknown name -> 0 (keeps a report rendering rather than failing)
+	}
+};
+
 std::map<wxString, ibValue> AggregateAll(const std::vector<const ibComposeRow*>& rows,
                                          const ibCompositionSchema& schema)
 {
 	std::map<wxString, ibValue> out;
+	// Pass 1 — the aggregated (non-computed) measures.
 	for (const ibCompositionMeasure& m : schema.m_measures)
-		out[m.m_field] = AggregateMeasure(rows, m);
+		if (m.m_expression.IsEmpty())
+			out[m.m_field] = AggregateMeasure(rows, m);
+	// Pass 2 — the computed measures, over the values gathered so far (declaration
+	// order: a computed measure sees earlier base and computed measures).
+	for (const ibCompositionMeasure& m : schema.m_measures)
+		if (!m.m_expression.IsEmpty()) {
+			ExprEval ev(m.m_expression, out);
+			out[m.m_field] = ibValue(ev.Parse());
+		}
 	return out;
+}
+
+// True when a row passes every filter (AND-combined).
+bool RowMatchesFilters(const ibComposeRow& row, const std::vector<ibCompositionFilter>& filters)
+{
+	for (const ibCompositionFilter& f : filters) {
+		const ibValue a = row.Get(f.m_field);
+		const ibValue& b = f.m_value;
+		bool ok = false;
+		if (f.m_op == ibCompareOp::Contains) {
+			ok = a.GetString().Lower().Contains(b.GetString().Lower());
+		}
+		else {
+			int cmp;
+			if (a.GetType() == ibValueTypes::TYPE_NUMBER) {
+				const double x = a.GetNumber().ToDouble(), y = b.GetNumber().ToDouble();
+				cmp = (x < y) ? -1 : (x > y) ? 1 : 0;
+			}
+			else {
+				cmp = a.GetString().Cmp(b.GetString());
+			}
+			switch (f.m_op) {
+			case ibCompareOp::Eq: ok = (cmp == 0); break;
+			case ibCompareOp::Ne: ok = (cmp != 0); break;
+			case ibCompareOp::Gt: ok = (cmp > 0);  break;
+			case ibCompareOp::Ge: ok = (cmp >= 0); break;
+			case ibCompareOp::Lt: ok = (cmp < 0);  break;
+			case ibCompareOp::Le: ok = (cmp <= 0); break;
+			default: ok = false; break;
+			}
+		}
+		if (!ok)
+			return false;
+	}
+	return true;
 }
 
 // Order a level's groups by the sort keys (a grouping key or a measure subtotal).
@@ -178,13 +294,16 @@ std::vector<ibCompositionGroup> BuildGroups(const std::vector<const ibComposeRow
 ibCompositionResult ibDataComposer::Compose(const std::vector<ibComposeRow>& rows,
                                             const ibCompositionSchema& schema)
 {
+	// Row filters are applied FIRST — engine-independent, before grouping (onebase's
+	// ApplyFilters ordering), so subtotals and the grand total see only kept rows.
 	std::vector<const ibComposeRow*> ptrs;
 	ptrs.reserve(rows.size());
 	for (const ibComposeRow& r : rows)
-		ptrs.push_back(&r);
+		if (schema.m_filters.empty() || RowMatchesFilters(r, schema.m_filters))
+			ptrs.push_back(&r);
 
 	ibCompositionResult res;
-	res.m_rowCount = (int)rows.size();
+	res.m_rowCount = (int)ptrs.size();
 	res.m_groups   = BuildGroups(ptrs, schema, 0);
 	if (schema.m_grandTotal)
 		res.m_grandTotal = AggregateAll(ptrs, schema);

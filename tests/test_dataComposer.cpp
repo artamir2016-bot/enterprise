@@ -115,6 +115,45 @@ TEST(DataComposer, OrdersGroupsByMeasure)
 	EXPECT_EQ(res.m_groups[1].m_key.GetString(), wxT("Electronics"));
 }
 
+TEST(DataComposer, FiltersRowsBeforeGrouping)
+{
+	// Numeric filter: keep only rows whose Amount >= 1000 (the two Laptop rows).
+	ibCompositionSchema s;
+	s.m_groupings = { wxT("Category") };
+	s.m_measures  = { ibCompositionMeasure(wxT("Amount"), ibAggregate::Sum) };
+	s.m_filters   = { ibCompositionFilter(wxT("Amount"), ibCompareOp::Ge, ibValue(1000.0)) };
+	const ibCompositionResult res = ibDataComposer::Compose(SampleRows(), s);
+	ASSERT_EQ(res.m_groups.size(), 1u);                       // Food (50) filtered out entirely
+	EXPECT_EQ(res.m_groups[0].m_key.GetString(), wxT("Electronics"));
+	EXPECT_DOUBLE_EQ(res.m_groups[0].m_subtotals.at(wxT("Amount")).GetDouble(), 3000.0);
+	EXPECT_DOUBLE_EQ(res.m_grandTotal.at(wxT("Amount")).GetDouble(), 3000.0);
+	EXPECT_EQ(res.m_rowCount, 2);
+
+	// String filter: Contains (case-insensitive) keeps the Electronics rows.
+	ibCompositionSchema s2 = s;
+	s2.m_filters = { ibCompositionFilter(wxT("Category"), ibCompareOp::Contains, ibValue(wxString(wxT("lect")))) };
+	const ibCompositionResult r2 = ibDataComposer::Compose(SampleRows(), s2);
+	ASSERT_EQ(r2.m_groups.size(), 1u);
+	EXPECT_DOUBLE_EQ(r2.m_groups[0].m_subtotals.at(wxT("Amount")).GetDouble(), 3100.0);   // all 3 electronics rows
+}
+
+TEST(DataComposer, ComputedMeasureFromOtherMeasures)
+{
+	// AvgPrice is computed per group from the SUMMED Amount and Qty (not row by row).
+	ibCompositionSchema s;
+	s.m_groupings = { wxT("Category") };
+	s.m_measures  = {
+		ibCompositionMeasure(wxT("Qty"),    ibAggregate::Sum),
+		ibCompositionMeasure(wxT("Amount"), ibAggregate::Sum),
+		ibCompositionMeasure::Computed(wxT("AvgPrice"), wxT("Amount / Qty")),
+	};
+	const ibCompositionResult res = ibDataComposer::Compose(SampleRows(), s);
+	ASSERT_EQ(res.m_groups.size(), 2u);
+	// Electronics: 3100 / 8 = 387.5 ; grand: 3150 / 18 = 175.0
+	EXPECT_NEAR(res.m_groups[0].m_subtotals.at(wxT("AvgPrice")).GetDouble(), 387.5, 1e-9);
+	EXPECT_NEAR(res.m_grandTotal.at(wxT("AvgPrice")).GetDouble(), 3150.0 / 18.0, 1e-9);
+}
+
 TEST(DataComposer, RendersToSpreadsheetAndExportsXlsx)
 {
 	const ibCompositionResult res = ibDataComposer::Compose(SampleRows(), TwoLevelSchema());
