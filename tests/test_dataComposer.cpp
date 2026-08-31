@@ -176,3 +176,28 @@ TEST(DataComposer, ComposesFromLiveQueryResult)
 	EXPECT_EQ(res.m_groups[1].m_key.GetString(), wxT("Food"));
 	EXPECT_DOUBLE_EQ(res.m_grandTotal.at(wxT("amount")).GetDouble(), 3050.0);
 }
+
+// The report's data set is an L4 QUERY TEXT. A source-less SELECT (no FROM) runs
+// entirely in RAM, so this exercises the whole text -> parse -> execute -> drain ->
+// compose path with no database or configuration. (Multi-row grouping over a query
+// is covered by ComposesFromLiveQueryResult against real SQLite.)
+TEST(DataComposer, ComposesFromL4QueryText)
+{
+	ibCompositionSchema schema;
+	schema.m_queryText = wxT("SELECT \"Electronics\" AS cat, 2000 AS amount");
+	schema.m_groupings = { wxT("cat") };
+	schema.m_measures  = { ibCompositionMeasure(wxT("amount"), ibAggregate::Sum, wxT("Amount")) };
+
+	// The text executes and drains to typed rows (cat = string, amount = number).
+	const std::vector<ibComposeRow> rows = ibCompositionSource::RowsFromQueryText(schema.m_queryText);
+	ASSERT_EQ(rows.size(), 1u);
+	EXPECT_EQ(rows[0].Get(wxT("cat")).GetString(), wxT("Electronics"));
+	EXPECT_DOUBLE_EQ(rows[0].Get(wxT("amount")).GetDouble(), 2000.0);
+
+	// And composes: one group, its subtotal, the grand total.
+	const ibCompositionResult res = ibCompositionSource::ComposeQuery(schema);
+	ASSERT_EQ(res.m_groups.size(), 1u);
+	EXPECT_EQ(res.m_groups[0].m_key.GetString(), wxT("Electronics"));
+	EXPECT_DOUBLE_EQ(res.m_groups[0].m_subtotals.at(wxT("amount")).GetDouble(), 2000.0);
+	EXPECT_DOUBLE_EQ(res.m_grandTotal.at(wxT("amount")).GetDouble(), 2000.0);
+}

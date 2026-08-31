@@ -2,6 +2,9 @@
 
 #include "backend/databaseLayer/databaseResultSet.h"
 #include "backend/databaseLayer/resultSetMetaData.h"
+#include "backend/query/queryParser.h"     // ibQueryParser::ParsePackage — L4 text -> package
+#include "backend/query/queryLowering.h"   // ibQueryLowering::ExecutePackage / OutputColumn
+#include "backend/query/dataQueryBuilder.h" // ibDataQueryResult — the L3 result to drain
 
 // Columns are 1-based here (see ibResultSetMetaData::GetColumnIndex, which walks
 // 1..GetColumnCount()).
@@ -58,4 +61,46 @@ ibCompositionResult ibCompositionSource::Compose(ibDatabaseResultSet* rs,
                                                  const ibCompositionSchema& schema)
 {
 	return ibDataComposer::Compose(RowsFromResultSet(rs), schema);
+}
+
+std::vector<ibComposeRow> ibCompositionSource::RowsFromQueryText(const wxString& queryText,
+                                                                const std::map<wxString, ibValue>& params)
+{
+	std::vector<ibComposeRow> rows;
+	if (queryText.Strip(wxString::both).IsEmpty())
+		return rows;
+
+	// L4 text -> package (one or more statements) -> execute. A plain SELECT (incl. a UNION of
+	// literal selects, which runs entirely in RAM) yields a result table we drain here; a report's
+	// query is that single select, so take the first statement that produced a result.
+	const ibQueryPackage package = ibQueryParser().ParsePackage(queryText);
+	std::vector<ibQueryLowering::PackageResult> results =
+		ibQueryLowering::ExecutePackage(package, params, /*store*/ nullptr);
+
+	for (ibQueryLowering::PackageResult& pr : results) {
+		if (pr.m_result == nullptr)
+			continue;   // an INTO-temp / DROP statement — no table to compose
+
+		ibDataQueryResult* result = pr.m_result.get();
+		const std::vector<ibQueryLowering::OutputColumn>& schemaCols = pr.m_schema;
+
+		while (result->Next()) {
+			ibComposeRow row;
+			for (const ibQueryLowering::OutputColumn& oc : schemaCols) {
+				const ibValue v = (oc.m_byAlias || oc.m_col == nullptr)
+					? result->GetColumn(oc.m_alias)
+					: result->GetValue(oc.m_col);
+				row.Set(oc.m_name, v);
+			}
+			rows.push_back(std::move(row));
+		}
+		break;   // the report is one select
+	}
+	return rows;
+}
+
+ibCompositionResult ibCompositionSource::ComposeQuery(const ibCompositionSchema& schema,
+                                                      const std::map<wxString, ibValue>& params)
+{
+	return ibDataComposer::Compose(RowsFromQueryText(schema.m_queryText, params), schema);
 }

@@ -71,6 +71,11 @@ struct ibCompositionSort {
 
 // The composition SCHEMA: the blueprint of the report.
 struct ibCompositionSchema {
+	// The DATA SET. A report either carries its own query TEXT (the L4 query language —
+	// run by ibCompositionSource::ComposeQuery), or the caller composes pre-fetched rows
+	// directly (ibDataComposer::Compose). Empty here means "the caller supplies the rows".
+	wxString                          m_queryText;
+
 	std::vector<wxString>             m_groupings;   // ordered grouping fields (hierarchical)
 	std::vector<ibCompositionMeasure> m_measures;    // aggregated fields
 	std::vector<ibCompositionSort>    m_sort;        // ordering of groups at each level

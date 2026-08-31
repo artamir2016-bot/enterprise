@@ -89,9 +89,13 @@ and is why the core tests need no database.
 
 Built deliberately as a bounded, tested core. The remaining pieces, each its own step:
 
-1. ~~Query wiring~~ — **done** (`ibCompositionSource`). Next: a schema that names a
-   query *text*/source and runs it through the L4 query language, rather than the
-   caller executing the query and handing over the result set.
+1. ~~Query wiring~~ — **done**. `ibCompositionSource::RowsFromResultSet` drains a
+   driver result set; `RowsFromQueryText` / `ComposeQuery` run the schema's
+   `m_queryText` through the **L4 query language** (`ibQueryParser::ParsePackage` +
+   `ibQueryLowering::ExecutePackage`), draining the result's output columns by name.
+   So a report carries its own query and runs it — the caller no longer has to
+   execute it. (A source-less `SELECT` runs in RAM; a real `Kind.Name` source needs
+   a live configuration + session, as any query does.)
 2. **Computed measures** — a measure with an expression over other measures
    (dependency-ordered evaluation), via our script/expression evaluator.
 3. **Filters & parameters** — declared parameters substituted into the query;

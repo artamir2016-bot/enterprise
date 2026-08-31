@@ -29,6 +29,16 @@ public:
 	// Convenience: drain + compose in one call.
 	static ibCompositionResult Compose(ibDatabaseResultSet* rs,
 	                                   const ibCompositionSchema& schema);
+
+	// Run an L4 QUERY TEXT (the query language) and drain its first result into rows.
+	// Parses with ibQueryParser and executes with ibQueryLowering — so the report's data
+	// set can be a query, not pre-fetched rows. `params` supplies &Parameter values.
+	static std::vector<ibComposeRow> RowsFromQueryText(const wxString& queryText,
+	                                                   const std::map<wxString, ibValue>& params = {});
+
+	// Run schema.m_queryText and compose the result by the schema.
+	static ibCompositionResult ComposeQuery(const ibCompositionSchema& schema,
+	                                        const std::map<wxString, ibValue>& params = {});
 };
 
 #endif // __IB_COMPOSITION_SOURCE_H__
