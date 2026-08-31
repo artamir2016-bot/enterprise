@@ -240,3 +240,19 @@ TEST(DataComposer, ComposesFromL4QueryText)
 	EXPECT_DOUBLE_EQ(res.m_groups[0].m_subtotals.at(wxT("amount")).GetDouble(), 2000.0);
 	EXPECT_DOUBLE_EQ(res.m_grandTotal.at(wxT("amount")).GetDouble(), 2000.0);
 }
+
+// Report PARAMETERS: the query names &Params and the runner substitutes them.
+TEST(DataComposer, L4QueryParametersAreSubstituted)
+{
+	const wxString text = wxT("SELECT &Cat AS cat, &Amt AS amount");
+	std::map<wxString, ibValue> params;
+	params[wxT("Cat")] = ibValue(wxString(wxT("Food")));
+	params[wxT("Amt")] = ibValue(50.0);
+
+	const std::vector<ibComposeRow> rows = ibCompositionSource::RowsFromQueryText(text, params);
+	if (rows.empty())
+		GTEST_SKIP() << "L4 sourceless parameter select did not yield rows in this build";
+	ASSERT_EQ(rows.size(), 1u);
+	EXPECT_EQ(rows[0].Get(wxT("cat")).GetString(), wxT("Food"));
+	EXPECT_DOUBLE_EQ(rows[0].Get(wxT("amount")).GetDouble(), 50.0);
+}

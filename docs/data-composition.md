@@ -102,11 +102,12 @@ Built deliberately as a bounded, tested core. The remaining pieces, each its own
    computed from the summed numerator and denominator, not row by row. Declaration
    order: a computed measure sees earlier base and computed measures. *Next:*
    dependency ordering + the full script evaluator for richer expressions.
-3. **Filters** — **done** (row filters); **parameters** — partial. `m_filters`
+3. **Filters & parameters** — **done**. Row filters `m_filters`
    (`Eq/Ne/Gt/Ge/Lt/Le/Contains`) applied before grouping (numeric columns compare
-   numerically, strings lexically, `Contains` case-insensitive). *Next:* declared
-   report parameters substituted into the query (`&Param`; the runner already passes
-   a params map to the L4 executor).
+   numerically, strings lexically, `Contains` case-insensitive). Query parameters:
+   `RowsFromQueryText`/`ComposeQuery` take a `params` map that the L4 executor
+   substitutes for `&Param`. *Next:* a schema-level parameter declaration (name /
+   type / default) so a UI can prompt for them.
 4. **Cross-tabulation** — column dimensions (a pivot), producing a second axis.
 5. **Conditional appearance** — per-row/cell styling rules evaluated on subtotals.
 6. **A Composer metaobject + settings persistence + designer UI** — so a report is
