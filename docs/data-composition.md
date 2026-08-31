@@ -108,7 +108,11 @@ Built deliberately as a bounded, tested core. The remaining pieces, each its own
    `RowsFromQueryText`/`ComposeQuery` take a `params` map that the L4 executor
    substitutes for `&Param`. *Next:* a schema-level parameter declaration (name /
    type / default) so a UI can prompt for them.
-4. **Cross-tabulation** — column dimensions (a pivot), producing a second axis.
+4. **Cross-tabulation** — **done (single-level)**. `m_columns` adds a column axis;
+   `ibDataComposer::ComposeCross` pivots row-axis × column-axis with one measure per
+   cell, plus row/column totals and a grand total (`ibCompositionRenderer::RenderCross`
+   lays it out as a matrix). *Next:* multi-level column paths and multiple measures
+   per cell.
 5. **Conditional appearance** — per-row/cell styling rules evaluated on subtotals.
 6. **A Composer metaobject + settings persistence + designer UI** — so a report is
    metadata with saved variants and a settings form, not only a C++ call.

@@ -98,7 +98,8 @@ struct ibCompositionSchema {
 	// directly (ibDataComposer::Compose). Empty here means "the caller supplies the rows".
 	wxString                          m_queryText;
 
-	std::vector<wxString>             m_groupings;   // ordered grouping fields (hierarchical)
+	std::vector<wxString>             m_groupings;   // ordered grouping fields (hierarchical) — the ROW axis
+	std::vector<wxString>             m_columns;     // COLUMN axis fields (a pivot); empty = normal report
 	std::vector<ibCompositionMeasure> m_measures;    // aggregated + computed fields
 	std::vector<ibCompositionFilter>  m_filters;     // row filters, applied before grouping
 	std::vector<ibCompositionSort>    m_sort;        // ordering of groups at each level
@@ -124,11 +125,33 @@ struct ibCompositionResult {
 	int                             m_rowCount = 0;
 };
 
+// A cross-tab (pivot) result: rows down the side, distinct column-axis values across
+// the top, one aggregated cell at each intersection, with row and column totals.
+// MVP shape: the FIRST grouping is the row axis, the FIRST column field is the
+// column axis, the FIRST measure fills the cells (multi-level / multi-measure follow).
+struct ibCrossResult {
+	struct CrossRow {
+		ibValue                     m_key;      // the row-axis value
+		std::map<wxString, ibValue> m_cells;    // column-key text -> aggregated measure
+		ibValue                     m_total;    // this row's total across all columns
+	};
+	std::vector<ibValue>        m_columnKeys;   // distinct column-axis values, in order
+	std::vector<CrossRow>       m_rows;         // one per distinct row-axis value, in order
+	std::map<wxString, ibValue> m_columnTotals; // column-key text -> total down the column
+	ibValue                     m_grandTotal;   // total of every cell
+	wxString                    m_measureField; // which measure the cells hold
+};
+
 class BACKEND_API ibDataComposer {
 public:
 	// Compose the rows into the group tree described by the schema.
 	static ibCompositionResult Compose(const std::vector<ibComposeRow>& rows,
 	                                    const ibCompositionSchema& schema);
+
+	// Compose a CROSS-TAB (pivot) — row axis = schema.m_groupings[0], column axis =
+	// schema.m_columns[0], cells = schema.m_measures[0]. Filters apply first, as usual.
+	static ibCrossResult ComposeCross(const std::vector<ibComposeRow>& rows,
+	                                   const ibCompositionSchema& schema);
 };
 
 #endif // __IB_DATA_COMPOSER_H__

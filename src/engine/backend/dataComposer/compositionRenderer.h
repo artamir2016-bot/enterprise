@@ -17,6 +17,7 @@
 
 struct ibCompositionSchema;
 struct ibCompositionResult;
+struct ibCrossResult;
 struct ibSpreadsheetDescription;
 
 class BACKEND_API ibCompositionRenderer {
@@ -27,6 +28,12 @@ public:
 	                   const ibCompositionSchema& schema,
 	                   ibSpreadsheetDescription& out,
 	                   const wxString& groupingHeader = wxT("Grouping"));
+
+	// Render a cross-tab (pivot) as a matrix: a header row of column-axis values, one
+	// row per row-axis value with its cells and row total, and a totals row.
+	static void RenderCross(const ibCrossResult& cross,
+	                        ibSpreadsheetDescription& out,
+	                        const wxString& rowHeader = wxT("Grouping"));
 };
 
 #endif // __IB_COMPOSITION_RENDERER_H__

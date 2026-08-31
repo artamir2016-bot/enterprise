@@ -309,3 +309,65 @@ ibCompositionResult ibDataComposer::Compose(const std::vector<ibComposeRow>& row
 		res.m_grandTotal = AggregateAll(ptrs, schema);
 	return res;
 }
+
+ibCrossResult ibDataComposer::ComposeCross(const std::vector<ibComposeRow>& rows,
+                                           const ibCompositionSchema& schema)
+{
+	ibCrossResult res;
+	if (schema.m_groupings.empty() || schema.m_columns.empty() || schema.m_measures.empty())
+		return res;
+
+	const wxString& rowField = schema.m_groupings[0];
+	const wxString& colField = schema.m_columns[0];
+	const ibCompositionMeasure& measure = schema.m_measures[0];
+	res.m_measureField = measure.m_field;
+
+	// Filters first, as everywhere else.
+	std::vector<const ibComposeRow*> kept;
+	for (const ibComposeRow& r : rows)
+		if (schema.m_filters.empty() || RowMatchesFilters(r, schema.m_filters))
+			kept.push_back(&r);
+
+	// Distinct row-axis and column-axis values (first-seen order), and the rows at each
+	// (row, column) cell plus the rows of each whole row.
+	std::vector<wxString> rowOrder, colOrder;
+	std::map<wxString, ibValue> rowVal, colVal;
+	std::map<wxString, std::map<wxString, std::vector<const ibComposeRow*>>> cell;
+	std::map<wxString, std::vector<const ibComposeRow*>> rowAll;
+
+	for (const ibComposeRow* r : kept) {
+		const ibValue rv = r->Get(rowField); const wxString rk = rv.GetString();
+		const ibValue cv = r->Get(colField); const wxString ck = cv.GetString();
+		if (rowVal.find(rk) == rowVal.end()) { rowOrder.push_back(rk); rowVal[rk] = rv; }
+		if (colVal.find(ck) == colVal.end()) { colOrder.push_back(ck); colVal[ck] = cv; }
+		cell[rk][ck].push_back(r);
+		rowAll[rk].push_back(r);
+	}
+
+	for (const wxString& ck : colOrder)
+		res.m_columnKeys.push_back(colVal[ck]);
+
+	for (const wxString& rk : rowOrder) {
+		ibCrossResult::CrossRow cr;
+		cr.m_key = rowVal[rk];
+		for (const wxString& ck : colOrder) {
+			auto it = cell[rk].find(ck);
+			cr.m_cells[ck] = (it != cell[rk].end())
+				? AggregateMeasure(it->second, measure) : ibValue(ibNumber(0));
+		}
+		cr.m_total = AggregateMeasure(rowAll[rk], measure);
+		res.m_rows.push_back(std::move(cr));
+	}
+
+	for (const wxString& ck : colOrder) {
+		std::vector<const ibComposeRow*> colRows;
+		for (const wxString& rk : rowOrder) {
+			auto it = cell[rk].find(ck);
+			if (it != cell[rk].end())
+				colRows.insert(colRows.end(), it->second.begin(), it->second.end());
+		}
+		res.m_columnTotals[ck] = AggregateMeasure(colRows, measure);
+	}
+	res.m_grandTotal = AggregateMeasure(kept, measure);
+	return res;
+}

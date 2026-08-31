@@ -105,3 +105,64 @@ void ibCompositionRenderer::Render(const ibCompositionResult& result,
 		++row;
 	}
 }
+
+void ibCompositionRenderer::RenderCross(const ibCrossResult& cross,
+                                        ibSpreadsheetDescription& out,
+                                        const wxString& rowHeader)
+{
+	out.ClearSpreadsheet();
+
+	auto numCell = [&](int r, int c, const ibValue& v, bool bold) {
+		ibSpreadsheetCellDescription* cell = out.GetOrCreateCell(r, c);
+		cell->SetValue(v.GetString());
+		cell->m_alignHorz = wxALIGN_RIGHT;
+		if (bold) SetBold(cell);
+	};
+
+	// Header: rowHeader | <column keys...> | Total.
+	int row = 0;
+	{
+		ibSpreadsheetCellDescription* h0 = out.GetOrCreateCell(row, 0);
+		h0->SetValue(rowHeader);
+		SetBold(h0);
+		int col = 1;
+		for (const ibValue& ck : cross.m_columnKeys) {
+			ibSpreadsheetCellDescription* h = out.GetOrCreateCell(row, col++);
+			h->SetValue(ck.GetString());
+			h->m_alignHorz = wxALIGN_CENTER_HORIZONTAL;
+			SetBold(h);
+		}
+		ibSpreadsheetCellDescription* ht = out.GetOrCreateCell(row, col);
+		ht->SetValue(wxT("Total"));
+		ht->m_alignHorz = wxALIGN_CENTER_HORIZONTAL;
+		SetBold(ht);
+		++row;
+	}
+
+	// One row per row-axis value: key | cells | row total.
+	for (const ibCrossResult::CrossRow& cr : cross.m_rows) {
+		ibSpreadsheetCellDescription* label = out.GetOrCreateCell(row, 0);
+		label->SetValue(cr.m_key.GetString());
+		int col = 1;
+		for (const ibValue& ck : cross.m_columnKeys) {
+			auto it = cr.m_cells.find(ck.GetString());
+			numCell(row, col++, it != cr.m_cells.end() ? it->second : ibValue(ibNumber(0)), false);
+		}
+		numCell(row, col, cr.m_total, /*bold*/ true);
+		++row;
+	}
+
+	// Totals row: Total | column totals | grand total.
+	{
+		ibSpreadsheetCellDescription* t0 = out.GetOrCreateCell(row, 0);
+		t0->SetValue(wxT("Total"));
+		SetBold(t0);
+		int col = 1;
+		for (const ibValue& ck : cross.m_columnKeys) {
+			auto it = cross.m_columnTotals.find(ck.GetString());
+			numCell(row, col++, it != cross.m_columnTotals.end() ? it->second : ibValue(ibNumber(0)), true);
+		}
+		numCell(row, col, cross.m_grandTotal, /*bold*/ true);
+		++row;
+	}
+}

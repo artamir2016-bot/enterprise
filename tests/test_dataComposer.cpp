@@ -154,6 +154,43 @@ TEST(DataComposer, ComputedMeasureFromOtherMeasures)
 	EXPECT_NEAR(res.m_grandTotal.at(wxT("AvgPrice")).GetDouble(), 3150.0 / 18.0, 1e-9);
 }
 
+TEST(DataComposer, CrossTabPivot)
+{
+	// Row axis = Category, column axis = Product, cells = SUM(Amount).
+	ibCompositionSchema s;
+	s.m_groupings = { wxT("Category") };
+	s.m_columns   = { wxT("Product") };
+	s.m_measures  = { ibCompositionMeasure(wxT("Amount"), ibAggregate::Sum) };
+	const ibCrossResult x = ibDataComposer::ComposeCross(SampleRows(), s);
+
+	// Columns first-seen: Laptop, Mouse, Apple.
+	ASSERT_EQ(x.m_columnKeys.size(), 3u);
+	EXPECT_EQ(x.m_columnKeys[0].GetString(), wxT("Laptop"));
+	EXPECT_EQ(x.m_columnKeys[2].GetString(), wxT("Apple"));
+
+	ASSERT_EQ(x.m_rows.size(), 2u);
+	const ibCrossResult::CrossRow& elec = x.m_rows[0];
+	EXPECT_EQ(elec.m_key.GetString(), wxT("Electronics"));
+	EXPECT_DOUBLE_EQ(elec.m_cells.at(wxT("Laptop")).GetDouble(), 3000.0);   // 2000 + 1000
+	EXPECT_DOUBLE_EQ(elec.m_cells.at(wxT("Mouse")).GetDouble(), 100.0);
+	EXPECT_DOUBLE_EQ(elec.m_cells.at(wxT("Apple")).GetDouble(), 0.0);       // empty intersection
+	EXPECT_DOUBLE_EQ(elec.m_total.GetDouble(), 3100.0);
+
+	EXPECT_DOUBLE_EQ(x.m_columnTotals.at(wxT("Laptop")).GetDouble(), 3000.0);
+	EXPECT_DOUBLE_EQ(x.m_columnTotals.at(wxT("Apple")).GetDouble(), 50.0);
+	EXPECT_DOUBLE_EQ(x.m_grandTotal.GetDouble(), 3150.0);
+
+	// Renders as a matrix: header, rows, totals row.
+	ibSpreadsheetDescription doc;
+	ibCompositionRenderer::RenderCross(x, doc, wxT("Cat"));
+	EXPECT_EQ(doc.GetCell(0, 0)->GetValue(), wxT("Cat"));
+	EXPECT_EQ(doc.GetCell(0, 1)->GetValue(), wxT("Laptop"));
+	EXPECT_EQ(doc.GetCell(1, 0)->GetValue(), wxT("Electronics"));
+	EXPECT_EQ(doc.GetCell(1, 1)->GetValue(), wxT("3000"));
+	const int last = doc.GetNumberRows() - 1;
+	EXPECT_EQ(doc.GetCell(last, 0)->GetValue(), wxT("Total"));
+}
+
 TEST(DataComposer, RendersToSpreadsheetAndExportsXlsx)
 {
 	const ibCompositionResult res = ibDataComposer::Compose(SampleRows(), TwoLevelSchema());
