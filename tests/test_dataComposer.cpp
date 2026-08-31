@@ -154,6 +154,28 @@ TEST(DataComposer, ComputedMeasureFromOtherMeasures)
 	EXPECT_NEAR(res.m_grandTotal.at(wxT("AvgPrice")).GetDouble(), 3150.0 / 18.0, 1e-9);
 }
 
+TEST(DataComposer, ConditionalAppearance)
+{
+	ibCompositionSchema s;
+	s.m_groupings = { wxT("Category") };
+	s.m_measures  = { ibCompositionMeasure(wxT("Amount"), ibAggregate::Sum) };
+	ibCompositionStyle red; red.m_textColor = wxT("#C00000"); red.m_bold = true;
+	s.m_conditional = { ibCompositionRule(wxT("Amount < 100"), red) };   // fires on small totals
+
+	const ibCompositionResult res = ibDataComposer::Compose(SampleRows(), s);
+	ASSERT_EQ(res.m_groups.size(), 2u);
+	EXPECT_FALSE(res.m_groups[0].m_style.IsSet());                 // Electronics = 3100
+	ASSERT_TRUE(res.m_groups[1].m_style.IsSet());                  // Food = 50
+	EXPECT_EQ(res.m_groups[1].m_style.m_textColor, wxT("#C00000"));
+
+	// The colour lands on the rendered Food row (row 2: header, Electronics, Food, Total).
+	ibSpreadsheetDescription doc;
+	ibCompositionRenderer::Render(res, s, doc, wxT("Cat"));
+	ASSERT_NE(doc.GetCell(2, 0), nullptr);
+	EXPECT_NE(doc.GetCell(2, 0)->GetValue().Find(wxT("Food")), wxNOT_FOUND);
+	EXPECT_EQ(doc.GetCell(2, 0)->m_textColour, wxColour(wxT("#C00000")));
+}
+
 TEST(DataComposer, CrossTabPivot)
 {
 	// Row axis = Category, column axis = Product, cells = SUM(Amount).

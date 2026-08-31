@@ -82,6 +82,25 @@ struct ibCompositionFilter {
 		: m_field(field), m_op(op), m_value(value) {}
 };
 
+// A resolved cell/row STYLE (conditional appearance). Colours are "#RRGGBB" hex,
+// empty meaning "leave the default"; these ride straight into the spreadsheet cell
+// (and so into the XLSX export).
+struct ibCompositionStyle {
+	bool     m_bold = false;
+	wxString m_textColor;
+	wxString m_backColor;
+	bool IsSet() const { return m_bold || !m_textColor.IsEmpty() || !m_backColor.IsEmpty(); }
+};
+
+// A conditional-appearance RULE: when `m_when` (a boolean expression over the group's
+// subtotals, e.g. "Amount < 0") holds, apply `m_style` to the group row.
+struct ibCompositionRule {
+	wxString           m_when;
+	ibCompositionStyle m_style;
+	ibCompositionRule() = default;
+	ibCompositionRule(const wxString& when, const ibCompositionStyle& style) : m_when(when), m_style(style) {}
+};
+
 // One ordering key over the composed groups. The field may be a grouping field
 // (sort by the group key) or a measure field (sort by its subtotal).
 struct ibCompositionSort {
@@ -102,6 +121,7 @@ struct ibCompositionSchema {
 	std::vector<wxString>             m_columns;     // COLUMN axis fields (a pivot); empty = normal report
 	std::vector<ibCompositionMeasure> m_measures;    // aggregated + computed fields
 	std::vector<ibCompositionFilter>  m_filters;     // row filters, applied before grouping
+	std::vector<ibCompositionRule>    m_conditional; // conditional-appearance rules (styling)
 	std::vector<ibCompositionSort>    m_sort;        // ordering of groups at each level
 	bool m_grandTotal = true;                        // emit the grand total
 	bool m_detail     = false;                       // emit leaf detail rows under the deepest group
@@ -114,6 +134,7 @@ struct ibCompositionGroup {
 	ibValue                         m_key;        // the distinct value
 	int                             m_count = 0;  // rows in this group (recursively)
 	std::map<wxString, ibValue>     m_subtotals;  // measure field -> aggregated value
+	ibCompositionStyle              m_style;      // conditional appearance (resolved at compose)
 	std::vector<ibCompositionGroup> m_children;   // deeper grouping (empty at the leaf)
 	std::vector<ibComposeRow>       m_details;    // leaf rows (only when schema.m_detail)
 };

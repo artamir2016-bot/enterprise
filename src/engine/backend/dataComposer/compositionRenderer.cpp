@@ -46,6 +46,18 @@ void EmitGroup(ibSpreadsheetDescription& out, int& row, int level,
 	label->SetValue(Indent(level) + g.m_key.GetString());
 	SetBold(label);                                   // group rows are subtotals — emphasise
 	PutMeasures(out, row, schema.m_measures, g.m_subtotals, /*bold*/ true);
+
+	// Conditional appearance resolved at compose: colour / bold the whole group row.
+	if (g.m_style.IsSet()) {
+		const wxColour fg(g.m_style.m_textColor);
+		const wxColour bg(g.m_style.m_backColor);
+		for (int c = 0; c <= (int)schema.m_measures.size(); ++c) {
+			ibSpreadsheetCellDescription* cell = out.GetOrCreateCell(row, c);
+			if (g.m_style.m_bold) SetBold(cell);
+			if (!g.m_style.m_textColor.IsEmpty() && fg.IsOk()) cell->m_textColour = fg;
+			if (!g.m_style.m_backColor.IsEmpty() && bg.IsOk()) cell->m_backgroundColour = bg;
+		}
+	}
 	++row;
 
 	for (const ibCompositionGroup& child : g.m_children)

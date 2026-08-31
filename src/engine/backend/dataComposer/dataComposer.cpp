@@ -108,6 +108,33 @@ struct ExprEval {
 
 	double Parse() { const double v = Expr(); Skip(); if (m_pos != m_s.size()) m_ok = false; return v; }
 
+	// A boolean condition: `expr (compare expr)?`. With no comparison, non-zero is true.
+	bool Condition() {
+		const double lhs = Expr();
+		Peek();   // skip spaces to the operator
+		auto two = [&](wxChar a, wxChar b) { return m_pos + 1 < m_s.size() && m_s[m_pos] == a && m_s[m_pos + 1] == b; };
+		int op = 0;   // 1:< 2:<= 3:> 4:>= 5:== 6:!=
+		if      (two('<', '=')) { op = 2; m_pos += 2; }
+		else if (two('>', '=')) { op = 4; m_pos += 2; }
+		else if (two('=', '=')) { op = 5; m_pos += 2; }
+		else if (two('!', '=')) { op = 6; m_pos += 2; }
+		else if (m_pos < m_s.size() && m_s[m_pos] == '<') { op = 1; ++m_pos; }
+		else if (m_pos < m_s.size() && m_s[m_pos] == '>') { op = 3; ++m_pos; }
+		else if (m_pos < m_s.size() && m_s[m_pos] == '=') { op = 5; ++m_pos; }
+		if (op == 0)
+			return lhs != 0.0;
+		const double rhs = Expr();
+		switch (op) {
+		case 1: return lhs <  rhs;
+		case 2: return lhs <= rhs;
+		case 3: return lhs >  rhs;
+		case 4: return lhs >= rhs;
+		case 5: return lhs == rhs;
+		case 6: return lhs != rhs;
+		}
+		return false;
+	}
+
 	double Expr() {
 		double v = Term();
 		for (;;) {
@@ -178,6 +205,16 @@ std::map<wxString, ibValue> AggregateAll(const std::vector<const ibComposeRow*>&
 			out[m.m_field] = ibValue(ev.Parse());
 		}
 	return out;
+}
+
+// Evaluate a conditional-appearance predicate over a group's subtotals.
+bool EvalCondition(const wxString& when, const std::map<wxString, ibValue>& vals)
+{
+	if (when.Strip(wxString::both).IsEmpty())
+		return false;
+	ExprEval e(when, vals);
+	const bool r = e.Condition();
+	return e.m_ok ? r : false;
 }
 
 // True when a row passes every filter (AND-combined).
@@ -275,6 +312,11 @@ std::vector<ibCompositionGroup> BuildGroups(const std::vector<const ibComposeRow
 		g.m_key       = keyValue[k];
 		g.m_count     = (int)bucket.size();
 		g.m_subtotals = AggregateAll(bucket, schema);
+
+		// Conditional appearance: the FIRST rule whose predicate holds over this
+		// group's subtotals sets its style (evaluated once per group, not per row).
+		for (const ibCompositionRule& rule : schema.m_conditional)
+			if (EvalCondition(rule.m_when, g.m_subtotals)) { g.m_style = rule.m_style; break; }
 
 		if (level + 1 < schema.m_groupings.size())
 			g.m_children = BuildGroups(bucket, schema, level + 1);

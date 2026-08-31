@@ -113,6 +113,11 @@ Built deliberately as a bounded, tested core. The remaining pieces, each its own
    cell, plus row/column totals and a grand total (`ibCompositionRenderer::RenderCross`
    lays it out as a matrix). *Next:* multi-level column paths and multiple measures
    per cell.
-5. **Conditional appearance** — per-row/cell styling rules evaluated on subtotals.
+5. **Conditional appearance** — **done**. `m_conditional` rules: a boolean
+   expression over a group's subtotals (`Amount < 100`, with `< <= > >= == !=` on top
+   of the arithmetic evaluator) sets a style (`ibCompositionStyle`: bold / text /
+   background `#RRGGBB`) on the group row, resolved once per group at compose and
+   carried into the spreadsheet cells (and so the XLSX export). *Next:* per-measure
+   (single-cell) styling and appearance on detail rows.
 6. **A Composer metaobject + settings persistence + designer UI** — so a report is
    metadata with saved variants and a settings form, not only a C++ call.
