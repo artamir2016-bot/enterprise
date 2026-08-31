@@ -4,6 +4,38 @@ This is the project-level companion to `tools/perf/README.md`. It explains *what
 the platform's performance is measured on, *how* the evaluation is produced, and
 records the *findings* of a run so the numbers are read the same way twice.
 
+## Tail optimisation — what the measurement actually showed (2026-08-31)
+
+Asked to optimise the two tail items (frame-cost, join index), the harness earned
+its keep by settling the question with numbers instead of intuition:
+
+- **Both named targets were already optimised in prior work.** The join index is a
+  `std::unordered_map` (not the red-black tree its old bench comment described),
+  and its key hash already short-circuits integers with no string conversion. The
+  call frame already uses raw inline storage sized to the function's *real* local
+  count, with the former per-frame `std::map` replaced by a vector. There was no
+  red-black-tree-to-hash or 25-slot-to-N win left to take — those were spent.
+- **One real remaining inefficiency in the join index: a heap allocation per
+  distinct key.** Each bucket was a `std::vector<ibValue>`, which allocates its
+  buffer on the first `push_back` — so a 1:1 join over N keys did N heap
+  allocations for buckets holding one element. Replaced with a small-buffer bucket
+  (`ibJoinBucket`: first match inline, vector only on collision) → **zero per-key
+  allocation on the common 1:1 join**, multi-match preserved (guarded by the new
+  `JoinIndex.OneToOneAndMultiMatchCounts` test).
+- **But it is wall-time-neutral (median of 9): the join is dominated by lambda
+  dispatch, not allocation.** Three lambda invocations per row (leftKey, rightKey,
+  projection) at interpreter-call cost swamp the saved `malloc`s. The gain is in
+  **allocator pressure / resident set** (the axis `MillionRowScale` flagged), not
+  in nanoseconds. Honest and worth keeping — just not a speedup.
+- **The true tail is the interpreter CALL itself** (`recursion` x114,
+  `host→script` x157), shared by every lambda-heavy path. That path is already a
+  tight stack-frame fast-path; the bench comments record that two attempts to
+  rewrite it crashed the corpus. It is a deliberate, higher-risk piece of work,
+  not a quick win, and is left as the next frontier rather than forced here.
+- **Harness lesson: single runs are too noisy for small deltas.** Metrics my change
+  cannot touch (`FromString`, `str concat`) swung ±20% run to run; a median of 9
+  was needed to see the join was flat. Use `--repeat 7+` before trusting a compare.
+
 ## The system
 
 Three layers, each doing one job:

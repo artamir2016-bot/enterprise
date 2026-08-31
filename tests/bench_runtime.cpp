@@ -201,7 +201,58 @@ void RowOes(const char* name, double oes, const char* unit, double oesWallNs = 0
     }
 }
 
+// Run a script function returning an integer, asserting compile+execute succeed.
+long RunIntFunc(const wxString& src, const wxChar* fn, long arg) {
+    ibCompileCode cc(wxT("test"), wxT("memory"), false);
+    EXPECT_TRUE(Build(cc, src));
+    ibProcUnit pu;
+    EXPECT_TRUE(([&]{ try { pu.Execute(cc.m_cByteCode); return true; } catch (...) { return false; } }()));
+    ibValue a((int)arg), ret;
+    pu.CallAsFunc(fn, ret, a);
+    return (long)ret.GetInteger();
+}
+
 } // namespace
+
+// ===========================================================================
+// Join index correctness — guards the small-buffer bucket (ibJoinBucket) that
+// stores the first inner match inline and spills to a vector only on collision.
+// A NON-disabled test: it runs in the normal suite so a regression in either the
+// 1:1 or the multi-match path is caught, not just the benched wall-time.
+// ===========================================================================
+TEST(JoinIndex, OneToOneAndMultiMatchCounts) {
+    // 1:1 — outer 0..n-1 joined to inner 0..n-1 on equality: exactly n rows.
+    const long n = 500;
+    const long one2one = RunIntFunc(
+        wxT("var outer public; var inner public;\n")
+        wxT("Procedure Fill(n) Public\n")
+        wxT("  outer = New Array; inner = New Array; var i; i = 0;\n")
+        wxT("  While i < n Do outer.Add(i); inner.Add(i); i = i + 1; EndDo;\n")
+        wxT("EndProcedure\n")
+        wxT("Function Run(n) Public\n")
+        wxT("  Fill(n);\n")
+        wxT("  var q; q = from a in outer join b in inner on a equals b select a;\n")
+        wxT("  Return q.Count();\n")
+        wxT("EndFunction\n"),
+        wxT("Run"), n);
+    EXPECT_EQ(one2one, n);
+
+    // Multi-match — inner has every key TWICE, so each outer row matches 2 inner
+    // rows: 2*n result rows. This is the path that exercises ibJoinBucket::m_rest.
+    const long multi = RunIntFunc(
+        wxT("var outer public; var inner public;\n")
+        wxT("Procedure Fill(n) Public\n")
+        wxT("  outer = New Array; inner = New Array; var i; i = 0;\n")
+        wxT("  While i < n Do outer.Add(i); inner.Add(i); inner.Add(i); i = i + 1; EndDo;\n")
+        wxT("EndProcedure\n")
+        wxT("Function Run(n) Public\n")
+        wxT("  Fill(n);\n")
+        wxT("  var q; q = from a in outer join b in inner on a equals b select a;\n")
+        wxT("  Return q.Count();\n")
+        wxT("EndFunction\n"),
+        wxT("Run"), n);
+    EXPECT_EQ(multi, 2 * n);
+}
 
 // ===========================================================================
 // RuntimeBench — the bytecode interpreter

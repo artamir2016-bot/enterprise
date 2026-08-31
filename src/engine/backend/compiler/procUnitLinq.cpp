@@ -540,6 +540,28 @@ private:
 	long                                                              m_pos   = 0;
 };
 
+// A join index bucket, small-buffer-optimised for the 1:1 case.
+//
+// The overwhelmingly common join is on a KEY — one inner row per key. A plain
+// std::vector<ibValue> per bucket heap-allocates its buffer on the FIRST
+// push_back, so a build over N distinct keys paid N heap allocations (and N
+// frees at teardown) for buckets that hold exactly one element. This stores the
+// first match INLINE and only spills to a vector on the second collision, so the
+// 1:1 join (and the many-distinct-keys group the join index really is) does zero
+// per-key heap allocation. Multi-match keeps working through m_rest.
+struct ibJoinBucket {
+	ibValue              m_first;
+	std::vector<ibValue> m_rest;    // empty unless a key has >1 inner row
+	bool                 m_has = false;
+
+	void Push(const ibValue& v) {
+		if (!m_has) { m_first = v; m_has = true; }
+		else        { m_rest.push_back(v); }
+	}
+	long Size() const { return m_has ? 1 + (long)m_rest.size() : 0; }
+	const ibValue& At(long i) const { return i == 0 ? m_first : m_rest[(size_t)(i - 1)]; }
+};
+
 // Join node — inner equi-join. Build hash map from `inner` keyed
 // by rightKey(fn); for each outer row, look up by leftKey(fn),
 // project matched pairs via projection(outer, inner) -> row.
@@ -581,13 +603,13 @@ public:
 				m_bucketIdx = 0;
 				m_haveOuter = true;
 			}
-			if (m_curBucket != nullptr && m_bucketIdx < (long)m_curBucket->size()) {
+			if (m_curBucket != nullptr && m_bucketIdx < m_curBucket->Size()) {
 				// Local copy of inner row — bucket holds const ibValue
 				// (map stores by-value); projection lambda binds args
 				// by non-const ref. Copy isolates m_inner from any
 				// in-lambda mutation as a side-effect (the join row
 				// is supposed to be a freshly projected value).
-				ibValue innerRow = (*m_curBucket)[m_bucketIdx];
+				ibValue innerRow = m_curBucket->At(m_bucketIdx);
 				CallLambdaWith2Args(m_projection, m_curOuter, innerRow, current);
 				++m_bucketIdx;
 				return true;
@@ -619,7 +641,7 @@ private:
 		while (innerIt->MoveNext(elem)) {
 			ibValue rightK;
 			CallLambdaWithArg(m_rightKey, elem, rightK);
-			m_hash[rightK].push_back(elem);
+			m_hash[rightK].Push(elem);
 		}
 	}
 
@@ -631,11 +653,11 @@ private:
 	bool                                   m_built = false;
 	// One bucket probe per outer row — see the key-policy note above, and
 	// ibValueHash / ibValueEqual in value.h, for why this is not a tree any more.
-	std::unordered_map<ibValue, std::vector<ibValue>, ibValueHash, ibValueEqual> m_hash;
+	std::unordered_map<ibValue, ibJoinBucket, ibValueHash, ibValueEqual> m_hash;
 	// Cross-MoveNext state — bucket cursor for multi-match.
 	bool                                   m_haveOuter = false;
 	ibValue                                m_curOuter;
-	const std::vector<ibValue>*            m_curBucket = nullptr;
+	const ibJoinBucket*                    m_curBucket = nullptr;
 	long                                   m_bucketIdx = 0;
 };
 
