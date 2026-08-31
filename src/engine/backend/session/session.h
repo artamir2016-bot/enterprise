@@ -627,8 +627,18 @@ public:
 	static AccessMode GetAccessMode();
 
 	// Canonical "session this code is currently working on". Lookup
-	// strategy depends on AccessMode (see above).
+	// strategy depends on AccessMode (see above). Hot path: memoised
+	// thread-locally and validated against a generation counter, so it is
+	// an atomic read unless a binding changed. See ibSession.cpp.
 	static ibSession* Current();
+
+	// Invalidate the Current() thread-local memo process-wide (bumps the
+	// generation counter). The binding primitives in ibSession.cpp bump it
+	// themselves; this is the door for the OTHER mutation sites — the registry's
+	// fallback and debug-thread/parked-target changes — which live in a
+	// different translation unit. MUST be called by every such site, or a thread
+	// could return a stale session.
+	static void InvalidateCurrentCache();
 
 	// Shared-mode fallback — session returned by Current() when the
 	// calling thread isn't bound. Effective only when AccessMode == Shared.

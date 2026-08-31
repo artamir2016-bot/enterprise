@@ -12,6 +12,8 @@
 #include "workerPool.h"
 
 #include <utility>
+#include <atomic>
+#include <cstdint>
 #include <chrono>
 #include <shared_mutex>
 #include <thread>
@@ -467,6 +469,25 @@ namespace {
 std::shared_mutex s_currentMutex;
 std::unordered_map<std::thread::id, std::weak_ptr<ibSession>> s_currentByThread;
 
+// GENERATION COUNTER for the Current() thread-local memo (hot path — resolved on
+// every function call / opcode family that asks for the session). The full
+// resolve takes a shared_lock + a map find + a weak_ptr lock; a thread that
+// memoises (generation, result) skips all three while the generation is
+// unchanged. Correctness rests on ONE invariant: every mutation that can change
+// what Current() returns for ANY thread bumps this counter. Those are — the
+// thread→session binding map (the five sites in this file), the process fallback
+// and the debug-thread set / parked-target queue (ibSessionRegistry, via
+// ibSession::InvalidateCurrentCache()), and session destruction (~ibSession, the
+// belt-and-braces guard against a memoised fallback pointer outliving its
+// session). Starts at 1 so a thread's initial ts_gen==0 never spuriously matches.
+std::atomic<std::uint64_t> s_currentGeneration{1};
+inline void BumpCurrentGeneration()
+{
+	// release: publishes any preceding binding-map / fallback write to the
+	// acquiring reader in Current() before it trusts a matching generation.
+	s_currentGeneration.fetch_add(1, std::memory_order_release);
+}
+
 } // namespace
 
 ibSession::ibSession(wxString id, ibSessionKind kind)
@@ -492,6 +513,12 @@ ibSession::~ibSession()
 	// (registry-driven Remove, abnormal teardown). Idempotent — ClearRoot
 	// is a no-op when m_root is already null.
 	ClearRoot();
+
+	// Belt-and-braces for the Current() memo: a thread may have memoised THIS
+	// session as its fallback, and the fallback binding is a weak_ptr that does
+	// not itself bump the generation when it expires. Bumping here guarantees no
+	// memoised raw pointer outlives the session it names.
+	BumpCurrentGeneration();
 }
 
 ibValueModuleManagerRuntimeConfiguration* ibSession::GetManagerModule() const
@@ -865,8 +892,26 @@ ibSession* ibSession::Current()
 	// states without faulting.
 	ibSessionRegistry* const regPtr = ibApplicationData::GetSessionRegistry();
 	if (regPtr == nullptr) return nullptr;
+
+	// THREAD-LOCAL MEMO — the hot path. Current() is asked on every function
+	// call and opcode family that needs the session; the full resolve below
+	// takes a shared_lock, a map find and a weak_ptr lock. A thread caches
+	// (generation, result) and returns it while s_currentGeneration is
+	// unchanged — an acquire load of one atomic instead of the three
+	// synchronised operations. Only the NON-debug result is memoised: a debug
+	// worker's answer comes from the global parked-target queue, so a debug
+	// thread always re-resolves (ts_cacheable stays false). Every mutation that
+	// could change either answer bumps the generation (see BumpCurrentGeneration).
+	static thread_local std::uint64_t ts_gen       = 0;
+	static thread_local ibSession*    ts_sess       = nullptr;
+	static thread_local bool          ts_cacheable  = false;
+	const std::uint64_t gen = s_currentGeneration.load(std::memory_order_acquire);
+	if (ts_cacheable && ts_gen == gen)
+		return ts_sess;
+
 	auto& reg = *regPtr;
 	const auto tid = std::this_thread::get_id();
+	const bool isDebug = reg.IsDebugThread(tid);
 
 	// Debug-thread redirection: a thread registered as a debug-server
 	// worker resolves Current() to "whichever script thread is parked
@@ -875,11 +920,12 @@ ibSession* ibSession::Current()
 	// (Eval, ExpandExpression, EvalToolTip, EvalAutocomplete) reach
 	// the right session through the same Current() call other code
 	// uses, without an explicit sid threaded through every handler.
-	if (reg.IsDebugThread(tid)) {
+	if (isDebug) {
 		// Raw out of a temporary hold — the caller keeps nothing, and the
 		// session stays alive because its owner does. Debug commands run
 		// synchronously while the script thread is parked, so it cannot
-		// go away for the duration of the handler.
+		// go away for the duration of the handler. NOT memoised — the target
+		// is the global parked-session queue, re-read every call.
 		if (auto s = reg.GetActiveDebugTarget().Share()) return s.get();
 		// No session parked → fall through to the regular path below
 		// so a debug worker can still observe its own Designer-side
@@ -902,11 +948,32 @@ ibSession* ibSession::Current()
 	// that did not gets the process's fallback — the first authenticated session,
 	// which on a desktop IS the lone session the old branch was reaching for. The
 	// access mode still sizes the worker pool; it no longer decides identity.
-	std::shared_lock<std::shared_mutex> lk(s_currentMutex);
-	if (auto it = s_currentByThread.find(tid); it != s_currentByThread.end()) {
-		if (auto sp = it->second.lock()) return sp.get();
+	ibSession* result = nullptr;
+	{
+		std::shared_lock<std::shared_mutex> lk(s_currentMutex);
+		if (auto it = s_currentByThread.find(tid); it != s_currentByThread.end()) {
+			if (auto sp = it->second.lock()) result = sp.get();
+		}
 	}
-	return reg.GetFallback();
+	if (result == nullptr)
+		result = reg.GetFallback();
+
+	// Memoise for the next call at this generation — but NOT for a debug thread,
+	// whose result is the mutable parked-target queue (it takes the branch above
+	// when a session is parked, and must keep re-checking). Non-debug threads
+	// depend only on their own binding + the fallback, both generation-tracked.
+	ts_gen      = gen;
+	ts_sess     = result;
+	ts_cacheable = !isDebug;
+	return result;
+}
+
+void ibSession::InvalidateCurrentCache()
+{
+	// The out-of-file mutation sites (ibSessionRegistry: fallback, debug-thread
+	// set, parked-target queue) reach the Current() generation counter through
+	// this one door — the counter itself is file-static here beside Current().
+	BumpCurrentGeneration();
 }
 
 void ibSession::SetAccessMode(AccessMode mode)
@@ -980,6 +1047,7 @@ void ibSession::BindSessionToThread(ibSession* s, std::thread::id tid)
 	}
 	else
 		s_currentByThread.erase(tid);
+	BumpCurrentGeneration();   // invalidate every thread's Current() memo
 	// Interpreter state needs no separate setup — ibSession::GetPUState()
 	// resolves via Current() each call, so the binding above is the
 	// single point that "switches" the state visible to this thread.
@@ -989,6 +1057,7 @@ void ibSession::UnbindThread(std::thread::id tid)
 {
 	std::unique_lock<std::shared_mutex> lk(s_currentMutex);
 	s_currentByThread.erase(tid);
+	BumpCurrentGeneration();
 }
 
 void ibSession::UnbindSession(ibSession* s)
@@ -1005,6 +1074,7 @@ void ibSession::UnbindSession(ibSession* s)
 		else
 			++it;
 	}
+	BumpCurrentGeneration();
 }
 
 // A sessionless FRAME fallback lived here — a raw thread_local pointer with a
@@ -1308,6 +1378,7 @@ ibSessionScope::ibSessionScope(ibSession* s)
 	}
 	else
 		s_currentByThread.erase(tid);
+	BumpCurrentGeneration();   // this thread's binding changed — drop its memo
 	// Interpreter state — no separate cache to manage. ibSession::GetPUState()
 	// resolves through Current() each call; the binding update above is
 	// what makes the new session's state visible.
@@ -1321,6 +1392,7 @@ ibSessionScope::~ibSessionScope()
 		s_currentByThread[tid] = m_prev;   // weak_ptr copy of still-live binding
 	else
 		s_currentByThread.erase(tid);
+	BumpCurrentGeneration();   // binding restored — drop this thread's memo
 }
 
 std::shared_ptr<ibDatabaseLayer> ibSession::DatabaseLayer()

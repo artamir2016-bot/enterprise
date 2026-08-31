@@ -36,6 +36,43 @@ its keep by settling the question with numbers instead of intuition:
   cannot touch (`FromString`, `str concat`) swung ±20% run to run; a median of 9
   was needed to see the join was flat. Use `--repeat 7+` before trusting a compare.
 
+## Interpreter call cost — the session-resolution tax (2026-08-31)
+
+The next tail item was the interpreter CALL itself (`recursion` x114, `host→script`
+x157). Reading the path settled where the cost is — and, importantly, where the
+micro-bench can and cannot see it:
+
+- **`ibProcUnit::Execute` resolves `ibSession::Current()` on every invocation** —
+  i.e. on every function call — and the old `Current()` took a `shared_lock` on a
+  process `shared_mutex`, an `unordered_map` find by thread id, and a `weak_ptr`
+  lock. In a live session that is three synchronised operations per call; under
+  **concurrent** sessions the shared_mutex is read-contended by every executing
+  thread on every call — a scalability tax, not just a constant one.
+- **Fix: a thread-local memo validated by a generation counter.** `Current()` now
+  returns a cached `(generation, session)` with a single acquire-load of one
+  atomic while nothing changed; the full resolve runs only when a binding actually
+  moved. Every mutation that can change the answer bumps the generation — the five
+  thread→session binding sites, the process fallback, the debug-thread set and the
+  parked-target queue, and `~ibSession` (belt-and-braces so no memoised pointer
+  outlives its session). Only the non-debug result is memoised; a debug worker,
+  whose answer is the global parked queue, always re-resolves.
+- **Correctness is the whole game here, and it is validated:** the full suite —
+  1404 tests including every session / scope / worker-pool / job / debug path —
+  passes with the memo in place.
+- **The micro-benches cannot show the win, and that is a property of the bench, not
+  the fix.** `oes_bench` runs with no session registry, so `Current()` returns null
+  at the first line and never reached the lock even before the change; the
+  `recursion` / `host→script` numbers are therefore flat. The tax is paid by the
+  *live* runtime (enterprise / designer / daemon / server), where a session is
+  bound and every call took the lock. The reasoned win is real; a session-less
+  loop is simply the wrong instrument to read it.
+- **The remaining bench-visible call cost is inherent VM dispatch.** With session
+  resolution removed, what a session-less call still spends is frame
+  construction + stack-guard + opcode dispatch — all already tight (raw sized
+  frames, force-inlined operand resolve, hoisted prologue, amortised context
+  stack). There is no single fat left to trim there; ~114x native for call-heavy
+  recursion is the honest cost of a bytecode interpreter.
+
 ## The system
 
 Three layers, each doing one job:

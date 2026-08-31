@@ -1,4 +1,5 @@
 #include "sessionRegistry.h"
+#include "session.h"          // ibSession::InvalidateCurrentCache() — Current() memo
 #include "sessionPolicy.h"
 #include "designerExclusivePolicy.h"
 
@@ -822,12 +823,14 @@ void ibSessionRegistry::SetFallback(ibSession* s)
 {
 	std::unique_lock<std::shared_mutex> lk(m_accessMutex);
 	m_fallback = s ? s->weak_from_this() : std::weak_ptr<ibSession>{};
+	ibSession::InvalidateCurrentCache();   // fallback changed → drop Current() memos
 }
 
 void ibSessionRegistry::ClearFallback()
 {
 	std::unique_lock<std::shared_mutex> lk(m_accessMutex);
 	m_fallback.reset();
+	ibSession::InvalidateCurrentCache();
 }
 
 ibSession* ibSessionRegistry::GetFallback() const
@@ -842,12 +845,14 @@ void ibSessionRegistry::RegisterDebugThread(std::thread::id tid)
 {
 	std::unique_lock<std::shared_mutex> lk(m_debugMtx);
 	m_debugThreads.insert(tid);
+	ibSession::InvalidateCurrentCache();   // this thread now redirects — drop its memo
 }
 
 void ibSessionRegistry::UnregisterDebugThread(std::thread::id tid)
 {
 	std::unique_lock<std::shared_mutex> lk(m_debugMtx);
 	m_debugThreads.erase(tid);
+	ibSession::InvalidateCurrentCache();
 }
 
 bool ibSessionRegistry::IsDebugThread(std::thread::id tid) const
@@ -869,6 +874,7 @@ void ibSessionRegistry::EnterDebugLoop(ibSession* s)
 		else                        ++it;
 	}
 	m_debugQueue.push_back(s->weak_from_this());
+	ibSession::InvalidateCurrentCache();   // parked-target queue changed
 }
 
 void ibSessionRegistry::LeaveDebugLoop(ibSession* s)
@@ -880,6 +886,7 @@ void ibSessionRegistry::LeaveDebugLoop(ibSession* s)
 		if (!cur || cur.get() == s) it = m_debugQueue.erase(it);
 		else                        ++it;
 	}
+	ibSession::InvalidateCurrentCache();   // parked-target queue changed
 }
 
 ibSessionWatch ibSessionRegistry::GetActiveDebugTarget() const
