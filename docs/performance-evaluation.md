@@ -130,8 +130,25 @@ only the aggregate key; the name/module is resolved at readout via
 `ibScriptProfiler::ResolveKey`. Covered by
 `BuiltInRuntime.ScriptProfilerTraceIsTheCallSequenceInOrder`.
 
-Still to come (follow-up slices): Designer start/stop command + panel (aggregate
-table + trace tree), XLSX export wiring.
+**Designer panel landed** — `ibProfilerWindow`
+(`src/engine/designer/mainFrame/profiler/`), a lazy AUI pane toggled from
+Debug ▸ *Performance profiler* (`wxID_DESIGNER_VIEW_PROFILER`), modelled on the
+syntax-helper pane's lifecycle. Two `ibTreeListCtrl` views in a notebook:
+*Hot spots* (the aggregate — Procedure, Module, Calls, Self ms, Total ms, sorted
+by self) and *Call sequence* (the trace, rebuilt into the call TREE from each
+record's depth, in entry order — Procedure, Module, Enter ms, Duration ms). A
+*Refresh* button re-reads and a *Clear* button empties the view; the status line
+reports "measuring / ready / trace truncated / no measurement". Data is read
+**in-process** from `ibSession::GetPUState()->Profiler()` — populated when
+configuration code runs in THIS process (codeRunner / an in-process run). In the
+Designer, code under debug runs in the *debuggee*, so reading a remote profiler
+over the debug transport is the remaining follow-up (needs a debug-protocol
+message carrying the aggregate + trace back). The pane is GUI-only; no unit test
+(frontend), verified by building the `designer` target.
+
+Still to come (follow-up slices): pull the profiler from a remote debuggee over
+the debug transport (so the panel is populated during normal F5 debugging), and
+XLSX export of the aggregate / trace.
 
 ## The system
 

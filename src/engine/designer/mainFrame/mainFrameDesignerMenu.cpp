@@ -130,6 +130,9 @@ void ibFrontendMainFrameDesigner::InitializeDefaultMenu()
 	m_menuDebug->AppendSeparator();
 	m_menuDebug->Append(wxID_DESIGNER_DEBUG_REMOVE_ALL_DEBUGPOINTS, _("Remove all breakpoints"));
 
+	m_menuDebug->AppendSeparator();
+	m_menuDebug->Append(wxID_DESIGNER_VIEW_PROFILER, _("Performance profiler"));
+
 	m_menuConfiguration = new wxMenu;
 
 	wxMenuItem* menuItem = nullptr;
@@ -246,6 +249,11 @@ void ibFrontendMainFrameDesigner::InitializeDefaultMenu()
 	Bind(wxEVT_MENU,
 	     [this](wxCommandEvent&) { OpenHelpForCursor(); },
 	     wxID_FRONTEND_SYNTAX_HELPER_LOOKUP);
+
+	// Performance-profiler pane toggle (GitHub #2).
+	Bind(wxEVT_MENU,
+	     [this](wxCommandEvent&) { ToggleProfilerPane(); },
+	     wxID_DESIGNER_VIEW_PROFILER);
 
 	LoadOptions();
 }

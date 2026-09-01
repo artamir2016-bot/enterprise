@@ -268,3 +268,48 @@ void ibFrontendMainFrameDesigner::OpenHelpForCursor()
 	if (!dlg.GetSelectedId().IsEmpty() && m_helpPane)
 		m_helpPane->ShowEntry(dlg.GetSelectedId());
 }
+
+// ---------------------------------------------------------------------------
+// Performance-profiler pane — lazy AUI pane (GitHub #2). Mirrors the help
+// pane's lifecycle: created visible on first toggle, flipped on subsequent
+// toggles. Data is read in-process from this session's profiler each time the
+// pane is shown / refreshed.
+// ---------------------------------------------------------------------------
+
+#include "mainFrame/profiler/profilerWindow.h"
+
+void ibFrontendMainFrameDesigner::EnsureProfilerPane()
+{
+	if (m_mgr.GetPane(wxT("profilerPane")).IsOk()) return;
+
+	m_profilerPane = new ibProfilerWindow(this);
+
+	wxAuiPaneInfo paneInfo;
+	paneInfo.Name(wxT("profilerPane"));
+	paneInfo.Caption(_("Performance profiler"));
+	paneInfo.Bottom();
+	paneInfo.Layer(1);
+	paneInfo.MinSize(480, 220);
+	paneInfo.BestSize(720, 300);
+	paneInfo.CloseButton(true);
+	paneInfo.MaximizeButton(true);
+	paneInfo.MinimizeButton(false);
+	paneInfo.Float();
+	paneInfo.Show(true);
+
+	m_mgr.AddPane(m_profilerPane, paneInfo);
+	m_mgr.Update();
+}
+
+void ibFrontendMainFrameDesigner::ToggleProfilerPane()
+{
+	const bool firstCreate = !m_mgr.GetPane(wxT("profilerPane")).IsOk();
+	EnsureProfilerPane();
+	wxAuiPaneInfo& pane = m_mgr.GetPane(wxT("profilerPane"));
+	if (!pane.IsOk()) return;
+	if (!firstCreate) pane.Show(!pane.IsShown());
+	// Refresh from the profiler whenever the pane comes into view.
+	if (pane.IsShown() && m_profilerPane != nullptr)
+		m_profilerPane->RefreshData();
+	m_mgr.Update();
+}

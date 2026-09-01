@@ -45,6 +45,8 @@ enum {
 
 	wxID_DESIGNER_DATABASE_CLEAR,
 
+	wxID_DESIGNER_VIEW_PROFILER,   // performance-profiler panel toggle (GitHub #2)
+
 	wxID_DESIGNER_ABOUT,
 	wxID_DESIGNER_END
 };
@@ -102,6 +104,11 @@ public:
 	void EnsureHelpPane();
 	void ToggleHelpPane();
 	void OpenHelpForCursor();
+
+	// Performance-profiler panel (GitHub #2). Lazy AUI pane, like the help
+	// pane; toggling reveals it and refreshes it from this session's profiler.
+	void EnsureProfilerPane();
+	void ToggleProfilerPane();
 
 	void LoadOptions();
 	void SaveOptions();
@@ -182,6 +189,10 @@ private:
 	// step — pane works fully without it, just doesn't remember
 	// position across sessions.
 	class ibHelpPaneView* m_helpPane = nullptr;
+
+	// Performance-profiler panel. Created on first toggle; owned by the AUI
+	// manager once added.
+	class ibProfilerWindow* m_profilerPane = nullptr;
 
 	ibConfigurationTree* m_metaWindow;
 	class ibGitPanel* m_gitPanel = nullptr;

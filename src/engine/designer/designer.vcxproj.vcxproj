@@ -217,6 +217,7 @@
     <ClCompile Include="mainFrame\metatree\treeDataReportEvent.cpp" />
     <ClCompile Include="mainFrame\metatree\treeDataReport_impl.cpp" />
     <ClCompile Include="mainFrame\output\outputWindow.cpp" />
+    <ClCompile Include="mainFrame\profiler\profilerWindow.cpp" />
     <ClCompile Include="mainFrame\stack\stackWindow.cpp" />
     <ClCompile Include="mainFrame\watch\watchctrl.cpp" />
     <ClCompile Include="mainFrame\watch\watchdroptarget.cpp" />
@@ -262,6 +263,7 @@
     <ClInclude Include="mainFrame\metatree\treeDataProcessor.h" />
     <ClInclude Include="mainFrame\metatree\treeDataReport.h" />
     <ClInclude Include="mainFrame\output\outputWindow.h" />
+    <ClInclude Include="mainFrame\profiler\profilerWindow.h" />
     <ClInclude Include="mainFrame\stack\stackWindow.h" />
     <ClInclude Include="mainFrame\watch\watchctrl.h" />
     <ClInclude Include="mainFrame\watch\watchdroptarget.h" />
