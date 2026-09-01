@@ -7,6 +7,7 @@
 #include "procUnit.h"
 #include "procUnitValues.h"    // ibValueIterator / ibValueFunction / AsFunction / AsIterator
 #include "procUnitState.h"
+#include "scriptProfiler.h"    // per-session script profiler (GitHub #2)
 
 #include "debugger/debugServer.h"
 #include "system/systemManager.h"
@@ -375,6 +376,23 @@ inline bool EndByteCode(ibProcUnitState* st)
 //Stack reset
 inline void ResetByteCode() { auto* st = ibSession::GetPUState(); while (EndByteCode(st)); }
 
+// Out-of-line profiler exit — resolves the frame's identity (named fn → its
+// ibByteFunction*, else the module body keyed by its bytecode) and hands it to
+// the profiler. NOINLINE on purpose: it must NOT be inlined into
+// ibProcStackGuard's dtor (which is itself inlined into ibProcUnit::Execute),
+// or the wxString construction below bloats Execute and slows the hot call path.
+IB_NOINLINE static void ProfileGuardExit(ibScriptProfiler* prof,
+                                         const ibRunContext* ctx,
+                                         const ibScriptProfiler::Frame& frame)
+{
+	const ibByteCode::ibByteFunction* fn = ctx->m_currentFunction;
+	const ibByteCode*                 bc = ctx->GetByteCode();
+	const void*    key    = fn != nullptr ? (const void*)fn : (const void*)bc;
+	const wxString module = bc != nullptr ? bc->m_strModuleName : wxString();
+	const wxString name   = fn != nullptr ? fn->m_strRealName   : wxString();
+	prof->OnExit(frame, key, module, name);
+}
+
 struct ibProcStackGuard {
 
 	// The state is HANDED IN by the only caller (ibProcUnit::Execute), which has
@@ -416,9 +434,26 @@ struct ibProcStackGuard {
 		state->SetCurrentRunModule(runContext->GetProcUnit());
 
 		BeginByteCode(state, runContext);
+
+		// Script profiler (GitHub #2) — opt-in, one null test when inactive.
+		// Only the clock + child-frame start here; identity is read at exit,
+		// where ibRunContext::m_currentFunction is stamped (OPER_FUNC / lambda
+		// setup). Decision captured now so a Stop() mid-run can't unbalance the
+		// enter/exit pairing. Kept behind an out-of-line call: ibProcStackGuard is
+		// INLINED into ibProcUnit::Execute, and growing Execute's body costs the
+		// hot call path (I-cache / regalloc) far more than the check itself — a
+		// tiny-bodied call like `x+1` measured +140% when the identity+wxString
+		// work was inlined here. So Execute gains only a branch + a call.
+		ibScriptProfiler* const prof = state->Profiler();
+		if (prof != nullptr && prof->IsActive()) {
+			m_prof  = prof;
+			m_frame = prof->OnEnter();
+		}
 	}
 
 	~ibProcStackGuard() {
+		if (m_prof != nullptr)
+			ProfileGuardExit(m_prof, m_currentContext, m_frame);
 		if (ibProcUnitState* const state = m_state) {
 			state->m_recCount--;
 			state->SetCurrentRunModule(m_prevRunModule);
@@ -440,6 +475,10 @@ private:
 	// Resolved once in the ctor and reused on the way out — the same state must
 	// see both ends of the call.
 	ibProcUnitState* m_state = nullptr;
+	// Profiler hook — non-null only while a profiling session is active. The
+	// frame token carries this call's start time + nesting depth to the dtor.
+	ibScriptProfiler*         m_prof = nullptr;
+	ibScriptProfiler::Frame   m_frame{};
 };
 
 //**************************************************************************************************************

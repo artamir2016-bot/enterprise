@@ -12,14 +12,18 @@
 // interpreter still reads/writes its TLS, the swap helpers come later.
 
 #include <map>
+#include <memory>
 #include <utility>
 #include <vector>
 
 #include <wx/defs.h>   // wxNOT_FOUND
 
+#include "backend/backend.h"   // BACKEND_API (members exported individually)
+
 class ibProcUnit;
 struct ibRunContext;
 struct ibByteCode;
+class ibScriptProfiler;
 
 // Where the most recently-raised script exception originated. Mirrored
 // from procUnit.cpp where the file-static `s_errorPlace` lives; the
@@ -44,9 +48,28 @@ struct ibErrorPlace {
 // parentBc->m_listFunc[funcIndex]. No separate descriptor struct.
 
 struct ibProcUnitState {
+	// Out-of-line (defined in scriptProfiler.cpp, where ibScriptProfiler is a
+	// complete type) so the unique_ptr member below can name a forward-declared
+	// profiler without dragging its header into every includer of this file.
+	// Exported individually (the struct itself isn't BACKEND_API) so the desktop
+	// exes / test binaries can destroy a state and reach the profiler. The ctor
+	// is out-of-line for the SAME reason as the dtor: the unique_ptr<incomplete>
+	// member makes even the (implicit) constructor need the complete profiler
+	// type for its exception-cleanup path, so it is pinned to scriptProfiler.cpp.
+	BACKEND_API ibProcUnitState();
+	BACKEND_API ~ibProcUnitState();
+
 	// Currently-executing module. Read by every opcode dispatch site
 	// to resolve "which module's bytecode are we in".
 	ibProcUnit*                 m_currentRunModule = nullptr;
+
+	// Optional per-session script profiler (GitHub #2). Null unless a profiling
+	// session is running — the interpreter's per-call guard (ibProcStackGuard)
+	// pays a single null test when it is absent. EnsureProfiler() lazily creates
+	// it; Profiler() returns it (or null) for readout.
+	std::unique_ptr<ibScriptProfiler> m_profiler;
+	ibScriptProfiler*  Profiler() const { return m_profiler.get(); }
+	BACKEND_API ibScriptProfiler&  EnsureProfiler();
 
 	// Script call stack. Pushed by ibProcStackGuard ctor on every
 	// frame entry, popped by dtor.

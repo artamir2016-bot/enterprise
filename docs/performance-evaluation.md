@@ -73,6 +73,38 @@ micro-bench can and cannot see it:
   stack). There is no single fat left to trim there; ~114x native for call-heavy
   recursion is the honest cost of a bytecode interpreter.
 
+## Script profiler (GitHub #2) — backend core landed
+
+The first slice of the configuration-code profiler is in: a per-session
+`ibScriptProfiler` (`compiler/scriptProfiler.{h,cpp}`) driven from
+`ibProcStackGuard`, which brackets every interpreter `Execute` (named call,
+lambda, module body).
+
+- **Aggregate** — per function/procedure (or module body): call count, inclusive
+  time (with nested calls) and self time (inclusive minus children), the last two
+  attributed via a child-time stack that the guard pushes on entry and pops on
+  exit. Sorted by self time (hot spots first).
+- **Trace** — one record per completed call carrying entry time, depth and
+  inclusive duration; sort by entry time for the call-sequence view. Bounded ring
+  (default 200k) that names its truncation (`GetTraceDropped()`).
+- **Identity resolved at EXIT**, not entry: a named function's
+  `ibRunContext::m_currentFunction` is stamped by its own `OPER_FUNC` opcode, so
+  it is unknown when the guard is built but known when it is destroyed.
+- **Zero overhead when off, and it is measured** (not assumed): an A/B on the
+  same machine state — profiler build vs the same commit with the profiler
+  stashed out — put `recursion` / `host→script` / `add immediate` within run
+  noise of each other. (Lesson re-learned: `host→script` is a single-pass
+  `TimeNsPerOp` and swings ±2x across machine states; only a same-state A/B, or
+  the best-of-N metrics, is trustworthy for a call-path change.)
+- **The exit hook is `IB_NOINLINE`** on purpose: `ibProcStackGuard` is inlined
+  into `Execute`, and inlining the identity + `wxString` work bloated `Execute`
+  and hurt the hot call path, so it lives behind one out-of-line call.
+
+Guarded by `JoinIndex` (unchanged) and a new `ScriptProfiler` correctness test
+(counts, self≤inclusive, parent/child attribution, trace order, off-by-default).
+Still to come (follow-up slices): Designer start/stop command + panel (table +
+trace tree), script-level `НачатьЗамер/ОстановитьЗамер`, XLSX export wiring.
+
 ## The system
 
 Three layers, each doing one job:

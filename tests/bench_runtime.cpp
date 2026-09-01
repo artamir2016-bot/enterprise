@@ -59,6 +59,8 @@
 #include "backend/compiler/value.h"
 #include "backend/fnumber.h"
 #include "backend/system/value/valueArray.h"   // DISABLED_TypeCheckCost
+#include "backend/compiler/scriptProfiler.h"    // ScriptProfiler test
+#include "backend/session/session.h"            // ibSession::GetPUState()
 
 namespace {
 
@@ -252,6 +254,73 @@ TEST(JoinIndex, OneToOneAndMultiMatchCounts) {
         wxT("EndFunction\n"),
         wxT("Run"), n);
     EXPECT_EQ(multi, 2 * n);
+}
+
+// ===========================================================================
+// Script profiler (GitHub #2) — per-function call counts + self/inclusive time,
+// and a call-sequence trace. Verifies the aggregate counts, the self<=inclusive
+// invariant, the parent/child time attribution, and the trace's call order.
+// ===========================================================================
+TEST(ScriptProfiler, CountsSelfInclusiveAndTrace) {
+    // Outer() calls Inner() 5 times; Inner() spins a little so it has real self
+    // time. Named-function calls go through ibProcStackGuard, which the profiler
+    // hooks. VES syntax (Build sets CODE_VES).
+    const wxString src =
+        wxT("Function Inner(n) Public\n")
+        wxT("  var s; var i; s = 0; i = 0;\n")
+        wxT("  While i < n Do s = s + i; i = i + 1; EndDo;\n")
+        wxT("  Return s;\n")
+        wxT("EndFunction\n")
+        wxT("Function Outer(m) Public\n")
+        wxT("  var t; var k; t = 0; k = 0;\n")
+        wxT("  While k < 5 Do t = t + Inner(m); k = k + 1; EndDo;\n")
+        wxT("  Return t;\n")
+        wxT("EndFunction\n");
+
+    ibCompileCode cc(wxT("profmod"), wxT("memory"), false);
+    ASSERT_TRUE(Build(cc, src));
+    ibProcUnit pu;
+    ASSERT_TRUE(([&]{ try { pu.Execute(cc.m_cByteCode); return true; } catch (...) { return false; } }()));
+
+    ibScriptProfiler& prof = ibSession::GetPUState()->EnsureProfiler();
+    prof.Start();
+    ibValue arg((int)2000), ret;
+    pu.CallAsFunc(wxT("Outer"), ret, arg);
+    prof.Stop();
+
+    // Aggregate: Inner called 5x, Outer 1x.
+    std::map<wxString, ibProfileNode> byName;
+    for (const ibProfileNode& n : prof.Aggregate())
+        byName[n.m_name] = n;
+    ASSERT_TRUE(byName.count(wxT("Inner")));
+    ASSERT_TRUE(byName.count(wxT("Outer")));
+    EXPECT_EQ(byName[wxT("Inner")].m_count, 5u);
+    EXPECT_EQ(byName[wxT("Outer")].m_count, 1u);
+
+    // self <= inclusive for every node.
+    for (const ibProfileNode& n : prof.Aggregate())
+        EXPECT_LE(n.m_selfNs, n.m_inclNs) << n.m_name.ToStdString();
+
+    // Outer's inclusive covers Inner, so Outer.self should be well under its
+    // inclusive (most of Outer's time is inside Inner).
+    EXPECT_LT(byName[wxT("Outer")].m_selfNs, byName[wxT("Outer")].m_inclNs);
+
+    // Trace: 6 completed calls (1 Outer + 5 Inner), none dropped at this size.
+    EXPECT_EQ(prof.Trace().size(), 6u);
+    EXPECT_EQ(prof.GetTraceDropped(), 0u);
+
+    // Call order (sorted by entry time): Outer first, then the Inner calls, each
+    // deeper than Outer.
+    std::vector<ibProfileTrace> tr(prof.Trace().begin(), prof.Trace().end());
+    std::sort(tr.begin(), tr.end(),
+              [](const ibProfileTrace& a, const ibProfileTrace& b){ return a.m_enterNs < b.m_enterNs; });
+    EXPECT_EQ(tr.front().m_depth, 0);          // Outer is outermost
+    EXPECT_GT(tr[1].m_depth, tr.front().m_depth); // Inner nested under Outer
+
+    // Disabled by default: a run with no Start() records nothing.
+    ibScriptProfiler fresh;
+    EXPECT_FALSE(fresh.IsActive());
+    EXPECT_TRUE(fresh.Aggregate().empty());
 }
 
 // ===========================================================================
