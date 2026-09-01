@@ -112,9 +112,16 @@ procedure, calls, self ms, total ms). Russian aliases
 section and `Message(PerformanceMeasurementResult())` its own hot spots. Covered
 by `BuiltInRuntime.ScriptProfilerStartStopResultNamesTheFunctionsRun`.
 
-Still to come (follow-up slices): Designer start/stop command + panel (table +
-trace tree), a structured (Array-of-Structure) result for programmatic use, XLSX
-export wiring.
+**Structured result landed** — `PerformanceMeasurementData()`
+(RU `ДанныеЗамераПроизводительности`) returns an Array of
+Structure{Module, Procedure, Count, SelfMs, TotalMs}, sorted by self time, that a
+script can iterate (`data.Get(i).Count`, etc.). This is the programmatic face of
+the text report and the data source the Designer panel will bind to. Covered by
+`BuiltInRuntime.ScriptProfilerDataIsAnIterableArrayOfRows`.
+
+Still to come (follow-up slices): Designer start/stop command + panel (aggregate
+table + trace tree), a structured TRACE accessor (the call sequence, not just the
+aggregate), XLSX export wiring.
 
 ## The system
 

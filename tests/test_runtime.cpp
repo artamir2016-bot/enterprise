@@ -1043,6 +1043,57 @@ TEST_F(BuiltInRuntime, ScriptProfilerStartStopResultNamesTheFunctionsRun) {
 }
 
 // ===========================================================================
+// Structured profiler result (GitHub #2): PerformanceMeasurementData() returns
+// an Array of Structure{Module, Procedure, Count, SelfMs, TotalMs} a script can
+// iterate — the programmatic face of the report and the UI panel's data source.
+// ===========================================================================
+
+TEST_F(BuiltInRuntime, ScriptProfilerDataIsAnIterableArrayOfRows) {
+	const short savedStyle = ibCompileCode::GetCodeStyle();
+	ibCompileCode::SetCodeStyle(CODE_VES);
+
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ibValueSystemFunction valueSystem;
+	cc.AddContextVariable(wxT("System"), &valueSystem, true);
+
+	ASSERT_TRUE(TryCompile(cc,
+		wxT("var rows public; var innerCalls public;\n")
+		wxT("Function Inner(n) Public\n")
+		wxT("  var s; var i; s = 0; i = 0;\n")
+		wxT("  While i < n Do s = s + i; i = i + 1; EndDo;\n")
+		wxT("  Return s;\n")
+		wxT("EndFunction\n")
+		wxT("Function Outer(m) Public\n")
+		wxT("  var k; k = 0;\n")
+		wxT("  While k < 3 Do Inner(m); k = k + 1; EndDo;\n")
+		wxT("EndFunction\n")
+		wxT("StartPerformanceMeasurement();\n")
+		wxT("Outer(500);\n")
+		wxT("StopPerformanceMeasurement();\n")
+		wxT("var data; data = PerformanceMeasurementData();\n")
+		wxT("rows = data.Count();\n")
+		wxT("innerCalls = 0;\n")
+		wxT("var i; i = 0;\n")
+		wxT("While i < data.Count() Do\n")
+		wxT("  var row; row = data.Get(i);\n")
+		wxT("  If row.Procedure = \"Inner\" Then innerCalls = row.Count; EndIf;\n")
+		wxT("  i = i + 1;\n")
+		wxT("EndDo;\n")));
+
+	ibProcUnit pu;
+	wxString strError;
+	ASSERT_TRUE(RunBound(cc, pu, strError)) << strError.ToStdString();
+
+	ibValue rows, innerCalls;
+	ASSERT_TRUE(pu.GetPropVal(wxT("rows"), rows));
+	ASSERT_TRUE(pu.GetPropVal(wxT("innerCalls"), innerCalls));
+	EXPECT_GT(rows.GetInteger(), 0);            // at least Inner + Outer rows
+	EXPECT_EQ(innerCalls.GetInteger(), 3);      // Outer called Inner 3 times
+
+	ibCompileCode::SetCodeStyle(savedStyle);
+}
+
+// ===========================================================================
 // x++ / x-- — the POSTFIX contract: yield the old value, then store the new
 //
 // Not covered anywhere until now (test_number.cpp's PostIncrement is C++'s

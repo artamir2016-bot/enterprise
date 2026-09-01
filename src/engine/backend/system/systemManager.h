@@ -172,6 +172,10 @@ public:
 	static void     StartPerformanceMeasurement();
 	static void     StopPerformanceMeasurement();
 	static wxString PerformanceMeasurementResult();
+	// Structured form of the aggregate for programmatic use / the UI panel: an
+	// Array of Structure{Module, Procedure, Count, SelfMs, TotalMs}, sorted by
+	// self time descending. Empty array when no measurement was taken.
+	static ibValue  PerformanceMeasurementData();
 
 public:
 

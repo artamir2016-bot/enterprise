@@ -16,6 +16,8 @@
 #include "backend/compiler/procUnit.h"
 #include "backend/compiler/procUnitState.h"
 #include "backend/compiler/scriptProfiler.h"   // StartPerformanceMeasurement / … (GitHub #2)
+#include "backend/system/value/valueArray.h"   // PerformanceMeasurementData → Array of…
+#include "backend/system/value/valueMap.h"     // …Structure rows
 #include "backend/appData.h"
 #include "backend/session/session.h"
 
@@ -1066,6 +1068,27 @@ wxString ibValueSystemFunction::PerformanceMeasurementResult()
 	if (prof->GetTraceDropped() != 0)
 		out << wxString::Format(_("(trace truncated: %zu calls dropped)\n"), prof->GetTraceDropped());
 	return out;
+}
+
+ibValue ibValueSystemFunction::PerformanceMeasurementData()
+{
+	// An Array of Structure rows — the programmatic face of the same aggregate
+	// the text report renders, and the source the Designer panel will bind to.
+	ibValueArray* arr = new ibValueArray();
+	ibProcUnitState* state = ibSession::GetPUState();
+	ibScriptProfiler* prof = state != nullptr ? state->Profiler() : nullptr;
+	if (prof != nullptr) {
+		for (const ibProfileNode& n : prof->Aggregate()) {   // sorted by self desc
+			ibValueStructure* st = new ibValueStructure();
+			st->Insert(ibValue(wxT("Module")),    ibValue(n.m_module));
+			st->Insert(ibValue(wxT("Procedure")), ibValue(n.m_name));
+			st->Insert(ibValue(wxT("Count")),     ibValue(ibNumber((unsigned long long)n.m_count)));
+			st->Insert(ibValue(wxT("SelfMs")),    ibValue(double(n.m_selfNs) / 1e6));
+			st->Insert(ibValue(wxT("TotalMs")),   ibValue(double(n.m_inclNs) / 1e6));
+			arr->Add(ibValue(static_cast<ibValue*>(st)));
+		}
+	}
+	return ibValue(static_cast<ibValue*>(arr));
 }
 
 //****************************************************************************
