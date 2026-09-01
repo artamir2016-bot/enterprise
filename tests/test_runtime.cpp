@@ -1093,6 +1093,64 @@ TEST_F(BuiltInRuntime, ScriptProfilerDataIsAnIterableArrayOfRows) {
 	ibCompileCode::SetCodeStyle(savedStyle);
 }
 
+// The TRACE — the call sequence, one row per invocation, sorted by entry time.
+// Outer(500) calls Inner three times, so the trace holds the three Inner calls
+// (all at depth 1) plus Outer (depth 0). We check the count, that entry times
+// are non-decreasing (the sort), and that Inner appears at a deeper level than
+// its caller.
+TEST_F(BuiltInRuntime, ScriptProfilerTraceIsTheCallSequenceInOrder) {
+	const short savedStyle = ibCompileCode::GetCodeStyle();
+	ibCompileCode::SetCodeStyle(CODE_VES);
+
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ibValueSystemFunction valueSystem;
+	cc.AddContextVariable(wxT("System"), &valueSystem, true);
+
+	ASSERT_TRUE(TryCompile(cc,
+		wxT("var rows public; var innerRows public; var ordered public; var maxDepth public;\n")
+		wxT("Function Inner(n) Public\n")
+		wxT("  var s; var i; s = 0; i = 0;\n")
+		wxT("  While i < n Do s = s + i; i = i + 1; EndDo;\n")
+		wxT("  Return s;\n")
+		wxT("EndFunction\n")
+		wxT("Function Outer(m) Public\n")
+		wxT("  var k; k = 0;\n")
+		wxT("  While k < 3 Do Inner(m); k = k + 1; EndDo;\n")
+		wxT("EndFunction\n")
+		wxT("StartPerformanceMeasurement();\n")
+		wxT("Outer(500);\n")
+		wxT("StopPerformanceMeasurement();\n")
+		wxT("var tr; tr = PerformanceMeasurementTrace();\n")
+		wxT("rows = tr.Count();\n")
+		wxT("innerRows = 0; ordered = 1; maxDepth = 0;\n")
+		wxT("var prev; prev = -1;\n")
+		wxT("var i; i = 0;\n")
+		wxT("While i < tr.Count() Do\n")
+		wxT("  var row; row = tr.Get(i);\n")
+		wxT("  If row.Procedure = \"Inner\" Then innerRows = innerRows + 1; EndIf;\n")
+		wxT("  If row.EnterMs < prev Then ordered = 0; EndIf;\n")
+		wxT("  prev = row.EnterMs;\n")
+		wxT("  If row.Depth > maxDepth Then maxDepth = row.Depth; EndIf;\n")
+		wxT("  i = i + 1;\n")
+		wxT("EndDo;\n")));
+
+	ibProcUnit pu;
+	wxString strError;
+	ASSERT_TRUE(RunBound(cc, pu, strError)) << strError.ToStdString();
+
+	ibValue rows, innerRows, ordered, maxDepth;
+	ASSERT_TRUE(pu.GetPropVal(wxT("rows"),      rows));
+	ASSERT_TRUE(pu.GetPropVal(wxT("innerRows"), innerRows));
+	ASSERT_TRUE(pu.GetPropVal(wxT("ordered"),   ordered));
+	ASSERT_TRUE(pu.GetPropVal(wxT("maxDepth"),  maxDepth));
+	EXPECT_GE(rows.GetInteger(), 4);          // 3× Inner + Outer at least
+	EXPECT_EQ(innerRows.GetInteger(), 3);     // one trace row per Inner call
+	EXPECT_EQ(ordered.GetInteger(), 1);       // entry times non-decreasing (sorted)
+	EXPECT_GE(maxDepth.GetInteger(), 1);      // Inner nests under Outer
+
+	ibCompileCode::SetCodeStyle(savedStyle);
+}
+
 // ===========================================================================
 // x++ / x-- — the POSTFIX contract: yield the old value, then store the new
 //

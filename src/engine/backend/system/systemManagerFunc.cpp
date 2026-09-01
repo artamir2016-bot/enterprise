@@ -5,6 +5,9 @@
 
 #include "systemManager.h"
 
+#include <algorithm>   // std::sort (PerformanceMeasurementTrace)
+#include <vector>
+
 #include "backend/metaCollection/metaFormObject.h"
 #include "backend/metadataConfiguration.h"
 #include "backend/backend_type.h"   // OES-RU: ibTranslateRuTypeName (Type("…") 1C type names)
@@ -1085,6 +1088,38 @@ ibValue ibValueSystemFunction::PerformanceMeasurementData()
 			st->Insert(ibValue(wxT("Count")),     ibValue(ibNumber((unsigned long long)n.m_count)));
 			st->Insert(ibValue(wxT("SelfMs")),    ibValue(double(n.m_selfNs) / 1e6));
 			st->Insert(ibValue(wxT("TotalMs")),   ibValue(double(n.m_inclNs) / 1e6));
+			arr->Add(ibValue(static_cast<ibValue*>(st)));
+		}
+	}
+	return ibValue(static_cast<ibValue*>(arr));
+}
+
+ibValue ibValueSystemFunction::PerformanceMeasurementTrace()
+{
+	// The call sequence — one row per invocation, sorted by entry time. This is
+	// the "таблица последовательности вызовов" of the profiler proposal.
+	ibValueArray* arr = new ibValueArray();
+	ibProcUnitState* state = ibSession::GetPUState();
+	ibScriptProfiler* prof = state != nullptr ? state->Profiler() : nullptr;
+	if (prof != nullptr) {
+		// Copy the records (stored in completion order) and sort by entry time so
+		// the array reads as the call order, parent before child at equal depth.
+		std::vector<ibProfileTrace> recs = prof->Trace();
+		std::sort(recs.begin(), recs.end(),
+			[](const ibProfileTrace& a, const ibProfileTrace& b) {
+				return a.m_enterNs < b.m_enterNs;
+			});
+		wxString module, name;
+		for (const ibProfileTrace& r : recs) {
+			module.clear();
+			name.clear();
+			prof->ResolveKey(r.m_key, module, name);   // best-effort; empties on miss
+			ibValueStructure* st = new ibValueStructure();
+			st->Insert(ibValue(wxT("Module")),     ibValue(module));
+			st->Insert(ibValue(wxT("Procedure")),  ibValue(name));
+			st->Insert(ibValue(wxT("Depth")),      ibValue(ibNumber((unsigned long long)r.m_depth)));
+			st->Insert(ibValue(wxT("EnterMs")),    ibValue(double(r.m_enterNs) / 1e6));
+			st->Insert(ibValue(wxT("DurationMs")), ibValue(double(r.m_durNs) / 1e6));
 			arr->Add(ibValue(static_cast<ibValue*>(st)));
 		}
 	}

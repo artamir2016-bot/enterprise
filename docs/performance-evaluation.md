@@ -119,9 +119,19 @@ script can iterate (`data.Get(i).Count`, etc.). This is the programmatic face of
 the text report and the data source the Designer panel will bind to. Covered by
 `BuiltInRuntime.ScriptProfilerDataIsAnIterableArrayOfRows`.
 
+**Structured trace landed** — `PerformanceMeasurementTrace()`
+(RU `ТрассаЗамераПроизводительности`) returns an Array of
+Structure{Module, Procedure, Depth, EnterMs, DurationMs}, one row per invocation,
+sorted by entry time — the call SEQUENCE ("who called whom, when, for how long"),
+not the aggregate. `EnterMs` is relative to `Start`; `Depth` is the call-nesting
+level (0 = outermost profiled). The record set is bounded (`m_traceCap`, 200k) —
+a long run truncates and the text `Result` notes the drop. Trace records carry
+only the aggregate key; the name/module is resolved at readout via
+`ibScriptProfiler::ResolveKey`. Covered by
+`BuiltInRuntime.ScriptProfilerTraceIsTheCallSequenceInOrder`.
+
 Still to come (follow-up slices): Designer start/stop command + panel (aggregate
-table + trace tree), a structured TRACE accessor (the call sequence, not just the
-aggregate), XLSX export wiring.
+table + trace tree), XLSX export wiring.
 
 ## The system
 

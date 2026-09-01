@@ -120,7 +120,8 @@ enum
 	enStartPerformanceMeasurement,
 	enStopPerformanceMeasurement,
 	enPerformanceMeasurementResult,
-	enPerformanceMeasurementData
+	enPerformanceMeasurementData,
+	enPerformanceMeasurementTrace
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -240,6 +241,7 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendProc(wxT("StopPerformanceMeasurement"), wxT("StopPerformanceMeasurement()"));
 	helper.AppendFunc(wxT("PerformanceMeasurementResult"), wxT("PerformanceMeasurementResult()"));
 	helper.AppendFunc(wxT("PerformanceMeasurementData"), wxT("PerformanceMeasurementData()"));
+	helper.AppendFunc(wxT("PerformanceMeasurementTrace"), wxT("PerformanceMeasurementTrace()"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -315,6 +317,7 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD1\x81\xD1\x82\xD0\xB0\xD0\xBD\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x80\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8"), wxT("StopPerformanceMeasurement"));  // ОстановитьЗамерПроизводительности
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xA0\xD0\xB5\xD0\xB7\xD1\x83\xD0\xBB\xD1\x8C\xD1\x82\xD0\xB0\xD1\x82\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x80\xD0\xB0\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8"), wxT("PerformanceMeasurementResult"));  // РезультатЗамераПроизводительности
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x94\xD0\xB0\xD0\xBD\xD0\xBD\xD1\x8B\xD0\xB5\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x80\xD0\xB0\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8"), wxT("PerformanceMeasurementData"));  // ДанныеЗамераПроизводительности
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA2\xD1\x80\xD0\xB0\xD1\x81\xD1\x81\xD0\xB0\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x80\xD0\xB0\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8"), wxT("PerformanceMeasurementTrace"));  // ТрассаЗамераПроизводительности
 };
 
 #include "backend/compiler/enumUnit.h"
@@ -464,6 +467,8 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 			pvarRetValue = PerformanceMeasurementResult(); return true;
 		case enPerformanceMeasurementData:
 			pvarRetValue = PerformanceMeasurementData(); return true;
+		case enPerformanceMeasurementTrace:
+			pvarRetValue = PerformanceMeasurementTrace(); return true;
 		}
 	}
 	else
@@ -478,6 +483,8 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 			pvarRetValue = PerformanceMeasurementResult(); return true;
 		case enPerformanceMeasurementData:
 			pvarRetValue = PerformanceMeasurementData(); return true;
+		case enPerformanceMeasurementTrace:
+			pvarRetValue = PerformanceMeasurementTrace(); return true;
 		case enTypeOf:
 			pvarRetValue = TypeOf(*paParams[0]);
 			return true;

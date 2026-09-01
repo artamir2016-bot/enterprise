@@ -84,6 +84,10 @@ public:
 	std::vector<ibProfileNode>          Aggregate() const;
 	const std::vector<ibProfileTrace>&  Trace()        const { return m_trace; }
 	std::size_t                         GetTraceDropped() const { return m_dropped; }
+	// Resolve a trace record's m_key back to its owning module / function name
+	// (a null key ⇒ module body: module set, name empty). False when the key is
+	// unknown — should not happen for a key that came out of Trace().
+	bool ResolveKey(const void* key, wxString& module, wxString& name) const;
 
 private:
 	bool                                              m_active = false;

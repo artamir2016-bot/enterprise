@@ -176,6 +176,12 @@ public:
 	// Array of Structure{Module, Procedure, Count, SelfMs, TotalMs}, sorted by
 	// self time descending. Empty array when no measurement was taken.
 	static ibValue  PerformanceMeasurementData();
+	// The call SEQUENCE: an Array of Structure{Module, Procedure, Depth,
+	// EnterMs, DurationMs}, one row per invocation, sorted by entry time — "who
+	// called whom, when, for how long". EnterMs is relative to Start. Bounded:
+	// a long run truncates (see the note the text Result appends). Empty array
+	// when no measurement was taken.
+	static ibValue  PerformanceMeasurementTrace();
 
 public:
 

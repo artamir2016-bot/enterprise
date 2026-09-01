@@ -98,6 +98,16 @@ std::vector<ibProfileNode> ibScriptProfiler::Aggregate() const
 	return rows;
 }
 
+bool ibScriptProfiler::ResolveKey(const void* key, wxString& module, wxString& name) const
+{
+	const auto it = m_agg.find(key);
+	if (it == m_agg.end())
+		return false;
+	module = it->second.m_module;
+	name   = it->second.m_name;
+	return true;
+}
+
 ibScriptProfiler& ibProcUnitState::EnsureProfiler()
 {
 	if (!m_profiler)
