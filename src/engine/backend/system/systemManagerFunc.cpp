@@ -14,6 +14,8 @@
 
 #include "backend/compiler/translateCode.h"
 #include "backend/compiler/procUnit.h"
+#include "backend/compiler/procUnitState.h"
+#include "backend/compiler/scriptProfiler.h"   // StartPerformanceMeasurement / … (GitHub #2)
 #include "backend/appData.h"
 #include "backend/session/session.h"
 
@@ -1015,6 +1017,55 @@ void ibValueSystemFunction::RollBackTransaction()
 		return;
 
 	ses_query->RollBack();
+}
+
+//****************************************************************************
+//*                          Script profiler (GitHub #2)                     *
+//****************************************************************************
+
+void ibValueSystemFunction::StartPerformanceMeasurement()
+{
+	if (ibBackendException::IsEvalMode())
+		return;   // a debugger watch-eval must not perturb a measurement
+	ibProcUnitState* state = ibSession::GetPUState();
+	if (state != nullptr)
+		state->EnsureProfiler().Start();
+}
+
+void ibValueSystemFunction::StopPerformanceMeasurement()
+{
+	if (ibBackendException::IsEvalMode())
+		return;
+	ibProcUnitState* state = ibSession::GetPUState();
+	if (state != nullptr)
+		if (ibScriptProfiler* prof = state->Profiler())
+			prof->Stop();
+}
+
+wxString ibValueSystemFunction::PerformanceMeasurementResult()
+{
+	ibProcUnitState* state = ibSession::GetPUState();
+	ibScriptProfiler* prof = state != nullptr ? state->Profiler() : nullptr;
+	if (prof == nullptr)
+		return _("Performance measurement was not started");
+
+	const std::vector<ibProfileNode> rows = prof->Aggregate();   // sorted by self desc
+	// Fixed-width text table so Message() / a log reads cleanly. ns → ms for
+	// human scale; self and inclusive both shown, plus call count.
+	wxString out;
+	out << wxString::Format(wxT("%-28s %-20s %10s %12s %12s\n"),
+		_("Module"), _("Procedure"), _("Calls"), _("Self, ms"), _("Total, ms"));
+	for (const ibProfileNode& n : rows) {
+		out << wxString::Format(wxT("%-28s %-20s %10llu %12.3f %12.3f\n"),
+			n.m_module.Left(28),
+			(n.m_name.IsEmpty() ? wxString(_("<module body>")) : n.m_name).Left(20),
+			(unsigned long long)n.m_count,
+			double(n.m_selfNs) / 1e6,
+			double(n.m_inclNs) / 1e6);
+	}
+	if (prof->GetTraceDropped() != 0)
+		out << wxString::Format(_("(trace truncated: %zu calls dropped)\n"), prof->GetTraceDropped());
+	return out;
 }
 
 //****************************************************************************

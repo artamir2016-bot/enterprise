@@ -115,7 +115,11 @@ enum
 	// silently re-point every later method at the wrong case.
 	enRunScheduledJobs,
 	enRunJob,
-	enRunBackground
+	enRunBackground,
+	//--- Script profiler (GitHub #2) — appended at the very end, same rule as Jobs.
+	enStartPerformanceMeasurement,
+	enStopPerformanceMeasurement,
+	enPerformanceMeasurementResult
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -230,6 +234,10 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("RunScheduledJobs"), wxT("RunScheduledJobs()"));
 	helper.AppendFunc(wxT("RunJob"), 1, wxT("RunJob(name : string)"));
 	helper.AppendFunc(wxT("RunBackground"), 2, wxT("RunBackground(procedure : string, args : array)"));
+	//--- Script profiler (GitHub #2). Registered in enum order (start, stop, result).
+	helper.AppendProc(wxT("StartPerformanceMeasurement"), wxT("StartPerformanceMeasurement()"));
+	helper.AppendProc(wxT("StopPerformanceMeasurement"), wxT("StopPerformanceMeasurement()"));
+	helper.AppendFunc(wxT("PerformanceMeasurementResult"), wxT("PerformanceMeasurementResult()"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -300,6 +308,10 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB0\xD1\x82\xD1\x8C\xD1\x82\xD1\x80\xD0\xB0\xD0\xBD\xD0\xB7\xD0\xB0\xD0\xBA\xD1\x86\xD0\xB8\xD1\x8E"), wxT("BeginTransaction"));  // начатьтранзакцию
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xB7\xD0\xB0\xD1\x84\xD0\xB8\xD0\xBA\xD1\x81\xD0\xB8\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x82\xD1\x8C\xD1\x82\xD1\x80\xD0\xB0\xD0\xBD\xD0\xB7\xD0\xB0\xD0\xBA\xD1\x86\xD0\xB8\xD1\x8E"), wxT("CommitTransaction"));  // зафиксироватьтранзакцию
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBE\xD1\x82\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C\xD1\x82\xD1\x80\xD0\xB0\xD0\xBD\xD0\xB7\xD0\xB0\xD0\xBA\xD1\x86\xD0\xB8\xD1\x8E"), wxT("RollBackTransaction"));  // отменитьтранзакцию
+	//--- Script profiler (GitHub #2):
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9D\xD0\xB0\xD1\x87\xD0\xB0\xD1\x82\xD1\x8C\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x80\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8"), wxT("StartPerformanceMeasurement"));  // НачатьЗамерПроизводительности
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD1\x81\xD1\x82\xD0\xB0\xD0\xBD\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x80\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8"), wxT("StopPerformanceMeasurement"));  // ОстановитьЗамерПроизводительности
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA0\xD0\xB5\xD0\xB7\xD1\x83\xD0\xBB\xD1\x8C\xD1\x82\xD0\xB0\xD1\x82\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x80\xD0\xB0\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8"), wxT("PerformanceMeasurementResult"));  // РезультатЗамераПроизводительности
 };
 
 #include "backend/compiler/enumUnit.h"
@@ -445,6 +457,8 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		case enBeginTransaction: BeginTransaction(); return true;
 		case enCommitTransaction: CommitTransaction(); return true;
 		case enRollBackTransaction: RollBackTransaction(); return true;
+		case enPerformanceMeasurementResult:
+			pvarRetValue = PerformanceMeasurementResult(); return true;
 		}
 	}
 	else
@@ -455,6 +469,8 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		case enType:
 			pvarRetValue = Type(*paParams[0]);
 			return true;
+		case enPerformanceMeasurementResult:
+			pvarRetValue = PerformanceMeasurementResult(); return true;
 		case enTypeOf:
 			pvarRetValue = TypeOf(*paParams[0]);
 			return true;
@@ -504,6 +520,9 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 		case enBeginTransaction: BeginTransaction(); return true;
 		case enCommitTransaction: CommitTransaction(); return true;
 		case enRollBackTransaction: RollBackTransaction(); return true;
+			//--- Script profiler (GitHub #2):
+		case enStartPerformanceMeasurement: StartPerformanceMeasurement(); return true;
+		case enStopPerformanceMeasurement:  StopPerformanceMeasurement();  return true;
 		}
 	}
 	else
@@ -516,6 +535,9 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 				lSizeArray > 1 ? paParams[1]->ConvertToType<ibBackendControlFrame>() : nullptr,
 				lSizeArray > 2 ? paParams[2]->ConvertToType<ibValueGuid>() : nullptr);
 			return true;
+			//--- Script profiler (GitHub #2) — usable in the designer too:
+		case enStartPerformanceMeasurement: StartPerformanceMeasurement(); return true;
+		case enStopPerformanceMeasurement:  StopPerformanceMeasurement();  return true;
 		}
 	}
 

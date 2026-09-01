@@ -323,6 +323,10 @@ TEST(ScriptProfiler, CountsSelfInclusiveAndTrace) {
     EXPECT_TRUE(fresh.Aggregate().empty());
 }
 
+// (Script-level Start/Stop/Result API is exercised in test_runtime.cpp, where
+// the system-manager global functions are wired into the compile context — a
+// bare procUnit here resolves no global system function, mine included.)
+
 // ===========================================================================
 // RuntimeBench — the bytecode interpreter
 // ===========================================================================

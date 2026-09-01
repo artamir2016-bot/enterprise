@@ -102,8 +102,19 @@ lambda, module body).
 
 Guarded by `JoinIndex` (unchanged) and a new `ScriptProfiler` correctness test
 (counts, self≤inclusive, parent/child attribution, trace order, off-by-default).
+**Script API landed** — three globals in `ibSystemManager`, reached through the
+bound `System` scope like any built-in:
+`StartPerformanceMeasurement()` / `StopPerformanceMeasurement()` (procedures) and
+`PerformanceMeasurementResult()` (function → a sorted text table: module,
+procedure, calls, self ms, total ms). Russian aliases
+`НачатьЗамерПроизводительности` / `ОстановитьЗамерПроизводительности` /
+`РезультатЗамераПроизводительности` (OES-RU). So a configuration can bracket a
+section and `Message(PerformanceMeasurementResult())` its own hot spots. Covered
+by `BuiltInRuntime.ScriptProfilerStartStopResultNamesTheFunctionsRun`.
+
 Still to come (follow-up slices): Designer start/stop command + panel (table +
-trace tree), script-level `НачатьЗамер/ОстановитьЗамер`, XLSX export wiring.
+trace tree), a structured (Array-of-Structure) result for programmatic use, XLSX
+export wiring.
 
 ## The system
 

@@ -165,6 +165,14 @@ public:
 	// object or a record set throws here rather than failing in the background.
 	static ibValue RunBackground(const wxString& strProcedureName, ibValue* pArgs);
 
+	//--- Script profiler (GitHub #2) — start/stop measurement + read the report.
+	// Start creates (or resets) this session's profiler and begins measuring;
+	// Stop ends it but keeps the data; Result renders the aggregate (call counts,
+	// self / inclusive time) as a sorted text table for Message()/logging.
+	static void     StartPerformanceMeasurement();
+	static void     StopPerformanceMeasurement();
+	static wxString PerformanceMeasurementResult();
+
 public:
 
 	ibValueSystemFunction() :

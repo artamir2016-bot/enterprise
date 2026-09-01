@@ -998,6 +998,51 @@ TEST_F(BuiltInRuntime, ABuiltInFunctionSuppliesABuiltInProcedureArgument) {
 }
 
 // ===========================================================================
+// Script-level profiler API (GitHub #2): StartPerformanceMeasurement /
+// StopPerformanceMeasurement / PerformanceMeasurementResult, reached the way
+// configuration code reaches any global — through the bound System scope. The
+// rendered report must name the functions that ran under measurement.
+// ===========================================================================
+
+TEST_F(BuiltInRuntime, ScriptProfilerStartStopResultNamesTheFunctionsRun) {
+	const short savedStyle = ibCompileCode::GetCodeStyle();
+	ibCompileCode::SetCodeStyle(CODE_VES);
+
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ibValueSystemFunction valueSystem;
+	cc.AddContextVariable(wxT("System"), &valueSystem, true);
+
+	ASSERT_TRUE(TryCompile(cc,
+		wxT("var report public;\n")
+		wxT("Function Inner(n) Public\n")
+		wxT("  var s; var i; s = 0; i = 0;\n")
+		wxT("  While i < n Do s = s + i; i = i + 1; EndDo;\n")
+		wxT("  Return s;\n")
+		wxT("EndFunction\n")
+		wxT("Function Outer(m) Public\n")
+		wxT("  var t; var k; t = 0; k = 0;\n")
+		wxT("  While k < 3 Do t = t + Inner(m); k = k + 1; EndDo;\n")
+		wxT("  Return t;\n")
+		wxT("EndFunction\n")
+		wxT("StartPerformanceMeasurement();\n")
+		wxT("Outer(1000);\n")
+		wxT("StopPerformanceMeasurement();\n")
+		wxT("report = PerformanceMeasurementResult();\n")));
+
+	ibProcUnit pu;
+	wxString strError;
+	ASSERT_TRUE(RunBound(cc, pu, strError)) << strError.ToStdString();
+
+	ibValue report;
+	ASSERT_TRUE(pu.GetPropVal(wxT("report"), report));
+	const wxString text = report.GetString();
+	EXPECT_TRUE(text.Contains(wxT("Inner"))) << text.ToStdString();
+	EXPECT_TRUE(text.Contains(wxT("Outer"))) << text.ToStdString();
+
+	ibCompileCode::SetCodeStyle(savedStyle);
+}
+
+// ===========================================================================
 // x++ / x-- — the POSTFIX contract: yield the old value, then store the new
 //
 // Not covered anywhere until now (test_number.cpp's PostIncrement is C++'s
