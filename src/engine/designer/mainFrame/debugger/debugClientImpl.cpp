@@ -259,3 +259,9 @@ void ibDebuggerClientBridgeDesigner::OnSetExpanded(const ibWatchWindowData& watc
 {
 	watchWindow->SetExpanded(watchData);
 }
+
+void ibDebuggerClientBridgeDesigner::OnSetProfilerData(const ibProfilerReportData& data)
+{
+	if (mainFrame != nullptr)
+		mainFrame->Debugger_OnProfilerData(data);
+}

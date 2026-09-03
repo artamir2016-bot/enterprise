@@ -31,6 +31,10 @@ public:
 
 	virtual void OnSetVariable(const ibWatchWindowData& watchData) = 0;
 	virtual void OnSetExpanded(const ibWatchWindowData& watchData) = 0;
+
+	// Script-profiler report (GitHub #2). Non-pure: default no-op so bridge
+	// implementations that don't surface a profiler need not override it.
+	virtual void OnSetProfilerData(const ibProfilerReportData& data) {}
 };
 
 

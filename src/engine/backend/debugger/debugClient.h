@@ -43,6 +43,8 @@ class BACKEND_API ibDebuggerClient {
 		void OnSetVariable(const ibWatchWindowData& data);
 		void OnSetExpanded(const ibWatchWindowData& data);
 
+		void OnSetProfilerData(const ibProfilerReportData& data);   // GitHub #2
+
 	private:
 		ibDebuggerClientBridge* m_debugBridge;
 	};
@@ -252,6 +254,11 @@ public:
 #endif 
 
 	void SetLevelStack(unsigned int level);
+
+	// Ask the parked debuggee for its script-profiler report (GitHub #2). The
+	// reply arrives asynchronously via the bridge's OnSetProfilerData. No-op
+	// unless a session is stopped in the debug loop.
+	void RequestProfilerData();
 
 	//evaluate for tooltip
 	void EvaluateToolTip(const wxString& strFileName, const wxString& strModuleName, const wxString& strExpression);

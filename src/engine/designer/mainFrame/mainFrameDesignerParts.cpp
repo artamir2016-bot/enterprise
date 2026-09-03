@@ -313,3 +313,17 @@ void ibFrontendMainFrameDesigner::ToggleProfilerPane()
 		m_profilerPane->RefreshData();
 	m_mgr.Update();
 }
+
+void ibFrontendMainFrameDesigner::Debugger_OnProfilerData(const ibProfilerReportData& data)
+{
+	// A report arrived from the parked debuggee. Make sure the pane exists and
+	// is visible, then hand it the report.
+	EnsureProfilerPane();
+	wxAuiPaneInfo& pane = m_mgr.GetPane(wxT("profilerPane"));
+	if (pane.IsOk() && !pane.IsShown()) {
+		pane.Show(true);
+		m_mgr.Update();
+	}
+	if (m_profilerPane != nullptr)
+		m_profilerPane->LoadReport(data);
+}

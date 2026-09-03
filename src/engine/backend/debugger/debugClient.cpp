@@ -433,6 +433,15 @@ void ibDebuggerClient::SetLevelStack(unsigned int level)
 	}
 }
 
+void ibDebuggerClient::RequestProfilerData()
+{
+	if (ibDebuggerClient::IsEnterLoop()) {
+		ibWriterMemory commandChannel;
+		commandChannel.w_u16(CommandId_GetProfilerData);
+		SendCommand(commandChannel.pointer(), commandChannel.size());
+	}
+}
+
 void ibDebuggerClient::EvaluateToolTip(const wxString& strFileName, const wxString& strModuleName, const wxString& strExpression)
 {
 	if (ibDebuggerClient::IsEnterLoop()) {
@@ -965,6 +974,40 @@ void ibDebuggerClient::ibDebuggerClientConnection::RecvCommand(void* pointer, un
 
 		ms_debugClient->CallAfter(
 			&ibDebuggerClient::ibDebuggerClientAdapter::OnMessageFromServer, debugData, strErrorMessage
+		);
+	}
+	else if (commandFromServer == CommandId_SetProfilerData) {
+
+		ibProfilerReportData report;
+		report.m_hasProfiler = commandReader.r_u8() != 0;
+		report.m_dropped     = commandReader.r_u64();
+
+		unsigned int aggCount = commandReader.r_u32();
+		report.m_agg.reserve(aggCount);
+		for (unsigned int i = 0; i < aggCount; i++) {
+			ibProfilerReportData::AggRow row;
+			commandReader.r_stringZ(row.m_module);
+			commandReader.r_stringZ(row.m_name);
+			row.m_count  = commandReader.r_u64();
+			row.m_selfNs = commandReader.r_u64();
+			row.m_inclNs = commandReader.r_u64();
+			report.m_agg.push_back(row);
+		}
+
+		unsigned int traceCount = commandReader.r_u32();
+		report.m_trace.reserve(traceCount);
+		for (unsigned int i = 0; i < traceCount; i++) {
+			ibProfilerReportData::TraceRow row;
+			commandReader.r_stringZ(row.m_module);
+			commandReader.r_stringZ(row.m_name);
+			row.m_depth   = commandReader.r_s32();
+			row.m_enterNs = commandReader.r_u64();
+			row.m_durNs   = commandReader.r_u64();
+			report.m_trace.push_back(row);
+		}
+
+		ms_debugClient->CallAfter(
+			&ibDebuggerClient::ibDebuggerClientAdapter::OnSetProfilerData, report
 		);
 	}
 

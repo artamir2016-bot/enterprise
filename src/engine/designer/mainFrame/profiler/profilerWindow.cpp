@@ -17,6 +17,8 @@
 #include "backend/compiler/scriptProfiler.h"
 #include "backend/compiler/procUnitState.h"
 #include "backend/session/session.h"
+#include "backend/debugger/debugClient.h"      // request over the debug transport
+#include "backend/debugger/debugDefs.h"        // ibProfilerReportData
 
 enum {
 	wxID_PROFILER_REFRESH = wxID_HIGHEST + 4200,
@@ -98,8 +100,57 @@ void ibProfilerWindow::ClearView()
 		m_statusText->SetLabel(wxEmptyString);
 }
 
+wxTreeItemId ibProfilerWindow::AddAggRow(const wxTreeItemId& root, const wxString& proc,
+	const wxString& module, unsigned long long count,
+	unsigned long long selfNs, unsigned long long inclNs)
+{
+	const wxTreeItemId item = m_aggCtrl->AppendItem(root,
+		proc.IsEmpty() ? wxString(_("<module body>")) : proc);
+	m_aggCtrl->SetItemText(item, 1, module);
+	m_aggCtrl->SetItemText(item, 2, wxString::Format(wxT("%llu"), count));
+	m_aggCtrl->SetItemText(item, 3, MsText(selfNs));
+	m_aggCtrl->SetItemText(item, 4, MsText(inclNs));
+	return item;
+}
+
+// Append one trace node under the correct parent, keeping the per-depth cursor
+// (lastAtDepth) so a record at depth d hangs under the most recent d-1 record.
+static void AppendTraceNode(ibTreeListCtrl* ctrl, const wxTreeItemId& root,
+	std::vector<wxTreeItemId>& lastAtDepth,
+	const wxString& proc, const wxString& module, int depthIn,
+	unsigned long long enterNs, unsigned long long durNs)
+{
+	const int depth = depthIn < 0 ? 0 : depthIn;
+	wxTreeItemId parent = root;
+	if (depth > 0 && (size_t)depth <= lastAtDepth.size())
+		parent = lastAtDepth[depth - 1];
+
+	const wxTreeItemId item = ctrl->AppendItem(parent,
+		proc.IsEmpty() ? wxString(_("<module body>")) : proc);
+	ctrl->SetItemText(item, 1, module);
+	ctrl->SetItemText(item, 2, MsText(enterNs));
+	ctrl->SetItemText(item, 3, MsText(durNs));
+
+	if ((size_t)depth >= lastAtDepth.size())
+		lastAtDepth.resize(depth + 1);
+	lastAtDepth[depth] = item;
+	lastAtDepth.resize(depth + 1);   // drop any deeper stale entries
+}
+
 void ibProfilerWindow::RefreshData()
 {
+	// If a session is parked in the debug loop, the meaningful profiler lives in
+	// the DEBUGGEE, not here. Ask it over the transport; LoadReport applies the
+	// reply when it arrives.
+	ibDebuggerClient* dbg = ibDebuggerClient::Get();
+	if (dbg != nullptr && dbg->IsEnterLoop()) {
+		if (m_statusText != nullptr)
+			m_statusText->SetLabel(_("Requesting from debuggee…"));
+		dbg->RequestProfilerData();
+		return;
+	}
+
+	// Otherwise read this process's own in-process profiler.
 	PopulateAggregate();
 	PopulateTrace();
 
@@ -115,6 +166,40 @@ void ibProfilerWindow::RefreshData()
 	}
 }
 
+void ibProfilerWindow::LoadReport(const ibProfilerReportData& data)
+{
+	// Aggregate — already sorted by self time on the debuggee side.
+	m_aggCtrl->DeleteRoot();
+	const wxTreeItemId aggRoot = m_aggCtrl->AddRoot(wxEmptyString);
+	for (const ibProfilerReportData::AggRow& r : data.m_agg)
+		AddAggRow(aggRoot, r.m_name, r.m_module, r.m_count, r.m_selfNs, r.m_inclNs);
+
+	// Trace — completion order on the wire; sort by entry time for call order.
+	m_traceCtrl->DeleteRoot();
+	const wxTreeItemId traceRoot = m_traceCtrl->AddRoot(wxEmptyString);
+	std::vector<ibProfilerReportData::TraceRow> recs = data.m_trace;
+	std::sort(recs.begin(), recs.end(),
+		[](const ibProfilerReportData::TraceRow& a, const ibProfilerReportData::TraceRow& b) {
+			return a.m_enterNs < b.m_enterNs;
+		});
+	std::vector<wxTreeItemId> lastAtDepth;
+	for (const ibProfilerReportData::TraceRow& r : recs)
+		AppendTraceNode(m_traceCtrl, traceRoot, lastAtDepth,
+			r.m_name, r.m_module, r.m_depth, r.m_enterNs, r.m_durNs);
+	if (traceRoot.IsOk())
+		m_traceCtrl->Expand(traceRoot);
+
+	if (m_statusText != nullptr) {
+		if (!data.m_hasProfiler)
+			m_statusText->SetLabel(_("No measurement in the debuggee — call StartPerformanceMeasurement()"));
+		else if (data.m_dropped != 0)
+			m_statusText->SetLabel(wxString::Format(
+				_("From debuggee — trace truncated: %llu calls dropped"), data.m_dropped));
+		else
+			m_statusText->SetLabel(_("From debuggee"));
+	}
+}
+
 void ibProfilerWindow::PopulateAggregate()
 {
 	m_aggCtrl->DeleteRoot();
@@ -124,15 +209,8 @@ void ibProfilerWindow::PopulateAggregate()
 	if (prof == nullptr)
 		return;
 
-	for (const ibProfileNode& n : prof->Aggregate()) {   // sorted by self desc
-		const wxString proc = n.m_name.IsEmpty() ? wxString(_("<module body>")) : n.m_name;
-		const wxTreeItemId item = m_aggCtrl->AppendItem(root, proc);
-		m_aggCtrl->SetItemText(item, 1, n.m_module);
-		m_aggCtrl->SetItemText(item, 2, wxString::Format(wxT("%llu"),
-			(unsigned long long)n.m_count));
-		m_aggCtrl->SetItemText(item, 3, MsText(n.m_selfNs));
-		m_aggCtrl->SetItemText(item, 4, MsText(n.m_inclNs));
-	}
+	for (const ibProfileNode& n : prof->Aggregate())   // sorted by self desc
+		AddAggRow(root, n.m_name, n.m_module, n.m_count, n.m_selfNs, n.m_inclNs);
 }
 
 void ibProfilerWindow::PopulateTrace()
@@ -144,38 +222,21 @@ void ibProfilerWindow::PopulateTrace()
 	if (prof == nullptr)
 		return;
 
-	// Copy the trace (stored in completion order) and sort by entry time so the
-	// nodes appear in call order — parent before its children.
+	// Copy the trace (completion order) and sort by entry time for call order.
 	std::vector<ibProfileTrace> recs = prof->Trace();
 	std::sort(recs.begin(), recs.end(),
 		[](const ibProfileTrace& a, const ibProfileTrace& b) {
 			return a.m_enterNs < b.m_enterNs;
 		});
 
-	// Rebuild the call tree from the per-record depth: a record at depth d hangs
-	// under the most recent record seen at depth d-1.
 	std::vector<wxTreeItemId> lastAtDepth;
 	wxString module, name;
 	for (const ibProfileTrace& r : recs) {
 		module.clear();
 		name.clear();
 		prof->ResolveKey(r.m_key, module, name);
-		const wxString proc = name.IsEmpty() ? wxString(_("<module body>")) : name;
-
-		const int depth = r.m_depth < 0 ? 0 : r.m_depth;
-		wxTreeItemId parent = root;
-		if (depth > 0 && (size_t)depth <= lastAtDepth.size())
-			parent = lastAtDepth[depth - 1];
-
-		const wxTreeItemId item = m_traceCtrl->AppendItem(parent, proc);
-		m_traceCtrl->SetItemText(item, 1, module);
-		m_traceCtrl->SetItemText(item, 2, MsText(r.m_enterNs));
-		m_traceCtrl->SetItemText(item, 3, MsText(r.m_durNs));
-
-		if ((size_t)depth >= lastAtDepth.size())
-			lastAtDepth.resize(depth + 1);
-		lastAtDepth[depth] = item;
-		lastAtDepth.resize(depth + 1);   // drop any deeper stale entries
+		AppendTraceNode(m_traceCtrl, root, lastAtDepth,
+			name, module, r.m_depth, r.m_enterNs, r.m_durNs);
 	}
 
 	if (root.IsOk())

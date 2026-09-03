@@ -76,3 +76,10 @@ void ibDebuggerClient::ibDebuggerClientAdapter::OnSetExpanded(const ibWatchWindo
 		m_debugBridge->OnSetExpanded(data);
 	}
 }
+
+void ibDebuggerClient::ibDebuggerClientAdapter::OnSetProfilerData(const ibProfilerReportData& data)
+{
+	if (m_debugBridge != nullptr) {
+		m_debugBridge->OnSetProfilerData(data);
+	}
+}

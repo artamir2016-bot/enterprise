@@ -1,6 +1,9 @@
 #ifndef _DEBUGGER_DEFS_H__
 #define _DEBUGGER_DEFS_H__
 
+#include <vector>
+#include <wx/string.h>
+
 enum MessageType
 {
 	MessageType_Normal = 0,
@@ -69,7 +72,10 @@ enum CommandId
 	CommandId_EvalToolTip = 27,
 	CommandId_EvalAutocomplete = 28,
 
-	CommandId_MessageFromServer = 29 // When catch error in enterprise mode
+	CommandId_MessageFromServer = 29, // When catch error in enterprise mode
+
+	CommandId_GetProfilerData = 30, // Designer → debuggee: request the script-profiler report (GitHub #2)
+	CommandId_SetProfilerData = 31  // debuggee → Designer: the profiler report (aggregate + trace)
 };
 
 enum ConnectionType {
@@ -266,6 +272,36 @@ public:
 	unsigned int GetWatchCount() const {
 		return m_listExpression.size();
 	}
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////////
+
+// Script-profiler report carried over the debug transport (GitHub #2). Mirrors
+// ibProfileNode / ibProfileTrace (backend/compiler/scriptProfiler.h) but with
+// wire-friendly plain types — the debuggee fills it from its in-process
+// profiler, the Designer renders it in the profiler panel.
+struct ibProfilerReportData {
+
+	struct AggRow {
+		wxString           m_module;
+		wxString           m_name;    // empty ⇒ module body
+		unsigned long long m_count = 0;
+		unsigned long long m_selfNs = 0;
+		unsigned long long m_inclNs = 0;
+	};
+
+	struct TraceRow {
+		wxString           m_module;
+		wxString           m_name;
+		int                m_depth = 0;
+		unsigned long long m_enterNs = 0;
+		unsigned long long m_durNs = 0;
+	};
+
+	std::vector<AggRow>   m_agg;
+	std::vector<TraceRow> m_trace;
+	unsigned long long    m_dropped = 0;   // trace records dropped past the cap
+	bool                  m_hasProfiler = false;  // false ⇒ no measurement in the debuggee
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////

@@ -23,6 +23,8 @@ public:
 
 	virtual void OnSetVariable(const ibWatchWindowData& watchData);
 	virtual void OnSetExpanded(const ibWatchWindowData& watchData);
+
+	virtual void OnSetProfilerData(const ibProfilerReportData& data);   // GitHub #2
 };
 
 #endif

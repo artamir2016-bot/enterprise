@@ -118,6 +118,9 @@ public:
 	void Debugger_OnSessionEnd();
 	void Debugger_OnEnterLoop();
 	void Debugger_OnLeaveLoop();
+	// Profiler report arrived from the debuggee (GitHub #2) — reveal the pane
+	// and load it. Declared with a forward struct; def in mainFrameDesignerParts.
+	void Debugger_OnProfilerData(const struct ibProfilerReportData& data);
 #pragma endregion 
 
 	virtual bool Show(bool show = true) override;

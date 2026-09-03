@@ -187,6 +187,10 @@ protected:
 	inline void SendLocalVariables(ibRunContext* runContext);
 	inline void SendStack();
 
+	// Script-profiler report of the parked session (GitHub #2). Reads this
+	// session's in-process profiler and ships aggregate + trace to the Designer.
+	void SendProfilerData();
+
 	//commands:
 	void RecvCommand(void* pointer, unsigned int length);
 	void SendCommand(void* pointer, unsigned int length);

@@ -14,6 +14,8 @@
 #endif
 
 #include "backend/compiler/procUnit.h"
+#include "backend/compiler/procUnitState.h"     // profiler report (GitHub #2)
+#include "backend/compiler/scriptProfiler.h"
 #include "backend/metadataConfiguration.h"
 #include "backend/session/session.h"
 #include "backend/session/sessionRegistry.h"
@@ -737,6 +739,51 @@ void ibDebuggerServer::SendStack()
 	SendCommand(commandChannel.pointer(), commandChannel.size());
 }
 
+void ibDebuggerServer::SendProfilerData()
+{
+	ibWriterMemory commandChannel;
+	commandChannel.w_u16(CommandId_SetProfilerData);
+
+	ibProcUnitState* puState = ibSession::GetPUState();
+	ibScriptProfiler* prof = puState ? puState->Profiler() : nullptr;
+
+	commandChannel.w_u8(prof != nullptr ? 1 : 0);
+	commandChannel.w_u64(prof != nullptr ? (u64)prof->GetTraceDropped() : 0);
+
+	if (prof == nullptr) {
+		commandChannel.w_u32(0);   // no aggregate rows
+		commandChannel.w_u32(0);   // no trace rows
+		SendCommand(commandChannel.pointer(), commandChannel.size());
+		return;
+	}
+
+	// Aggregate — already sorted by self time descending.
+	const std::vector<ibProfileNode> agg = prof->Aggregate();
+	commandChannel.w_u32((u32)agg.size());
+	for (const ibProfileNode& n : agg) {
+		commandChannel.w_stringZ(n.m_module);
+		commandChannel.w_stringZ(n.m_name);
+		commandChannel.w_u64((u64)n.m_count);
+		commandChannel.w_u64((u64)n.m_selfNs);
+		commandChannel.w_u64((u64)n.m_inclNs);
+	}
+
+	// Trace — completion order on the wire; the Designer sorts by entry time.
+	const std::vector<ibProfileTrace>& trace = prof->Trace();
+	commandChannel.w_u32((u32)trace.size());
+	for (const ibProfileTrace& r : trace) {
+		wxString module, name;
+		prof->ResolveKey(r.m_key, module, name);
+		commandChannel.w_stringZ(module);
+		commandChannel.w_stringZ(name);
+		commandChannel.w_s32(r.m_depth);
+		commandChannel.w_u64((u64)r.m_enterNs);
+		commandChannel.w_u64((u64)r.m_durNs);
+	}
+
+	SendCommand(commandChannel.pointer(), commandChannel.size());
+}
+
 void ibDebuggerServer::RecvCommand(void* pointer, unsigned int length)
 {
 	if (m_socketConnectionThread != nullptr)
@@ -1266,6 +1313,13 @@ void ibDebuggerServer::ibDebuggerServerConnection::RecvCommand(void* pointer, un
 				}
 			}
 		}
+	}
+	else if (commandFromClient == CommandId_GetProfilerData) {
+		// The Designer asks for this session's script-profiler report. Only
+		// meaningful while parked — the interpreter is not mutating the profiler
+		// then, so Aggregate()/Trace() read a stable snapshot.
+		if (ms_debugServer->IsDebugLooped())
+			ms_debugServer->SendProfilerData();
 	}
 	else if (commandFromClient == CommandId_EvalAutocomplete) {
 

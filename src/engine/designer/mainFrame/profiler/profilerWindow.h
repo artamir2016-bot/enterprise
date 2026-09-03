@@ -19,19 +19,25 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include <wx/panel.h>
+#include <wx/treebase.h>   // wxTreeItemId
 
 class ibTreeListCtrl;
 class wxNotebook;
 class wxStaticText;
+struct ibProfilerReportData;
 
 class ibProfilerWindow : public wxPanel {
 public:
 	ibProfilerWindow(wxWindow* parent, wxWindowID id = wxID_ANY);
 	virtual ~ibProfilerWindow();
 
-	// Re-read the in-process profiler and repopulate both views. Safe to call
-	// with no measurement taken — the views simply come up empty.
+	// Refresh both views. When a debug session is parked, this asks the debuggee
+	// for its profiler over the debug transport (the reply arrives later via
+	// LoadReport); otherwise it reads this process's own in-process profiler.
 	void RefreshData();
+
+	// Populate both views from a report received over the debug transport.
+	void LoadReport(const ibProfilerReportData& data);
 
 	// Empty both views without touching the underlying profiler data.
 	void ClearView();
@@ -40,8 +46,14 @@ private:
 	void OnRefresh(wxCommandEvent& event);
 	void OnClear(wxCommandEvent& event);
 
+	// In-process population (codeRunner / this process ran the code).
 	void PopulateAggregate();
 	void PopulateTrace();
+
+	// Shared low-level fillers used by both the in-process and the report paths.
+	wxTreeItemId AddAggRow(const wxTreeItemId& root, const wxString& proc,
+		const wxString& module, unsigned long long count,
+		unsigned long long selfNs, unsigned long long inclNs);
 
 	wxNotebook*     m_notebook   = nullptr;
 	ibTreeListCtrl* m_aggCtrl    = nullptr;   // Hot spots
