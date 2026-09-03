@@ -167,7 +167,23 @@ The round-trip mirrors the stack/locals path:
   `oes_tests` (backend) and `designer` (frontend); not unit-testable (needs a live
   debug session).
 
-Still to come (follow-up slice): XLSX export of the aggregate / trace.
+**XLSX export landed** — an *Export XLSX…* button on the panel toolbar writes the
+current report to a real `.xlsx` via the in-tree `ibXlsxExporter` (independent
+ECMA-376 writer, `backend/export/`). One worksheet ("Profiler"): the aggregate
+table (Procedure, Module, Calls, Self ms, Total ms), a blank separator, then the
+call sequence sorted by entry time and indented by depth (Depth, Procedure,
+Module, Enter ms, Duration ms). Numeric cells are written as text; the exporter
+promotes unambiguously-numeric strings to real XLSX numbers, so Excel sums the
+Calls / ms columns. To make one source serve the trees, the wire and the
+spreadsheet, the panel now holds the last report as a single `ibProfilerReportData
+m_report` — `CaptureInProcess()` (in-process) and `LoadReport()` (from the
+debuggee) both fill it, `RenderFromReport()` draws the trees, `ExportToXlsx()`
+builds the sheet. Export refuses an empty report with a prompt. Verified by
+building the `designer` target.
+
+**Issue #2 is complete** — measurement core, script API (start/stop + text/struct/
+trace readouts), the Designer panel, the remote-debuggee transport, and XLSX
+export all landed. No open follow-ups.
 
 ## The system
 

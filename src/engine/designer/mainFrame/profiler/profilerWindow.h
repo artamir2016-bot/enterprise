@@ -21,10 +21,11 @@
 #include <wx/panel.h>
 #include <wx/treebase.h>   // wxTreeItemId
 
+#include "backend/debugger/debugDefs.h"   // ibProfilerReportData (held by value)
+
 class ibTreeListCtrl;
 class wxNotebook;
 class wxStaticText;
-struct ibProfilerReportData;
 
 class ibProfilerWindow : public wxPanel {
 public:
@@ -45,15 +46,22 @@ public:
 private:
 	void OnRefresh(wxCommandEvent& event);
 	void OnClear(wxCommandEvent& event);
+	void OnExport(wxCommandEvent& event);
 
-	// In-process population (codeRunner / this process ran the code).
-	void PopulateAggregate();
-	void PopulateTrace();
+	// Read this process's own profiler into m_report (codeRunner / in-process).
+	void CaptureInProcess();
+	// Render both views from m_report (the single source of truth).
+	void RenderFromReport();
+	// Write m_report to an .xlsx (aggregate + trace on two sheets' worth of rows).
+	bool ExportToXlsx(const wxString& fileName);
 
-	// Shared low-level fillers used by both the in-process and the report paths.
 	wxTreeItemId AddAggRow(const wxTreeItemId& root, const wxString& proc,
 		const wxString& module, unsigned long long count,
 		unsigned long long selfNs, unsigned long long inclNs);
+
+	// The last data shown — filled by CaptureInProcess or LoadReport; the source
+	// for both the tree views and the XLSX export.
+	ibProfilerReportData m_report;
 
 	wxNotebook*     m_notebook   = nullptr;
 	ibTreeListCtrl* m_aggCtrl    = nullptr;   // Hot spots
