@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "oes-dev": {
+      "command": "C:\\Users\\User\\.pyenv\\pyenv-win\\versions\\3.12.10\\python.exe",
+      "args": ["tools/oes_mcp/server.py"],
+      "env": {
+        "OES_BIN": "E:\\Projects\\OES\\build-perf\\bin\\Release"
+      }
+    }
+  }
+}
