@@ -935,6 +935,17 @@ long ibApplicationData::RunApplication(const wxString& strAppName, const wxStrin
 	if (searchDebug)
 		executeCmd += wxT(" --debug");
 
+	// OES-TEST: if THIS process runs a test agent (env set by the frontend when
+	// --testagent was passed), spawn the debuggee with its own agent too, on a
+	// port one below the parent's (designer 1652 → enterprise 1651). Lets a GUI
+	// test drive both the Designer and its debuggee. Unset in production → no-op.
+	wxString testAgentPort;
+	if (wxGetEnv(wxT("OES_TESTAGENT_PORT"), &testAgentPort) && !testAgentPort.IsEmpty()) {
+		long parentPort = 0;
+		if (testAgentPort.ToLong(&parentPort) && parentPort > 1)
+			executeCmd += wxString::Format(wxT(" --testagent=%ld"), parentPort - 1);
+	}
+
 	if (!strUserName.IsEmpty())
 		executeCmd += wxString::Format(wxT(" --ibuser=%s"), strUserName);
 

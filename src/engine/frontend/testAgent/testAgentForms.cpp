@@ -1131,6 +1131,21 @@ json Cmd_SetBreakpoint(const json& args)
 	if (args.contains("docPath") && args["docPath"].is_string()) {
 		docPath = FromUtf8(args["docPath"]);
 	}
+	else if (args.contains("catalog")) {
+		// Object module of a catalog (Товары.ObjectModule — where ПередЗаписью lives).
+		const wxString name = FromUtf8(args.at("catalog"));
+		auto* md = ibApplicationData::GetActiveMetaData();
+		if (md == nullptr)
+			throw std::runtime_error("no active configuration");
+		auto* cat = md->FindAnyObjectByFilter<ibValueMetaObjectCatalog>(
+			name, g_metaCatalogCLSID, true);
+		if (cat == nullptr)
+			throw std::runtime_error("catalog not found: " + ToUtf8(name));
+		const ibValueMetaObjectModule* mod = cat->GetObjectModule();
+		if (mod == nullptr)
+			throw std::runtime_error("catalog has no object module: " + ToUtf8(name));
+		docPath = mod->GetDocPath();
+	}
 	else {
 		const wxString name = FromUtf8(args.at("module"));
 		auto* md = ibApplicationData::GetActiveMetaData();

@@ -551,8 +551,13 @@ int ibAppDesigner::DoOnRun()
 
 	// OES-TEST: bring up the test-automation agent once the main frame exists (so windows are
 	// enumerable). Off unless --testagent[=port] was passed. See docs/test-automation.md.
-	if (m_testAgentPort >= 0)
+	if (m_testAgentPort >= 0) {
 		ibTestAgent::Get().Start(m_testAgentPort);
+		// OES-TEST: let the (GUI-free) backend know an agent is active and on which
+		// port, so RunApplication can spawn the debuggee with --testagent too (a
+		// child port one below). Backend reads this env var; unset in production.
+		wxSetEnv(wxT("OES_TESTAGENT_PORT"), wxString::Format(wxT("%d"), m_testAgentPort));
+	}
 
 	return wxApp::OnRun();
 }
