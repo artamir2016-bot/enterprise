@@ -29,6 +29,36 @@ namespace {
 // resolving reference attribute types in the second pass.
 using RefMap = std::map<wxString, ibValueMetaObject*>;
 
+// MERGE MODE (ibApplyConfigSpec): when true, object/attribute/module creation is
+// idempotent — an existing child of the same clsid+name under the owner is REUSED
+// (so the spec EDITS it) instead of creating a duplicate. Default false = the
+// greenfield build path (ibBuildConfigFromJsonSpec) is create-only. Config build
+// is single-threaded, so a file-static toggle is sufficient.
+bool s_mergeMode = false;
+
+// Existing child of `owner` with this clsid + name, or nullptr.
+ibValueMetaObject* FindChild(ibValueMetaObject* owner, const ibClassID& clsid, const wxString& name) {
+	if (owner == nullptr)
+		return nullptr;
+	for (unsigned int i = 0; i < owner->GetChildCount(); i++) {
+		ibValueMetaObject* c = owner->GetChild(i);
+		if (c != nullptr && c->GetClassType() == clsid
+		    && stringUtils::CompareString(c->GetName(), name))
+			return c;
+	}
+	return nullptr;
+}
+
+// Find-or-create: in merge mode reuse an existing child (edit); otherwise create.
+ibValueMetaObject* MakeChild(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
+                             const ibClassID& clsid, const wxString& name) {
+	if (s_mergeMode) {
+		if (ibValueMetaObject* existing = FindChild(owner, clsid, name))
+			return existing;
+	}
+	return cfg.CreateMetaObject(clsid, owner, /*runObject*/ false, name);
+}
+
 wxString JStr(const json& obj, const char* key, const wxString& def = wxEmptyString) {
 	auto it = obj.find(key);
 	if (it == obj.end() || !it->is_string())
@@ -120,7 +150,7 @@ bool AddTypedChild(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
 		err = wxString::Format(wxT("%s without a 'name'"), wxString::FromUTF8(kind));
 		return false;
 	}
-	ibValueMetaObject* obj = cfg.CreateMetaObject(clsid, owner, /*runObject*/ false, name);
+	ibValueMetaObject* obj = MakeChild(cfg, owner, clsid, name);
 	if (obj == nullptr) {
 		err = wxString::Format(wxT("failed to create %s '%s'"), wxString::FromUTF8(kind), name);
 		return false;
@@ -686,7 +716,7 @@ bool FillRecordObject(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
 		for (const json& t : *ts) {
 			const wxString tname = JStr(t, "name");
 			if (tname.IsEmpty()) { err = wxT("tabularSection without a 'name'"); return false; }
-			ibValueMetaObject* tab = cfg.CreateMetaObject(g_metaTableRefCLSID, obj, /*runObject*/ false, tname);
+			ibValueMetaObject* tab = MakeChild(cfg, obj, g_metaTableRefCLSID, tname);
 			if (tab == nullptr) {
 				err = wxString::Format(wxT("failed to create tabular section '%s'"), tname);
 				return false;
@@ -735,7 +765,7 @@ bool CreateObjects(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* root,
 			err = wxString::Format(wxT("%s entry without a 'name'"), wxString::FromUTF8(key));
 			return false;
 		}
-		ibValueMetaObject* obj = cfg.CreateMetaObject(clsid, root, /*runObject*/ false, name);
+		ibValueMetaObject* obj = MakeChild(cfg, root, clsid, name);
 		if (obj == nullptr) {
 			err = wxString::Format(wxT("failed to create %s '%s'"), wxString::FromUTF8(key), name);
 			return false;
@@ -804,7 +834,7 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 			for (const json& e : *it) {
 				const wxString ename = JStr(e, "name");
 				if (ename.IsEmpty()) { err = wxT("enum entry without a 'name'"); return false; }
-				ibValueMetaObject* en = cfg.CreateMetaObject(g_metaEnumerationCLSID, root, /*runObject*/ false, ename);
+				ibValueMetaObject* en = MakeChild(cfg, root, g_metaEnumerationCLSID, ename);
 				if (en == nullptr) { err = wxString::Format(wxT("failed to create enum '%s'"), ename); return false; }
 				refMap[wxT("Enum.") + ename] = en;
 				auto vals = e.find("values");
@@ -814,7 +844,7 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 							? wxString::FromUTF8(v.get<std::string>().c_str())
 							: JStr(v, "name");
 						if (vname.IsEmpty()) continue;
-						if (cfg.CreateMetaObject(g_metaEnumCLSID, en, /*runObject*/ false, vname) == nullptr) {
+						if (MakeChild(cfg, en, g_metaEnumCLSID, vname) == nullptr) {
 							err = wxString::Format(wxT("failed to create enum value '%s.%s'"), ename, vname);
 							return false;
 						}
@@ -832,7 +862,7 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 			for (const json& node : *it) {
 				const wxString name = JStr(node, "name");
 				if (name.IsEmpty()) { err = wxT("commonModule entry without a 'name'"); return false; }
-				ibValueMetaObject* obj = cfg.CreateMetaObject(g_metaCommonModuleCLSID, root, /*runObject*/ false, name);
+				ibValueMetaObject* obj = MakeChild(cfg, root, g_metaCommonModuleCLSID, name);
 				if (obj == nullptr) { err = wxString::Format(wxT("failed to create common module '%s'"), name); return false; }
 				auto* mod = dynamic_cast<ibValueMetaObjectCommonModule*>(obj);
 				if (mod == nullptr) { err = wxString::Format(wxT("'%s' is not a common module"), name); return false; }
@@ -890,6 +920,60 @@ bool ibBuildConfigFileFromJsonSpec(const wxString& jsonPath,
 
 	if (!cfg.SaveConfigToFile(mcfPath)) {
 		err = wxString::Format(wxT("failed to save configuration: %s"), mcfPath);
+		return false;
+	}
+	return true;
+}
+
+// ---- Merge / edit: apply a spec onto an EXISTING configuration ---------------
+
+bool ibApplyConfigSpec(const wxString& jsonText,
+                       ibMetaDataConfigurationFile& cfg,
+                       wxString& err) {
+	// Same builder, idempotent: existing objects/attributes/modules are reused
+	// and edited; missing ones are created. Reset the toggle on every exit.
+	s_mergeMode = true;
+	bool ok;
+	try {
+		ok = ibBuildConfigFromJsonSpec(jsonText, cfg, err);
+	} catch (...) {
+		s_mergeMode = false;
+		throw;
+	}
+	s_mergeMode = false;
+	return ok;
+}
+
+bool ibApplyConfigFileSpec(const wxString& mcfInPath,
+                           const wxString& jsonPath,
+                           const wxString& mcfOutPath,
+                           wxString& err) {
+	if (!wxFile::Exists(mcfInPath)) {
+		err = wxString::Format(wxT("configuration file not found: %s"), mcfInPath);
+		return false;
+	}
+	if (!wxFile::Exists(jsonPath)) {
+		err = wxString::Format(wxT("spec file not found: %s"), jsonPath);
+		return false;
+	}
+	wxString jsonText;
+	{
+		wxFile in(jsonPath, wxFile::read);
+		if (!in.IsOpened() || !in.ReadAll(&jsonText, wxConvUTF8)) {
+			err = wxString::Format(wxT("cannot read spec file: %s"), jsonPath);
+			return false;
+		}
+	}
+
+	ibMetaDataConfigurationFile cfg;
+	if (!cfg.LoadConfigFromFile(mcfInPath)) {
+		err = wxString::Format(wxT("failed to load configuration: %s"), mcfInPath);
+		return false;
+	}
+	if (!ibApplyConfigSpec(jsonText, cfg, err))
+		return false;
+	if (!cfg.SaveConfigToFile(mcfOutPath)) {
+		err = wxString::Format(wxT("failed to save configuration: %s"), mcfOutPath);
 		return false;
 	}
 	return true;

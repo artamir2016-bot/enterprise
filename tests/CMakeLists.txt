@@ -415,6 +415,22 @@ set_target_properties(oes_config_gen PROPERTIES
     INSTALL_RPATH          "${CMAKE_BINARY_DIR}/bin"
 )
 
+# oes_config_edit — incremental merge editor (add/edit objects on an existing .mcf).
+add_executable(oes_config_edit "${CMAKE_SOURCE_DIR}/tools/oes_config_edit.cpp")
+target_link_libraries(oes_config_edit PRIVATE backend)
+target_compile_definitions(oes_config_edit PRIVATE OES_TESTING)
+target_include_directories(oes_config_edit PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}/src/engine"
+    "${CMAKE_SOURCE_DIR}/src/engine/backend"
+)
+set_target_properties(oes_config_edit PROPERTIES
+    CXX_STANDARD          17
+    CXX_STANDARD_REQUIRED ON
+    BUILD_RPATH            "${CMAKE_BINARY_DIR}/bin"
+    INSTALL_RPATH          "${CMAKE_BINARY_DIR}/bin"
+)
+
 # ---------------------------------------------------------------------------
 # Frontend GUI harness — STEP 1. Links the DESKTOP frontend.dll (real wx
 # widgets: ibVisualHost : wxScrolledCanvas) + backend into a gtest target and

@@ -42,4 +42,21 @@ BACKEND_API bool ibBuildConfigFileFromJsonSpec(const wxString& jsonPath,
                                                const wxString& mcfPath,
                                                wxString& err);
 
+// MERGE / EDIT: apply a spec onto an EXISTING configuration `cfg` (loaded from an
+// .mcf or a base). Idempotent — objects, attributes, tabular sections, enum
+// values and modules named in the spec are REUSED and edited if they already
+// exist, or created if they don't. This is the "add a new object OR edit an
+// existing one" path (the greenfield builder above is create-only). New forms are
+// still additive. Returns false and fills `err` on any failure.
+BACKEND_API bool ibApplyConfigSpec(const wxString& jsonText,
+                                   ibMetaDataConfigurationFile& cfg,
+                                   wxString& err);
+
+// Convenience: load `mcfInPath`, apply the JSON spec at `jsonPath` as a merge,
+// and save the result to `mcfOutPath` (may equal the input to edit in place).
+BACKEND_API bool ibApplyConfigFileSpec(const wxString& mcfInPath,
+                                       const wxString& jsonPath,
+                                       const wxString& mcfOutPath,
+                                       wxString& err);
+
 #endif // _METADATA_CONFIG_SPEC_H__
