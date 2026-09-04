@@ -7,6 +7,7 @@
 #include "backend/appData.h"
 #include "backend/metadataConfiguration.h" // OES-CLI: LoadConfigFromFile / SaveConfigToFile / SaveDatabase for batch mode
 #include "frontend/testAgent/testAgent.h"  // OES-TEST: embedded test-automation agent (--testagent)
+#include "frontend/testAgent/mcpHttpServer.h"  // OES-MCP: embedded HTTP MCP server (--mcp)
 #include "backend/backend_exception.h"   // DrainLastErrors for the startup-failure dialog
 #include "backend/backend_mainFrame.h"
 #include "backend/debugger/debugClientBridge.h"
@@ -81,6 +82,8 @@ void ibAppDesigner::OnInitCmdLine(wxCmdLineParser& parser)
 	// OES-TEST: start the embedded test-automation agent on the given localhost port (bare flag =
 	// default port). Off unless passed. See docs/test-automation.md.
 	parser.AddOption(wxT("testagent"), wxT("testagent"), "Test-automation agent port", wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
+	// OES-MCP: --mcp[=port] starts the embedded HTTP MCP server (Claude Code dev).
+	parser.AddOption(wxT("mcp"), wxT("mcp"), "Embedded HTTP MCP server port", wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
 
 	return wxApp::OnInitCmdLine(parser);
 }
@@ -114,6 +117,11 @@ bool ibAppDesigner::OnCmdLineParsed(wxCmdLineParser& parser)
 	wxString taPort;
 	if (parser.Found(wxT("testagent"), &taPort))
 		m_testAgentPort = taPort.IsEmpty() ? ibTestAgent::kDefaultTestAgentPort : wxAtoi(taPort);
+
+	// OES-MCP: --mcp[=port]
+	wxString mcpPort;
+	if (parser.Found(wxT("mcp"), &mcpPort))
+		m_mcpPort = mcpPort.IsEmpty() ? ibMcpHttpServer::kDefaultPort : wxAtoi(mcpPort);
 
 	return wxApp::OnCmdLineParsed(parser);
 }
@@ -558,6 +566,11 @@ int ibAppDesigner::DoOnRun()
 		// child port one below). Backend reads this env var; unset in production.
 		wxSetEnv(wxT("OES_TESTAGENT_PORT"), wxString::Format(wxT("%d"), m_testAgentPort));
 	}
+
+	// OES-MCP: embedded HTTP MCP server — Claude Code connects to the running
+	// Configurator (config edit + live UI/debug). Off unless --mcp[=port].
+	if (m_mcpPort >= 0)
+		ibMcpHttpServer::Get().Start(m_mcpPort);
 
 	return wxApp::OnRun();
 }

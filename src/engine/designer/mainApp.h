@@ -51,6 +51,11 @@ class ibAppDesigner : public ibWxApp {
 	// -1 = off. A bare --testagent uses ibTestAgent::kDefaultTestAgentPort.
 	int      m_testAgentPort = -1;
 
+	// --mcp[=port]: embedded HTTP MCP server so Claude Code drives the running
+	// Configurator (config edit + live UI/debug). -1 = off; bare --mcp uses the
+	// default port. See tools/oes_mcp / docs.
+	int      m_mcpPort = -1;
+
 public:
 
 	// ibWxApp pre-wires Install / WrapStartup / 3 exception overrides.

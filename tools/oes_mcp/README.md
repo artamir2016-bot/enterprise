@@ -46,8 +46,36 @@ directory with `designer.exe` / `enterprise.exe` / `oes_config_*.exe`). Adjust
 4. `oes_app` — open the object/form in a running Enterprise and verify controls,
    or drive the Configurator (breakpoints, profiler) live.
 
+## Embedded HTTP MCP in the Configurator (variant A — LANDED)
+
+Besides this stdio shim, the Configurator now hosts an **HTTP MCP server in-process**.
+Start the Designer with `--mcp[=port]` (default 8765):
+
+```
+designer.exe --file=<base> --mcp=8765
+```
+
+It serves MCP (JSON-RPC 2.0) over HTTP at `http://127.0.0.1:<port>/` and is
+registered in `.mcp.json` as `oes-configurator` (type `http`). Claude Code
+connects to the RUNNING Configurator (shown unavailable until the Designer is up).
+Tools:
+
+| Tool | What it does |
+|------|--------------|
+| `oes_config_generate` | JSON spec → new `.mcf` (in-process, no subprocess) |
+| `oes_config_edit` | MERGE a JSON patch onto an existing `.mcf` |
+| `oes_app` | Run a command in THIS running app — live UI (forms, controls, menus), metadata editors, debug (breakpoints), profiler — the full test-agent surface, in-process |
+
+Implementation: `src/engine/frontend/testAgent/mcpHttpServer.{h,cpp}` (minimal
+HTTP/1.1 + JSON-RPC over `wxSocketServer`, localhost, one request per connection).
+Reuses `ibTestAgentDispatchForm` for `oes_app` and the `metadataConfigSpec` engine
+for config tools.
+
 ## Follow-ups
 
 - A JSON config **read/dump** verb (currently `/DumpCfg` writes binary `.mcf`;
   wiring `ibJsonProvider` into a batch verb would give an LLM-readable structure dump).
-- Migrate the transport to an HTTP/MCP endpoint embedded in the apps (variant A).
+- Editing the **live open configuration** in-process (the HTTP tools currently
+  operate on `.mcf` files); apply a spec to `activeMetaData` + save.
+- Enterprise-side `--mcp` (the flag is wired in the Designer; extend to enterprise
+  for DB-objects/UI development against a running client).
