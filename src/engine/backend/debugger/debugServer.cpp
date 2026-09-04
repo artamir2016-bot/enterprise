@@ -1321,6 +1321,23 @@ void ibDebuggerServer::ibDebuggerServerConnection::RecvCommand(void* pointer, un
 		if (ms_debugServer->IsDebugLooped())
 			ms_debugServer->SendProfilerData();
 	}
+	else if (commandFromClient == CommandId_ProfilerStart) {
+		// Start / reset the profiler. Only while parked — the interpreter is
+		// stopped, so clearing the profiler's state cannot race OnEnter/OnExit.
+		if (ms_debugServer->IsDebugLooped()) {
+			ibProcUnitState* puState = ibSession::GetPUState();
+			if (puState != nullptr)
+				puState->EnsureProfiler().Start();
+		}
+	}
+	else if (commandFromClient == CommandId_ProfilerStop) {
+		if (ms_debugServer->IsDebugLooped()) {
+			ibProcUnitState* puState = ibSession::GetPUState();
+			if (puState != nullptr)
+				if (ibScriptProfiler* prof = puState->Profiler())
+					prof->Stop();
+		}
+	}
 	else if (commandFromClient == CommandId_EvalAutocomplete) {
 
 		wxString strFileName, strModuleName, strExpression, strKeyWord;

@@ -5,6 +5,8 @@
 
 #include "mainFrameDesigner.h"
 
+#include "backend/debugger/debugClient.h"   // debugClient macro — profiler start/stop
+
 //********************************************************************************
 //*                                Hotkey support                                *
 //********************************************************************************
@@ -131,6 +133,8 @@ void ibFrontendMainFrameDesigner::InitializeDefaultMenu()
 	m_menuDebug->Append(wxID_DESIGNER_DEBUG_REMOVE_ALL_DEBUGPOINTS, _("Remove all breakpoints"));
 
 	m_menuDebug->AppendSeparator();
+	m_menuDebug->Append(wxID_DESIGNER_PROFILER_START, _("Start performance measurement"));
+	m_menuDebug->Append(wxID_DESIGNER_PROFILER_STOP, _("Stop performance measurement"));
 	m_menuDebug->Append(wxID_DESIGNER_VIEW_PROFILER, _("Performance profiler"));
 
 	m_menuConfiguration = new wxMenu;
@@ -254,6 +258,27 @@ void ibFrontendMainFrameDesigner::InitializeDefaultMenu()
 	Bind(wxEVT_MENU,
 	     [this](wxCommandEvent&) { ToggleProfilerPane(); },
 	     wxID_DESIGNER_VIEW_PROFILER);
+
+	// Start / stop the debuggee's profiler. Both act only while a session is
+	// parked (the client gates on IsEnterLoop); a short status hint otherwise.
+	Bind(wxEVT_MENU,
+	     [this](wxCommandEvent&) {
+	         if (debugClient != nullptr && debugClient->IsEnterLoop())
+	             debugClient->StartProfiler();
+	         else
+	             wxMessageBox(_("Start debugging and stop at a breakpoint first."),
+	                 _("Performance profiler"), wxOK | wxICON_INFORMATION, this);
+	     },
+	     wxID_DESIGNER_PROFILER_START);
+	Bind(wxEVT_MENU,
+	     [this](wxCommandEvent&) {
+	         if (debugClient != nullptr && debugClient->IsEnterLoop())
+	             debugClient->StopProfiler();
+	         else
+	             wxMessageBox(_("Start debugging and stop at a breakpoint first."),
+	                 _("Performance profiler"), wxOK | wxICON_INFORMATION, this);
+	     },
+	     wxID_DESIGNER_PROFILER_STOP);
 
 	LoadOptions();
 }

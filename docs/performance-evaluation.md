@@ -181,9 +181,20 @@ debuggee) both fill it, `RenderFromReport()` draws the trees, `ExportToXlsx()`
 builds the sheet. Export refuses an empty report with a prompt. Verified by
 building the `designer` target.
 
+**Designer start/stop commands landed** — Debug ▸ *Start / Stop performance
+measurement* (`wxID_DESIGNER_PROFILER_START` / `_STOP`) drive the DEBUGGEE's
+profiler over the transport, so a measurement can be scoped without touching
+configuration code. Two more command ids (`CommandId_ProfilerStart` /
+`CommandId_ProfilerStop`) + `ibDebuggerClient::StartProfiler()` / `StopProfiler()`;
+the server calls `EnsureProfiler().Start()` / `Profiler()->Stop()` on the parked
+session. Gated on `IsDebugLooped()` / `IsEnterLoop()` — the interpreter is stopped
+at a breakpoint, so mutating the profiler cannot race `OnEnter`/`OnExit`. Workflow:
+F5 → break → *Start measurement* → Continue → break → *Stop* → open the panel and
+*Refresh*. Off-loop the command shows a hint.
+
 **Issue #2 is complete** — measurement core, script API (start/stop + text/struct/
-trace readouts), the Designer panel, the remote-debuggee transport, and XLSX
-export all landed. No open follow-ups.
+trace readouts), the Designer panel + start/stop commands, the remote-debuggee
+transport, and XLSX export all landed. No open follow-ups.
 
 ## The system
 

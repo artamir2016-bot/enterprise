@@ -442,6 +442,24 @@ void ibDebuggerClient::RequestProfilerData()
 	}
 }
 
+void ibDebuggerClient::StartProfiler()
+{
+	if (ibDebuggerClient::IsEnterLoop()) {
+		ibWriterMemory commandChannel;
+		commandChannel.w_u16(CommandId_ProfilerStart);
+		SendCommand(commandChannel.pointer(), commandChannel.size());
+	}
+}
+
+void ibDebuggerClient::StopProfiler()
+{
+	if (ibDebuggerClient::IsEnterLoop()) {
+		ibWriterMemory commandChannel;
+		commandChannel.w_u16(CommandId_ProfilerStop);
+		SendCommand(commandChannel.pointer(), commandChannel.size());
+	}
+}
+
 void ibDebuggerClient::EvaluateToolTip(const wxString& strFileName, const wxString& strModuleName, const wxString& strExpression)
 {
 	if (ibDebuggerClient::IsEnterLoop()) {

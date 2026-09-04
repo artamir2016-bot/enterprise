@@ -75,7 +75,10 @@ enum CommandId
 	CommandId_MessageFromServer = 29, // When catch error in enterprise mode
 
 	CommandId_GetProfilerData = 30, // Designer → debuggee: request the script-profiler report (GitHub #2)
-	CommandId_SetProfilerData = 31  // debuggee → Designer: the profiler report (aggregate + trace)
+	CommandId_SetProfilerData = 31, // debuggee → Designer: the profiler report (aggregate + trace)
+
+	CommandId_ProfilerStart = 32,   // Designer → debuggee: start/reset the profiler
+	CommandId_ProfilerStop  = 33    // Designer → debuggee: stop the profiler (keeps data)
 };
 
 enum ConnectionType {

@@ -260,6 +260,12 @@ public:
 	// unless a session is stopped in the debug loop.
 	void RequestProfilerData();
 
+	// Start / stop the debuggee's script profiler (GitHub #2). Sent while the
+	// session is parked (the interpreter is stopped, so mutating the profiler is
+	// race-free); the user brackets a measurement between two breakpoints.
+	void StartProfiler();
+	void StopProfiler();
+
 	//evaluate for tooltip
 	void EvaluateToolTip(const wxString& strFileName, const wxString& strModuleName, const wxString& strExpression);
 

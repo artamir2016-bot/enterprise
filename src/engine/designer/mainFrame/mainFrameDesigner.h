@@ -46,6 +46,8 @@ enum {
 	wxID_DESIGNER_DATABASE_CLEAR,
 
 	wxID_DESIGNER_VIEW_PROFILER,   // performance-profiler panel toggle (GitHub #2)
+	wxID_DESIGNER_PROFILER_START,  // start the debuggee's profiler
+	wxID_DESIGNER_PROFILER_STOP,   // stop the debuggee's profiler
 
 	wxID_DESIGNER_ABOUT,
 	wxID_DESIGNER_END
