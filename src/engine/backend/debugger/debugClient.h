@@ -296,6 +296,14 @@ public:
 	bool RemoveBreakpoint(const wxString& strModuleName, unsigned int line);
 	void RemoveAllBreakpoint();
 
+	// Automation entry (GitHub #2 / OES-TEST): register a breakpoint by module
+	// doc-path + 0-based line and push the full breakpoint array to the debuggee
+	// immediately. Unlike ToggleBreakpoint it does NOT require the module editor
+	// to be open (no offset-map seeding) — the test agent has no editor. The key
+	// must be the module's doc-path (ibValueMetaObjectModuleBase::GetDocPath),
+	// which is what the debuggee's bytecode carries in m_strDocPath.
+	void AddBreakpointDirect(const wxString& strDocPath, unsigned int line0);
+
 	bool HasConnections() const {
 
 		wxCriticalSectionLocker enter(ms_criticalSectionConnection1);
@@ -309,6 +317,10 @@ public:
 	}
 
 	bool IsEnterLoop() const { return m_enterLoop; }
+
+	// Last parked location (OES-TEST: calibration for the profiler GUI test).
+	wxString GetParkedModule() const { return m_parkedModule; }
+	int      GetParkedLine()   const { return m_parkedLine; }
 
 public:
 
@@ -448,6 +460,8 @@ private:
 	// outgoing Continue/Step/Pause/Detach so the server can route the
 	// command to the right ibSession in a multi-tab wes process.
 	wxString m_currentSessionGuid;
+	wxString m_parkedModule;        // OES-TEST: last EnterLoop module/line
+	int      m_parkedLine = -1;
 };
 
 #endif

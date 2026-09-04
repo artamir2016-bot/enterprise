@@ -67,6 +67,7 @@ ibProfilerWindow::ibProfilerWindow(wxWindow* parent, wxWindowID id)
 
 	m_aggCtrl = new ibTreeListCtrl(m_notebook, wxID_ANY,
 		wxDefaultPosition, wxDefaultSize, treeStyle, wxDefaultValidator, wxT(""));
+	m_aggCtrl->SetName(wxT("profilerAgg"));   // OES-TEST: found by the test agent's readTreeList
 	m_aggCtrl->AddColumn(_("Procedure"), 220, wxALIGN_LEFT);
 	m_aggCtrl->AddColumn(_("Module"),    180, wxALIGN_LEFT);
 	m_aggCtrl->AddColumn(_("Calls"),      80, wxALIGN_RIGHT);
@@ -75,6 +76,7 @@ ibProfilerWindow::ibProfilerWindow(wxWindow* parent, wxWindowID id)
 
 	m_traceCtrl = new ibTreeListCtrl(m_notebook, wxID_ANY,
 		wxDefaultPosition, wxDefaultSize, treeStyle, wxDefaultValidator, wxT(""));
+	m_traceCtrl->SetName(wxT("profilerTrace"));   // OES-TEST: found by readTreeList
 	m_traceCtrl->AddColumn(_("Procedure"),   260, wxALIGN_LEFT);
 	m_traceCtrl->AddColumn(_("Module"),      180, wxALIGN_LEFT);
 	m_traceCtrl->AddColumn(_("Enter, ms"),   100, wxALIGN_RIGHT);

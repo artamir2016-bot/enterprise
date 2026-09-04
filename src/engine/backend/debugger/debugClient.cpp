@@ -318,6 +318,27 @@ bool ibDebuggerClient::ToggleBreakpoint(const wxString& strModuleName, unsigned 
 	return true;
 }
 
+void ibDebuggerClient::AddBreakpointDirect(const wxString& strDocPath, unsigned int line0)
+{
+	// Register (line -> offset 0). Keyed by doc-path so it matches the debuggee's
+	// bytecode m_strDocPath; the 0-based line matches byteCode.m_numLine.
+	m_listBreakpoint[strDocPath][line0] = 0;
+
+	// Push the whole array now (full-replace on the server, and it flips
+	// m_bUseDebug = true so the interpreter's per-line trap arms). Mirrors the
+	// CommandId_GetArrayBreakpoint responder.
+	ibWriterMemory commandChannel;
+	commandChannel.w_u16(CommandId_SetArrayBreakpoint);
+	commandChannel.w_u32(m_listBreakpoint.size());
+	for (const auto& breakpoint : m_listBreakpoint) {
+		commandChannel.w_u32(breakpoint.second.size());
+		commandChannel.w_stringZ(breakpoint.first);
+		for (const auto& line : breakpoint.second)
+			commandChannel.w_u32(line.first);
+	}
+	SendCommand(commandChannel.pointer(), commandChannel.size());
+}
+
 bool ibDebuggerClient::RemoveBreakpoint(const wxString& strModuleName, unsigned int line)
 {
 	std::map<unsigned int, int>& list_module_offset = m_listOffsetBreakpoint[strModuleName];
@@ -807,6 +828,9 @@ void ibDebuggerClient::ibDebuggerClientConnection::RecvCommand(void* pointer, un
 		data.m_fileName = strFileName;
 		data.m_moduleName = strModuleName;
 		data.m_line = ms_debugClient->GetLineOffset(strModuleName, commandReader.r_s32());
+
+		ms_debugClient->m_parkedModule = strModuleName;   // OES-TEST: calibration
+		ms_debugClient->m_parkedLine   = (int)data.m_line;
 
 		ms_debugClient->m_currentSessionGuid = sessionGuid;
 

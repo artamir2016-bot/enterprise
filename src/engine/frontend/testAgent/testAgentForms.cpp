@@ -17,6 +17,11 @@
 #include "backend/backend_form.h"                              // ibBackendValueForm::ShowForm
 #include "backend/standardCommand.h"                           // ibActionID (the set type itself stays unnamed — use auto)
 #include "backend/system/systemManager.h"                      // ibValueSystemFunction::SetMessageTap
+#include "backend/debugger/debugClient.h"                      // OES-TEST: setBreakpoint / debugState (profiler choreography)
+#include "backend/metaCollection/metaModuleObject.h"           // ibValueMetaObjectCommonModule / …ModuleBase (GetDocPath)
+#include "frontend/win/ctrls/treelistctrl.h"                   // ibTreeListCtrl (readTreeList — profiler panel)
+
+#include <functional>   // recursive tree walk in readTreeList
 
 #include "frontend/visualView/ctrl/form.h"                     // ibValueForm
 #include "frontend/visualView/ctrl/frame.h"                    // ibValueFrame (FindControlByName, Get/SetControlValue)
@@ -1109,6 +1114,88 @@ void ibTestAgentInstallMessageTap()
 		});
 }
 
+// OES-TEST / GitHub #2: profiler debug-choreography commands (Designer side).
+
+// Register a breakpoint on the debuggee by module doc-path + 0-based line, WITHOUT
+// needing the module editor open (the agent has none). Resolves the doc-path from
+// a common-module name, or takes {docPath} directly.
+json Cmd_SetBreakpoint(const json& args)
+{
+	ibDebuggerClient* dbg = ibDebuggerClient::Get();
+	if (dbg == nullptr)
+		throw std::runtime_error("no debug client (run this against the Designer)");
+
+	const unsigned int line = (unsigned int)args.at("line").get<int>();
+
+	wxString docPath;
+	if (args.contains("docPath") && args["docPath"].is_string()) {
+		docPath = FromUtf8(args["docPath"]);
+	}
+	else {
+		const wxString name = FromUtf8(args.at("module"));
+		auto* md = ibApplicationData::GetActiveMetaData();
+		if (md == nullptr)
+			throw std::runtime_error("no active configuration");
+		auto* mod = md->FindAnyObjectByFilter<ibValueMetaObjectCommonModule>(
+			name, g_metaCommonModuleCLSID, true);
+		if (mod == nullptr)
+			throw std::runtime_error("common module not found: " + ToUtf8(name));
+		docPath = mod->GetDocPath();
+	}
+
+	dbg->AddBreakpointDirect(docPath, line);
+	return json{ {"ok", true}, {"docPath", ToUtf8(docPath)}, {"line", (int)line} };
+}
+
+// Is a debug session currently parked (entered the debug loop)? Used to poll.
+json Cmd_DebugState()
+{
+	ibDebuggerClient* dbg = ibDebuggerClient::Get();
+	const bool hasClient = dbg != nullptr;
+	json r = json{ {"hasClient", hasClient},
+	               {"parked", hasClient && dbg->IsEnterLoop()} };
+	if (hasClient) {
+		r["parkedModule"] = ToUtf8(dbg->GetParkedModule());
+		r["parkedLine"]   = dbg->GetParkedLine();
+	}
+	return r;
+}
+
+// Dump the rows of an ibTreeListCtrl located by wxWindow name (the profiler panel
+// tags its trees "profilerAgg" / "profilerTrace"). Returns rows as arrays of the
+// per-column cell text — the GUI assertion surface for the profiler panel.
+json Cmd_ReadTreeList(const json& args)
+{
+	const wxString name = FromUtf8(args.at("name"));
+	wxWindow* w = nullptr;
+	for (wxWindowList::iterator it = wxTopLevelWindows.begin();
+	     it != wxTopLevelWindows.end() && w == nullptr; ++it) {
+		if (*it != nullptr)
+			w = (*it)->FindWindow(name);
+	}
+	if (w == nullptr)
+		throw std::runtime_error("tree not found: " + ToUtf8(name));
+
+	ibTreeListCtrl* tree = static_cast<ibTreeListCtrl*>(w);   // name is agent-private → safe
+	const int cols = tree->GetColumnCount();
+	json rows = json::array();
+
+	std::function<void(const wxTreeItemId&)> walk = [&](const wxTreeItemId& parent) {
+		wxTreeItemIdValue cookie;
+		for (wxTreeItemId ch = tree->GetFirstChild(parent, cookie); ch.IsOk();
+		     ch = tree->GetNextChild(parent, cookie)) {
+			json cells = json::array();
+			for (int c = 0; c < cols; ++c)
+				cells.push_back(ToUtf8(tree->GetItemText(ch, c)));
+			rows.push_back(cells);
+			walk(ch);
+		}
+	};
+	walk(tree->GetRootItem());
+
+	return json{ {"columns", cols}, {"rows", rows} };
+}
+
 bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& result)
 {
 	if      (cmd == "getForms")        result = Cmd_GetForms();
@@ -1149,6 +1236,10 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "invokeMenu")          result = Cmd_InvokeMenu(args);
 	else if (cmd == "findWidget")          result = Cmd_FindWidget(args);
 	else if (cmd == "clickWidget")         result = Cmd_ClickWidget(args);
+	// profiler debug-choreography (GitHub #2 / OES-TEST)
+	else if (cmd == "setBreakpoint")       result = Cmd_SetBreakpoint(args);
+	else if (cmd == "debugState")          result = Cmd_DebugState();
+	else if (cmd == "readTreeList")        result = Cmd_ReadTreeList(args);
 	else return false;
 	return true;
 }
