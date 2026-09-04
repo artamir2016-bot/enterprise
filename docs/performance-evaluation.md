@@ -192,9 +192,26 @@ at a breakpoint, so mutating the profiler cannot race `OnEnter`/`OnExit`. Workfl
 F5 → break → *Start measurement* → Continue → break → *Stop* → open the panel and
 *Refresh*. Off-loop the command shows a hint.
 
+**GUI end-to-end test landed** — `tools/oes_testrunner/test_profiler_from_configurator.py`
+proves the whole thing FROM THE CONFIGURATOR, headless, through the `--testagent`
+harness: it launches the Designer, sets two breakpoints in `Товары.ObjectModule`
+(before / after the measured work), does *Debug ▸ Start debugging ▸ Thick client*
+(F5 spawns the enterprise debuggee, auto-instrumented via the `--testagent`
+passthrough — `OES_TESTAGENT_PORT` env bridge, frontend→backend), opens the Товары
+object form and presses Save so `ПередЗаписью` runs and parks, then drives
+*Start performance measurement ▸ Continue ▸ Stop* and *Performance profiler ▸ Refresh*,
+and reads the panel's Hot-spots `ibTreeListCtrl` — asserting `Работа` was measured
+**3×**. New test-agent commands back it: `setBreakpoint {module|catalog, line}`
+(resolves the module doc-path, no editor needed), `debugState` (parked + line),
+`readTreeList {name}` (dumps a named ibTreeListCtrl's rows); plus backend
+`ibDebuggerClient::AddBreakpointDirect`. Requires the demo base with the `Работа`
+driver in `Товары.ObjectModule` (regenerate via `oes_config_gen` + load with
+`/LoadCfg /UpdateDBCfg`). Green and repeatable.
+
 **Issue #2 is complete** — measurement core, script API (start/stop + text/struct/
 trace readouts), the Designer panel + start/stop commands, the remote-debuggee
-transport, and XLSX export all landed. No open follow-ups.
+transport, XLSX export, and a GUI end-to-end proof from the Configurator all landed.
+No open follow-ups.
 
 ## The system
 
