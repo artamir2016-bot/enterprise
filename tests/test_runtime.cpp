@@ -1042,6 +1042,64 @@ TEST_F(BuiltInRuntime, ScriptProfilerStartStopResultNamesTheFunctionsRun) {
 	ibCompileCode::SetCodeStyle(savedStyle);
 }
 
+// The decisive Start/Stop-gating proof (GitHub #2). This is exactly the runtime
+// path a user-mode run (enterprise / codeRunner) and the Designer's Start/Stop
+// commands drive — the bytecode interpreter with the profiler on ibProcStackGuard.
+// Only work bracketed by Start … Stop is measured:
+//   BeforeFn()  — called before Start → MUST NOT appear (no active profiler)
+//   DuringFn()  — called twice between Start/Stop → MUST appear with count 2
+//   AfterFn()   — called after Stop → MUST NOT appear (profiler inactive)
+TEST_F(BuiltInRuntime, ScriptProfilerStartStopActuallyGatesCollection) {
+	const short savedStyle = ibCompileCode::GetCodeStyle();
+	ibCompileCode::SetCodeStyle(CODE_VES);
+
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ibValueSystemFunction valueSystem;
+	cc.AddContextVariable(wxT("System"), &valueSystem, true);
+
+	ASSERT_TRUE(TryCompile(cc,
+		wxT("var hasBefore public; var hasAfter public; var duringCount public;\n")
+		wxT("Function BeforeFn(n) Public\n")
+		wxT("  var s; var i; s = 0; i = 0; While i < n Do s = s + i; i = i + 1; EndDo; Return s;\n")
+		wxT("EndFunction\n")
+		wxT("Function DuringFn(n) Public\n")
+		wxT("  var s; var i; s = 0; i = 0; While i < n Do s = s + i; i = i + 1; EndDo; Return s;\n")
+		wxT("EndFunction\n")
+		wxT("Function AfterFn(n) Public\n")
+		wxT("  var s; var i; s = 0; i = 0; While i < n Do s = s + i; i = i + 1; EndDo; Return s;\n")
+		wxT("EndFunction\n")
+		wxT("BeforeFn(100);\n")                        // before Start — not measured
+		wxT("StartPerformanceMeasurement();\n")
+		wxT("DuringFn(100);\n")                         // measured
+		wxT("DuringFn(100);\n")                         // measured (count -> 2)
+		wxT("StopPerformanceMeasurement();\n")
+		wxT("AfterFn(100);\n")                          // after Stop — not measured
+		wxT("var data; data = PerformanceMeasurementData();\n")
+		wxT("hasBefore = 0; hasAfter = 0; duringCount = 0;\n")
+		wxT("var i; i = 0;\n")
+		wxT("While i < data.Count() Do\n")
+		wxT("  var row; row = data.Get(i);\n")
+		wxT("  If row.Procedure = \"BeforeFn\" Then hasBefore = 1; EndIf;\n")
+		wxT("  If row.Procedure = \"AfterFn\" Then hasAfter = 1; EndIf;\n")
+		wxT("  If row.Procedure = \"DuringFn\" Then duringCount = row.Count; EndIf;\n")
+		wxT("  i = i + 1;\n")
+		wxT("EndDo;\n")));
+
+	ibProcUnit pu;
+	wxString strError;
+	ASSERT_TRUE(RunBound(cc, pu, strError)) << strError.ToStdString();
+
+	ibValue hasBefore, hasAfter, duringCount;
+	ASSERT_TRUE(pu.GetPropVal(wxT("hasBefore"),   hasBefore));
+	ASSERT_TRUE(pu.GetPropVal(wxT("hasAfter"),    hasAfter));
+	ASSERT_TRUE(pu.GetPropVal(wxT("duringCount"), duringCount));
+	EXPECT_EQ(hasBefore.GetInteger(), 0);     // before Start — not collected
+	EXPECT_EQ(hasAfter.GetInteger(), 0);      // after Stop — not collected
+	EXPECT_EQ(duringCount.GetInteger(), 2);   // exactly the two bracketed calls
+
+	ibCompileCode::SetCodeStyle(savedStyle);
+}
+
 // ===========================================================================
 // Structured profiler result (GitHub #2): PerformanceMeasurementData() returns
 // an Array of Structure{Module, Procedure, Count, SelfMs, TotalMs} a script can
