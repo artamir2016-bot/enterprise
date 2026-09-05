@@ -149,6 +149,27 @@ void ibPrecompileCode::PrepareModuleData()
 				// check for typing
 				GetContext()->m_functions[stringUtils::MakeUpper(strMethodName)] = pFunction;
 			}
+
+			// OES-RU (fork): register RU method ALIASES too, so unqualified alias
+			// calls (Сообщить, НачатьЗамерПроизводительности, …) appear in
+			// autocomplete — the compiler already resolves them (GetMethodAliasList),
+			// but this precompile context is what the editor's completion reads.
+			if (const auto* aliases = managerVariable->GetMethodAliasList()) {
+				for (const auto& al : *aliases) {
+					const wxString& aliasName = al.first;
+					const long methodNum = al.second;
+					ibPrecompileContext* aliasContext = new ibPrecompileContext();
+					aliasContext->m_returnKind = managerVariable->HasRetVal(methodNum) ? RETURN_FUNCTION : RETURN_PROCEDURE;
+					aliasContext->m_module = this;
+					ibPrecompileFunction* pAlias = new ibPrecompileFunction(aliasName, aliasContext);
+					pAlias->m_realName = aliasName;
+					pAlias->m_shortDescription = managerVariable->GetMethodHelper(methodNum);
+					pAlias->m_isContext = true;
+					pAlias->m_isExport = true;
+					pAlias->m_valContext = managerVariable;
+					GetContext()->m_functions[stringUtils::MakeUpper(aliasName)] = pAlias;
+				}
+			}
 		}
 
 		// Designer: global common modules come from the designer manager's own
@@ -380,6 +401,27 @@ void ibPrecompileCode::PrepareModuleData()
 
 						// check for typing
 						GetContext()->m_functions[stringUtils::MakeUpper(strMethodName)] = pFunction;
+					}
+
+					// OES-RU (fork): member-method aliases too (same reasoning as the
+					// global path above — autocomplete reads this precompile context).
+					if (const auto* aliases = pRefData->GetMethodAliasList()) {
+						for (const auto& al : *aliases) {
+							const wxString& aliasName = al.first;
+							const long methodNum = al.second;
+							if (m_rootContext.FindFunction(aliasName))
+								continue;
+							ibPrecompileContext* aliasContext = new ibPrecompileContext(GetContext());
+							aliasContext->SetModule(this);
+							aliasContext->m_returnKind = pRefData->HasRetVal(methodNum) ? RETURN_FUNCTION : RETURN_PROCEDURE;
+							ibPrecompileFunction* pAlias = new ibPrecompileFunction(aliasName, aliasContext);
+							pAlias->m_realName = aliasName;
+							pAlias->m_shortDescription = pRefData->GetMethodHelper(methodNum);
+							pAlias->m_isContext = true;
+							pAlias->m_isExport = true;
+							pAlias->m_valContext = pRefData;
+							GetContext()->m_functions[stringUtils::MakeUpper(aliasName)] = pAlias;
+						}
 					}
 
 					if (moduleObject != nullptr) {
