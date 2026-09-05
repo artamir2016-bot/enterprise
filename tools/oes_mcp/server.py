@@ -223,6 +223,14 @@ def err(mid, code, m): return {"jsonrpc": "2.0", "id": mid, "error": {"code": co
 
 
 def main():
+    # MCP stdio is UTF-8. On Windows Python opens stdin/stdout in the locale
+    # codepage (cp1251), which corrupts Cyrillic in specs/patches into lone
+    # surrogates. Force UTF-8 both ways.
+    for stream in (sys.stdin, sys.stdout):
+        try:
+            stream.reconfigure(encoding="utf-8", newline="\n")
+        except Exception:
+            pass
     log(f"starting; BIN={BIN}")
     for line in sys.stdin:
         line = line.strip()
