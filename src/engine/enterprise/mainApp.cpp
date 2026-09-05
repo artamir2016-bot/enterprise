@@ -10,6 +10,8 @@
 #include "frontend/session/guiSession.h"   // transitively pulls backend/session/session.h
 #include "backend/session/sessionRegistry.h"
 #include "frontend/testAgent/testAgent.h"  // OES-TEST: embedded test-automation agent (--testagent)
+#include "frontend/testAgent/moduleTestRunner.h" // OES-TEST: --runtests module test runner
+#include <cstdio>                            // OES-TEST: report to stdout for --runtests
 #include "backend/diagnostics/crashGuard.h" // OES-TEST: SetSuppressDialogs (background runs)
 #include <wx/log.h>                          // OES-TEST: route wxLog off the GUI target in background
 
@@ -67,6 +69,10 @@ void ibAppEnterprise::OnInitCmdLine(wxCmdLineParser& parser)
 	// OES-TEST: --minimized — start iconified (background test runs that don't record video: no
 	// window steals focus; programmatic form/control commands need no visible window).
 	parser.AddSwitch(wxT("minimized"), wxT("minimized"), "Start with the main window minimized", wxCMD_LINE_PARAM_OPTIONAL);
+	// OES-TEST: --runtests [--junit=<file>] — after the session opens, run configuration
+	// module unit tests (Тест*/Test* methods) headlessly, print a report, and exit.
+	parser.AddSwitch(wxT("runtests"), wxT("runtests"), "Run module unit tests and exit", wxCMD_LINE_PARAM_OPTIONAL);
+	parser.AddOption(wxT("junit"), wxT("junit"), "JUnit XML report path for --runtests", wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
 
 	return wxApp::OnInitCmdLine(parser);
 }
@@ -100,6 +106,10 @@ bool ibAppEnterprise::OnCmdLineParsed(wxCmdLineParser& parser)
 
 	// OES-TEST: --minimized
 	m_startMinimized = parser.Found(wxT("minimized"));
+
+	// OES-TEST: --runtests [--junit=<file>]
+	m_runTests = parser.Found(wxT("runtests"));
+	parser.Found(wxT("junit"), &m_junit);
 
 	// OES-TEST: a background/automated run (minimized or driven by the test agent) must never pop a
 	// critical-error dialog over every window — suppress them; errors are logged + captured by taps.
@@ -321,6 +331,18 @@ int ibAppEnterprise::DoOnRun()
 	}
 
 	if (splashScreenLoader != nullptr) splashScreenLoader->Destroy();
+
+	// OES-TEST: --runtests — the session is open with a live runtime (CompileRoot +
+	// AttachRuntime ran on Open). Run the module unit tests, print the report, and
+	// exit without ever building the main window. Exit code = failed count (0 = green).
+	if (m_runTests) {
+		wxString report;
+		const int failed = ibRunModuleTests(holder.Get(), m_junit, report);
+		std::fputs(report.ToUTF8().data(), stdout);
+		std::fflush(stdout);
+		holder.Reset();   // close the session cleanly
+		return failed == 0 ? 0 : 1;
+	}
 
 	// The window IS the session's owner: it takes the holder and from here
 	// the session lives exactly as long as the window.

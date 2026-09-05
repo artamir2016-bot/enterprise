@@ -30,6 +30,8 @@ class ibAppEnterprise : public ibWxApp {
 	// OES-TEST: --testagent[=port] starts the embedded test-automation agent (-1 = off).
 	int m_testAgentPort = -1;
 	bool m_startMinimized = false;   // OES-TEST: --minimized (background test runs, no video)
+	bool m_runTests = false;         // OES-TEST: --runtests — run module tests after Open, then exit
+	wxString m_junit;                // OES-TEST: --junit=<file> — JUnit XML report for --runtests
 
 #ifdef DEBUG
 	//LOCALE

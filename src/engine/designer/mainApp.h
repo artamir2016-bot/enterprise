@@ -46,6 +46,8 @@ class ibAppDesigner : public ibWxApp {
 	bool     m_batchUpdateDBCfg = false;   // /UpdateDBCfg     — apply loaded config to the database
 	bool     m_batchCheckConfig = false;   // /CheckConfig     — compile-check the whole configuration
 	bool     m_batchCheckModules = false;  // /CheckModules    — compile-check all modules
+	bool     m_batchRunTests = false;      // /RunTests        — run module unit tests (Тест*/Test* methods)
+	wxString m_batchJunit;                 // /Junit <file>    — write a JUnit XML report of the test run
 
 	// OES-TEST: --testagent[=port] starts the embedded test-automation agent (docs/test-automation.md).
 	// -1 = off. A bare --testagent uses ibTestAgent::kDefaultTestAgentPort.
@@ -76,6 +78,8 @@ private:
 	int  RunBatch();
 	// OES-CLI: write the accumulated batch report to /Out (and stdout).
 	void WriteBatchReport(const wxString& report) const;
+	// OES-TEST: /RunTests — discover & run module unit tests; true when all passed.
+	bool RunModuleTests(class ibSession* session, wxString& report);
 
 public:
 

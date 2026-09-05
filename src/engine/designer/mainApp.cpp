@@ -15,6 +15,9 @@
 #include "backend/session/sessionRegistry.h"
 #include "mainFrame/debugger/debugClientImpl.h"
 
+#include "backend/session/session.h"               // CreateRoot / CompileRoot (kept for future runtime host)
+#include "frontend/testAgent/moduleTestRunner.h"   // OES-TEST /RunTests: shared runner (runtime host)
+
 #include <wx/clipbrd.h>
 #include <wx/cmdline.h>
 #include <wx/ffile.h>   // OES-CLI: /Out message file
@@ -157,7 +160,7 @@ bool ibAppDesigner::DetectBatchMode() const
 	for (int i = 1; i < argc; ++i) {
 		const wxString low = wxString(argv[i]).Lower();
 		if (low.StartsWith(wxT("/loadcfg"))   || low.StartsWith(wxT("/dumpcfg")) ||
-			low.StartsWith(wxT("/checkconfig")) || low.StartsWith(wxT("/checkmodules")))
+			low.StartsWith(wxT("/checkconfig")) || low.StartsWith(wxT("/checkmodules")) || low.StartsWith(wxT("/runtests")))
 			return true;
 	}
 	return false;
@@ -189,6 +192,8 @@ void ibAppDesigner::ParseBatchArgs()
 		if      (low == wxT("/updatedbcfg"))            { m_batchUpdateDBCfg  = true; }
 		else if (low == wxT("/checkconfig"))            { m_batchCheckConfig  = true; }
 		else if (low == wxT("/checkmodules"))           { m_batchCheckModules = true; }
+		else if (low == wxT("/runtests"))               { m_batchRunTests     = true; }
+		else if (keyVal(i, low, wxT("/junit"), val))    { m_batchJunit        = val;  }
 		else if (low == wxT("/disablestartupmessages")) { /* silent already */ }
 		else if (low == wxT("/disablestartupdialogs"))  { /* silent already */ }
 		// keys with values
@@ -341,10 +346,31 @@ int ibAppDesigner::RunBatch()
 				exitCode = 1;
 			}
 		}
+
+		// --- /RunTests : run module unit tests (Тест*/Test* public methods) ---
+		if (m_batchRunTests) {
+			if (!RunModuleTests(holder.Get(), report))
+				exitCode = 1;
+		}
 	} // holder destroyed here — session closed before OnExit teardown
 
 	WriteBatchReport(report);
 	return exitCode;
+}
+
+// OES-TEST: discover and run configuration module unit tests headlessly.
+// A test is a PUBLIC method whose name starts with "Тест" or "Test" in ANY common
+// module. Optional per-module setup/teardown: BeforeEach / AfterEach. Each test
+// runs through the live runtime (non-eval, like RunBackground); an exception
+// (e.g. from the assert library's ВызватьИсключение) marks it failed. Appends a
+// red/green report to `report` and, if /Junit was given, writes a JUnit XML file.
+// Returns true when every test passed.
+bool ibAppDesigner::RunModuleTests(ibSession* session, wxString& report)
+{
+	// Execution needs a RUNTIME session; a Designer session has no per-module
+	// runtime (AttachRuntime short-circuits). The shared runner reports that
+	// clearly. The real host is `enterprise.exe --runtests` (see docs/tdd-modules.md).
+	return ibRunModuleTests(session, m_batchJunit, report) == 0;
 }
 
 void ibAppDesigner::WriteBatchReport(const wxString& report) const

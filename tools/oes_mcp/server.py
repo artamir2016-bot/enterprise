@@ -134,6 +134,23 @@ def t_check(a):
 def t_app(a):
     return agent_call(a.get("port", 1651), a["cmd"], a.get("args", {}))
 
+def t_run_tests(a):
+    """Run module unit tests headlessly (enterprise --runtests) and return the
+    red/green report. Discovers export procedures named Тест*/Test* in every
+    common module; each is one test. Optionally writes a JUnit XML file."""
+    argv = [exe("enterprise"), f"--file={a['base']}", "--runtests", "--minimized"]
+    junit = a.get("junit")
+    if junit:
+        argv.append(f"--junit={junit}")
+    text = run(argv, timeout=a.get("timeout", 300))
+    if junit and os.path.exists(junit):
+        try:
+            with open(junit, encoding="utf-8", errors="replace") as f:
+                text += "\n[junit]\n" + f.read()
+        except Exception:
+            pass
+    return text
+
 
 TOOLS = [
     {"name": "oes_config_generate",
@@ -182,6 +199,19 @@ TOOLS = [
                        "args": {"type": "object"}},
         "required": ["cmd"]},
      "fn": t_app},
+    {"name": "oes_run_tests",
+     "description": "Run MODULE unit tests headlessly and return a red/green report + JUnit. "
+                    "Tests are export procedures named Тест*/Test* (no params) in any common module; "
+                    "they assert via the «Проверки» common module (Равно/Верно), which reports failures "
+                    "without throwing. Exit is non-zero if any test fails. This is the TDD loop driver: "
+                    "edit modules (oes_config_edit) -> oes_config_load -> oes_run_tests -> repeat. "
+                    "See docs/tdd-modules.md.",
+     "inputSchema": {"type": "object",
+        "properties": {"base": {"type": "string", "description": "file infobase directory (already has the cfg loaded)"},
+                       "junit": {"type": "string", "description": "optional JUnit XML output path"},
+                       "timeout": {"type": "integer", "default": 300}},
+        "required": ["base"]},
+     "fn": t_run_tests},
 ]
 TOOL_BY_NAME = {t["name"]: t for t in TOOLS}
 

@@ -253,7 +253,11 @@ void ibBackendException::ProcessError(const ibBackendException& err, const ibByt
 				const ibGuid& guidDocPath = error.m_strDocPath;
 				const ibValueMetaObjectModuleBase* foundedDoc = activeMetaData->FindAnyObjectByFilter<ibValueMetaObjectModuleBase>(guidDocPath, true);
 				wxASSERT(foundedDoc);
-				strModuleData = foundedDoc->GetModuleText();
+				// Release builds no-op wxASSERT: a module not resolvable by doc-path
+				// (e.g. an error raised from a headless / non-editor run) must not
+				// null-deref here — the description already carries the message.
+				if (foundedDoc != nullptr)
+					strModuleData = foundedDoc->GetModuleText();
 			}
 			else if (!isEvalMode && !strFileName.IsEmpty()) {
 				// Frame from the session's CurrentFrame() shortcut —
@@ -261,10 +265,13 @@ void ibBackendException::ProcessError(const ibBackendException& err, const ibByt
 				if (auto* frame = ibSession::CurrentFrame()) {
 					const ibMetaData* metadata = frame->FindMetadataByPath(strFileName);
 					wxASSERT(metadata);
-					const ibGuid& guidDocPath = error.m_strDocPath;
-					const ibValueMetaObjectModuleBase* foundedDoc = metadata->FindAnyObjectByFilter<ibValueMetaObjectModuleBase>(guidDocPath, true);
-					wxASSERT(foundedDoc);
-					strModuleData = foundedDoc->GetModuleText();
+					if (metadata != nullptr) {
+						const ibGuid& guidDocPath = error.m_strDocPath;
+						const ibValueMetaObjectModuleBase* foundedDoc = metadata->FindAnyObjectByFilter<ibValueMetaObjectModuleBase>(guidDocPath, true);
+						wxASSERT(foundedDoc);
+						if (foundedDoc != nullptr)
+							strModuleData = foundedDoc->GetModuleText();
+					}
 				}
 			}
 
@@ -350,11 +357,18 @@ wxString ibBackendException::ProcessExceptionError(const wxString& strFileName,
 		for (unsigned int i = 0; i < frameCount; i++) {
 			const ibRunContext* stackContext = puState->GetRunContext(i);
 			wxASSERT(stackContext);
+			if (stackContext == nullptr) continue;
 			const ibByteCode* stackByteCode = stackContext->GetByteCode();
 			wxASSERT(stackByteCode);
+			// Release no-ops wxASSERT: a frame with no bytecode, or a current line
+			// index outside the code array (a builtin/eval frame, or a frame caught
+			// mid-setup on a headless run), must not OOB/null-deref here.
+			if (stackByteCode == nullptr) continue;
+			const long curLine = stackContext->m_lCurLine;
+			if (curLine < 0 || curLine >= (long)stackByteCode->m_listCode.size()) continue;
 			ibDiagnostic::Frame frame;
 			frame.m_module = stackByteCode->m_strModuleName;
-			frame.m_line = stackByteCode->m_listCode[stackContext->m_lCurLine].m_numLine + 1;
+			frame.m_line = stackByteCode->m_listCode[curLine].m_numLine + 1;
 			diagnostic.m_stack.push_back(std::move(frame));
 		}
 	}
