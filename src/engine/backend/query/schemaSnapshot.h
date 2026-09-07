@@ -366,6 +366,19 @@ BACKEND_API void ibDeclareDerivedKey(ibSchemaTable& table, const wxString& table
                                      const std::vector<const ibBackendQueryColumn*>& keyCols,
                                      ibMetaID hashColumnId);
 
+// The KEY index of a records table (a register's movements): UNIQUE over the key columns when they
+// fit the engine's index, else a NON-UNIQUE lookup index over the leading columns that do.
+//
+// Unlike a totals table (ibDeclareDerivedKey), a records table is written directly — it carries no
+// maintained hash column into which a too-wide identity could move — so uniqueness cannot be preserved
+// by a digest here. A real 1C register can key on a wide string dimension or a fistful of references;
+// past the engine's key ceiling a plain `t.Index(name, cols, unique)` makes CREATE INDEX fail with
+// "key size exceeds implementation restriction" and hangs the schema apply on its rollback. When that
+// would happen we degrade to a non-unique lookup index (duplicate protection falls to the app-level
+// ExistData probe) rather than take the whole apply down, and warn once so it is not silent.
+BACKEND_API void ibDeclareRecordsKey(ibSchemaTable& table, const wxString& indexName,
+                                     const std::vector<const ibBackendQueryColumn*>& keyCols);
+
 class BACKEND_API ibSchemaSnapshot
 {
 public:

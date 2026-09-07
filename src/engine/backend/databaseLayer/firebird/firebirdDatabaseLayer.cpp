@@ -437,14 +437,21 @@ bool ibDatabaseLayerFirebird::Open()
 		dpbBuffer.push_back(SQL_DIALECT_CURRENT);
 
 		// page_size DPB: only honoured by isc_create_database (ignored on
-		// attach). Encoded as big-endian 2 bytes per legacy DPB. FB 5
-		// supports up to 32768; widen via uint32 before shifting so
-		// 32768 doesn't sign-overflow.
+		// attach). A numeric DPB clumplet is a LITTLE-endian portable integer
+		// (LSB first), NOT big-endian — the previous big-endian order made the
+		// engine read 16384 (0x4000) as 0x0040 = 64, reject it as invalid, and
+		// silently fall back to the 4096 default. At 4096 the max index key is
+		// only ~page_size/4 ≈ 1015 bytes, so a register key of two wide UTF8
+		// dimensions overflowed CREATE INDEX ("key size exceeds implementation
+		// restriction") and hung the apply on rollback. Little-endian makes the
+		// requested 16384 take effect, lifting the key ceiling to ~4096. FB 5
+		// supports up to 32768; widen via uint32 before shifting so 32768
+		// doesn't sign-overflow.
 		const uint32_t pageSize = (uint32_t)m_pageSize;
 		dpbBuffer.push_back(isc_dpb_page_size);
 		dpbBuffer.push_back(2);
-		dpbBuffer.push_back((char)((pageSize >> 8) & 0xFF));
 		dpbBuffer.push_back((char)(pageSize & 0xFF));
+		dpbBuffer.push_back((char)((pageSize >> 8) & 0xFF));
 
 		// UTF8 character set:
 		//   isc_dpb_set_db_charset — only honoured on CREATE DATABASE; sets

@@ -9,6 +9,8 @@
 #include "backend/query/queryColumn.h"                     // ibBackendQueryColumn::GetName (friendly column name)
 #include "backend/query/queryable.h"                        // ibBackendQueryable::GetQueryName / GetQueryTableName
 #include "backend/databaseLayer/databaseMaterializeBuilder.h"     // L2-2 RenderMaterialization — derived-state triggers + view
+
+#include <wx/log.h>                                                // wxLogWarning — wide-key index degraded, not silent
 #include "backend/query/derivedStateBuilder.h"              // L3-4 — rebuild derived state after a structure change
 #include "appData.h"                                        // db_query — the local channel the seed writes target
 
@@ -144,6 +146,64 @@ void ibDeclareDerivedKey(ibSchemaTable& table, const wxString& tableName,
 	}
 	if (!lookup.empty())
 		table.Index(tableName + wxT("_KL"), lookup, /*unique*/ false);
+}
+
+void ibDeclareRecordsKey(ibSchemaTable& table, const wxString& indexName,
+                         const std::vector<const ibBackendQueryColumn*>& keyCols)
+{
+	if (keyCols.empty())
+		return;
+
+	// The key's real size — in PHYSICAL fields (an index counts these) AND in declared BYTES (a UTF8
+	// database's index-key ceiling counts these). A reference is several fields; a UTF8 VARCHAR(254) is
+	// ~1016 bytes — so either a field-COUNT overflow (many dimensions) or a byte overflow (a wide string
+	// dimension) can push past what CREATE INDEX will accept.
+	size_t fieldCount = 0;
+	size_t keyBytes   = 0;
+	for (const ibBackendQueryColumn* col : keyCols) {
+		fieldCount += ColumnFieldNames(col).size();
+		for (const ibColumnSlot& s : DescribeColumnLayout(col))
+			keyBytes += ibIndexFieldByteWidth(s.m_type);
+	}
+
+	if (db_query == nullptr || !ibKeyNeedsHash(*db_query, fieldCount, keyBytes)) {
+		table.Index(indexName, keyCols, /*unique*/ true);
+		return;
+	}
+
+	// PAST THE ENGINE'S CEILING and no maintained hash column to move the identity into: degrade to a
+	// non-unique lookup index over the leading columns that fit. The register still resolves its rows by
+	// key (databaseMaterializeBuilder matches on the columns, not on a digest); it just loses the DB-level
+	// duplicate backstop, which an index this wide could not have held on this engine anyway.
+	// The lookup keeps only a LEADING PREFIX of the key — enough for selectivity, cheap to maintain.
+	// Both budgets get a safety MARGIN: the raw engine ceilings (16 segments, ~page/4 bytes) are the hard
+	// wall, but a dimension is stored as a VARIANT (a _TYPE discriminator plus value slots), and a UTF8
+	// index reserves more per character than the declared-byte estimate — so a prefix that fills the raw
+	// ceiling exactly still gets refused ("too many keys" / "key size exceeds"). Three-quarters of each
+	// ceiling clears the wall with room for the discriminator overhead and the collation's expansion.
+	const size_t segBudget  = (ibIndexFieldCapacity(*db_query) * 3) / 4;
+	const size_t byteCeil   = db_query->GetDialect().m_maxIndexKeyBytes;
+	const size_t byteBudget = byteCeil ? (byteCeil * 3) / 4 : 0;
+	std::vector<const ibBackendQueryColumn*> lookup;
+	size_t usedFields = 0, usedBytes = 0;
+	for (const ibBackendQueryColumn* col : keyCols) {
+		const size_t width = ColumnFieldNames(col).size();
+		size_t bytes = 0;
+		for (const ibColumnSlot& s : DescribeColumnLayout(col))
+			bytes += ibIndexFieldByteWidth(s.m_type);
+		if (usedFields + width > segBudget)                       break;
+		if (byteBudget && usedBytes + bytes > byteBudget)         break;
+		lookup.push_back(col);
+		usedFields += width;
+		usedBytes  += bytes;
+	}
+	if (!lookup.empty())
+		table.Index(indexName, lookup, /*unique*/ false);
+
+	wxLogWarning(_("Register table '%s': the key is too wide for a unique index on this database "
+	               "(a wide string dimension or many references); DB-level uniqueness is relaxed to a "
+	               "lookup index — duplicate protection stays at the application level."),
+	             table.m_name);
 }
 
 const ibSchemaTable* ibSchemaSnapshot::Find(ibMetaID id) const

@@ -129,8 +129,11 @@ void ibValueMetaObjectRegisterData::ContributeTables(ibSchemaSnapshot& out) cons
 		for (const auto object : GetGenericDimensionArrayObject())
 			idxCols.push_back(object);
 	}
+	// UNIQUE when the key fits the engine's index; a wide-key register (a long string dimension, many
+	// reference dimensions) degrades to a non-unique lookup index rather than an unbuildable unique one
+	// that would fail CREATE INDEX and hang the apply. See ibDeclareRecordsKey.
 	if (!idxCols.empty())
-		t.Index(t.m_name + wxT("_INDEX"), idxCols, true);
+		ibDeclareRecordsKey(t, t.m_name + wxT("_INDEX"), idxCols);
 
 	// ⭐⭐ THE PERIOD IS A READ PATH, NOT A KEY — and a subordinate register had no index on it.
 	//
