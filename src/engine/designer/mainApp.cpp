@@ -4,6 +4,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include "mainApp.h"
+#include <wx/log.h>   // batch log redirection (no modal dialogs headless)
 #include "backend/appData.h"
 #include "backend/metadataConfiguration.h" // OES-CLI: LoadConfigFromFile / SaveConfigToFile / SaveDatabase for batch mode
 #include "frontend/testAgent/testAgent.h"  // OES-TEST: embedded test-automation agent (--testagent)
@@ -211,10 +212,36 @@ void ibAppDesigner::ParseBatchArgs()
 	}
 }
 
+namespace {
+// Headless batch has NO event loop. A wxLogWarning / wxLogError raised anywhere in
+// the backend during the batch (a wide-key register degrade, a schema note, any
+// diagnostic) otherwise reaches wx's default target — which on a GUI build is a
+// MODAL message box. With no message pump and no user to click OK, the main thread
+// parks forever inside the modal (the hang surfaced as the process stuck in win32u
+// at teardown, when buffered warnings flush). Routing logging to a plain sink for
+// the batch's lifetime turns those diagnostics into report lines instead of a hang.
+class ibBatchLogTarget : public wxLog {
+public:
+	explicit ibBatchLogTarget(wxString* sink) : m_sink(sink) {}
+protected:
+	void DoLogTextAtLevel(wxLogLevel level, const wxString& msg) override {
+		if (m_sink && level <= wxLOG_Warning) { *m_sink += wxT("[log] "); *m_sink += msg; *m_sink += wxT("\n"); }
+	}
+	void DoLogText(const wxString& msg) override {
+		if (m_sink) { *m_sink += wxT("[log] "); *m_sink += msg; *m_sink += wxT("\n"); }
+	}
+	wxString* m_sink;
+};
+} // namespace
+
 int ibAppDesigner::RunBatch()
 {
 	wxString report;
 	auto emit = [&](const wxString& line) { report += line; report += wxT("\n"); };
+
+	// Redirect wx logging to the report for the whole batch — no modal dialogs (see ibBatchLogTarget).
+	wxLog* prevLogTarget = wxLog::SetActiveTarget(new ibBatchLogTarget(&report));
+	struct LogRestore { wxLog* prev; ~LogRestore() { delete wxLog::SetActiveTarget(prev); } } logRestore{ prevLogTarget };
 
 	if (m_strFile.IsEmpty() && m_strServer.IsEmpty()) {
 		emit(_("Batch mode: no infobase specified (use /F<dir> or /S<host\\base>)."));
