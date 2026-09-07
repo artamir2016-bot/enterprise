@@ -13,6 +13,9 @@
 #include "backend/metaCollection/attribute/metaAttributeObject.h"  // ibValueMetaObjectAttribute
 #include "backend/metaCollection/partial/commonObject.h"  // ibValueMetaObjectRecordData (module accessors)
 #include "backend/metaCollection/partial/constant.h"      // ibValueMetaObjectConstant
+#include "backend/metaCollection/partial/chartOfCharacteristicTypes.h" // ibValueMetaObjectChartOfCharacteristicTypes (value type of characteristics)
+#include "backend/metaCollection/partial/chartOfAccounts.h"            // ibValueMetaObjectChartOfAccounts (chart-of-characteristic-types binding)
+#include "backend/propertyManager/property/propertyChartOfCharacteristicTypes.h" // ibPropertyChartOfCharacteristicTypes::SetValue
 #include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm
 #include "backend/serialize/dataBuilder.h"                 // ibDataNode / ibDataValue (form control tree)
 #include "backend/sourceDescription.h"                     // ibSourceDescription / ibSourceDescriptionMemory (control Source binding)
@@ -701,6 +704,47 @@ bool FillRecordObject(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
 	return true;
 }
 
+// Chart of characteristic types: a record object (attributes + tabular sections + modules + forms)
+// PLUS the value type its characteristics may hold ("valueType") — the contour an accounting register's
+// dimension slot and a characteristic value are typed by. Absent -> the metatype's default (empty type).
+bool FillChartOfCharacteristicTypes(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
+                                    const json& node, const RefMap& refMap, wxString& err) {
+	if (!FillRecordObject(cfg, obj, node, refMap, err))
+		return false;
+	auto* cct = dynamic_cast<ibValueMetaObjectChartOfCharacteristicTypes*>(obj);
+	if (cct != nullptr) {
+		auto vt = node.find("valueType");
+		if (vt != node.end() && vt->is_object())
+			if (!ApplyType(cct->GetTypesOfCharacteristics(), *vt, refMap, cct->GetName(), err))
+				return false;
+	}
+	return true;
+}
+
+// Chart of accounts: a record object PLUS the mandatory binding to a chart of characteristic types
+// ("chartOfCharacteristicTypes": a "ChartOfCharacteristicTypes.<Name>" ref key). OES refuses to save a
+// chart of accounts without it — the account's analytics-kind columns are ELEMENTS of that chart, so
+// with no chart the columns have no type. When the binding target is not in this import slice the bind
+// is skipped and the save will report the requirement (structural import, no hang).
+bool FillChartOfAccounts(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
+                         const json& node, const RefMap& refMap, wxString& err) {
+	if (!FillRecordObject(cfg, obj, node, refMap, err))
+		return false;
+	auto* coa = dynamic_cast<ibValueMetaObjectChartOfAccounts*>(obj);
+	if (coa != nullptr) {
+		const wxString cctKey = JStr(node, "chartOfCharacteristicTypes");
+		if (!cctKey.IsEmpty()) {
+			auto found = refMap.find(cctKey);
+			if (found != refMap.end() && found->second != nullptr) {
+				ibMetaDescription md;
+				md.AppendMetaType(found->second->GetMetaID());
+				coa->GetChartOfCharacteristicTypes()->SetValue(md);
+			}
+		}
+	}
+	return true;
+}
+
 // Register: dimensions, resources, attributes, object/manager modules.
 bool FillRegister(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
                   const json& node, const RefMap& refMap, wxString& err) {
@@ -787,6 +831,8 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	std::vector<std::pair<ibValueMetaObject*, const json*>> infoRegs;
 	std::vector<std::pair<ibValueMetaObject*, const json*>> accumRegs;
 	std::vector<std::pair<ibValueMetaObject*, const json*>> constants;
+	std::vector<std::pair<ibValueMetaObject*, const json*>> chartsCCT;   // charts of characteristic types
+	std::vector<std::pair<ibValueMetaObject*, const json*>> chartsCOA;   // charts of accounts
 
 	// ---- Pass 1: create all objects (so references resolve) ----
 	if (!CreateObjects(cfg, root, spec, "catalogs",  g_metaCatalogCLSID,  wxT("Catalog"),  refMap, records, err)) return false;
@@ -794,6 +840,10 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	if (!CreateObjects(cfg, root, spec, "informationRegisters",  g_metaInformationRegisterCLSID,  wxEmptyString, refMap, infoRegs,  err)) return false;
 	if (!CreateObjects(cfg, root, spec, "accumulationRegisters", g_metaAccumulationRegisterCLSID, wxEmptyString, refMap, accumRegs, err)) return false;
 	if (!CreateObjects(cfg, root, spec, "constants", g_metaConstantCLSID, wxEmptyString, refMap, constants, err)) return false;
+	// Charts are valid reference targets: register each under its KIND name so a *Ссылка -> *Ref
+	// dimension/attribute in any object resolves in the second pass.
+	if (!CreateObjects(cfg, root, spec, "chartsOfCharacteristicTypes", g_metaChartOfCharacteristicTypesCLSID, wxT("ChartOfCharacteristicTypes"), refMap, chartsCCT, err)) return false;
+	if (!CreateObjects(cfg, root, spec, "chartsOfAccounts",            g_metaChartOfAccountsCLSID,            wxT("ChartOfAccounts"),            refMap, chartsCOA, err)) return false;
 
 	// Enumerations + their values (values are child metaobjects). Enum is a valid
 	// reference target, so register it in refMap.
@@ -857,6 +907,10 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 		if (!FillRegister(cfg, r.first, *r.second, refMap, err)) return false;
 	for (auto& r : accumRegs)
 		if (!FillRegister(cfg, r.first, *r.second, refMap, err)) return false;
+	for (auto& c : chartsCCT)
+		if (!FillChartOfCharacteristicTypes(cfg, c.first, *c.second, refMap, err)) return false;
+	for (auto& c : chartsCOA)
+		if (!FillChartOfAccounts(cfg, c.first, *c.second, refMap, err)) return false;
 	for (auto& c : constants) {
 		auto* konst = dynamic_cast<ibValueMetaObjectConstant*>(c.first);
 		if (konst == nullptr) { err = wxT("constant object is not a constant"); return false; }

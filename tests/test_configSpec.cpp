@@ -193,6 +193,45 @@ TEST(ConfigSpec, BuildFull_UnresolvedRefDegradesGracefully) {
 	EXPECT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
 }
 
+// Charts of characteristic types + charts of accounts. The chart of accounts REQUIRES a binding to
+// a chart of characteristic types (its analytics-kind columns are elements of that chart), so the
+// import must wire it; and references to either chart must resolve like any other reference target.
+TEST(ConfigSpec, BuildFull_CreatesCharts) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "ChartsCfg",
+	  "chartsOfCharacteristicTypes": [
+	    { "name": "DimKinds", "valueType": { "type": "String", "length": 50 },
+	      "attributes": [ { "name": "Note", "type": "String", "length": 20 } ] }
+	  ],
+	  "chartsOfAccounts": [
+	    { "name": "Main", "chartOfCharacteristicTypes": "ChartOfCharacteristicTypes.DimKinds",
+	      "attributes": [ { "name": "Kind", "type": "String", "length": 10 } ] }
+	  ],
+	  "catalogs": [
+	    { "name": "Refs", "attributes": [
+	        { "name": "Ch",  "type": "ref", "refs": ["ChartOfCharacteristicTypes.DimKinds"] },
+	        { "name": "Acc", "type": "ref", "refs": ["ChartOfAccounts.Main"] } ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	// Byte round-trip: a chart of accounts with an unsatisfied binding would refuse to serialise its
+	// dimension columns, so a clean round-trip is also the binding-present assertion.
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+
+	for (const char* s : { "DimKinds", "Main", "Refs", "Ch", "Acc", "Kind", "Note" })
+		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
+}
+
 TEST(ConfigSpec, BuildFromJson_CreatesForms) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

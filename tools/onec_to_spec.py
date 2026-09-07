@@ -54,6 +54,8 @@ REF_PREFIX = {
     "CatalogRef": "Catalog",
     "DocumentRef": "Document",
     "EnumRef": "Enum",
+    "ChartOfCharacteristicTypesRef": "ChartOfCharacteristicTypes",
+    "ChartOfAccountsRef": "ChartOfAccounts",
 }
 
 report = Counter()
@@ -575,6 +577,40 @@ def parse_record_object(root_el, dump_dir, kind_dir, base_name):
     return out
 
 
+def parse_chart_cct(root_el, dump_dir, kind_dir, base_name):
+    """ChartOfCharacteristicTypes -> record object (attributes/tabs/modules/forms)
+    PLUS the value type its characteristics may hold (<Properties>/<Type>)."""
+    o = parse_record_object(root_el, dump_dir, kind_dir, base_name)
+    if o is None:
+        return None
+    obj_el = next(iter(root_el), None)
+    if obj_el is not None:
+        props = obj_el.find(MD + "Properties")
+        if props is not None:
+            t = props.find(MD + "Type")
+            if t is not None:
+                o["valueType"] = map_type(t)
+    return o
+
+
+def parse_chart_coa(root_el, dump_dir, kind_dir, base_name):
+    """ChartOfAccounts -> record object + the mandatory chart-of-characteristic-types binding
+    (<Properties>/<ExtDimensionTypes> already carries a 'ChartOfCharacteristicTypes.<Name>' ref key)."""
+    o = parse_record_object(root_el, dump_dir, kind_dir, base_name)
+    if o is None:
+        return None
+    obj_el = next(iter(root_el), None)
+    if obj_el is not None:
+        props = obj_el.find(MD + "Properties")
+        if props is not None:
+            ext = props.find(MD + "ExtDimensionTypes")
+            key = _txt(ext).strip() if ext is not None else ""
+            # 1C emits e.g. "ChartOfCharacteristicTypes.ВидыСубконто" — the exact refMap key.
+            if key.startswith("ChartOfCharacteristicTypes."):
+                o["chartOfCharacteristicTypes"] = key
+    return o
+
+
 def parse_enum(root_el):
     obj_el = next(iter(root_el), None)
     if obj_el is None:
@@ -832,6 +868,28 @@ def main():
             if o:
                 spec["accumulationRegisters"].append(o)
                 report["AccumulationRegisters"] += 1
+
+    if want("ChartsOfCharacteristicTypes"):
+        spec["chartsOfCharacteristicTypes"] = []
+        for base, path in iter_object_xml(args.dump_dir, "ChartsOfCharacteristicTypes", args.limit):
+            r = load_root(path)
+            if r is None:
+                continue
+            o = parse_chart_cct(r, args.dump_dir, "ChartsOfCharacteristicTypes", base)
+            if o:
+                spec["chartsOfCharacteristicTypes"].append(o)
+                report["ChartsOfCharacteristicTypes"] += 1
+
+    if want("ChartsOfAccounts"):
+        spec["chartsOfAccounts"] = []
+        for base, path in iter_object_xml(args.dump_dir, "ChartsOfAccounts", args.limit):
+            r = load_root(path)
+            if r is None:
+                continue
+            o = parse_chart_coa(r, args.dump_dir, "ChartsOfAccounts", base)
+            if o:
+                spec["chartsOfAccounts"].append(o)
+                report["ChartsOfAccounts"] += 1
 
     if want("CommonModules"):
         spec["commonModules"] = []

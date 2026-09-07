@@ -26,6 +26,7 @@ KIND_KEY = {
     "Documents": "documents", "InformationRegisters": "informationRegisters",
     "AccumulationRegisters": "accumulationRegisters", "CommonModules": "commonModules",
     "ChartsOfCharacteristicTypes": "chartsOfCharacteristicTypes",
+    "ChartsOfAccounts": "chartsOfAccounts",
     "DataProcessors": "dataProcessors", "Reports": "reports",
 }
 
