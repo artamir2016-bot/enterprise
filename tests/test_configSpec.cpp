@@ -235,6 +235,35 @@ TEST(ConfigSpec, BuildFull_CreatesCharts) {
 // Roles (flat) + subsystems (hierarchical). Both are metadata-only (no DB tables, not reference
 // targets); the assertion is that they are created, survive a byte round-trip, and — for subsystems —
 // keep their nested shape.
+// Charts of calculation types — a plain reference hierarchy metatype. Created, byte round-trips, and
+// is a valid reference target (a catalog attribute may point at it).
+TEST(ConfigSpec, BuildFull_CreatesChartsOfCalculationTypes) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "CalcCfg",
+	  "chartsOfCalculationTypes": [
+	    { "name": "Charges", "attributes": [ { "name": "Note", "type": "String", "length": 30 } ] }
+	  ],
+	  "catalogs": [
+	    { "name": "Refs", "attributes": [ { "name": "Kind", "type": "ref", "refs": ["ChartOfCalculationTypes.Charges"] } ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+
+	for (const char* s : { "Charges", "Refs", "Kind", "Note" })
+		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
+}
+
 TEST(ConfigSpec, BuildFull_CreatesRolesAndSubsystems) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

@@ -56,6 +56,7 @@ REF_PREFIX = {
     "EnumRef": "Enum",
     "ChartOfCharacteristicTypesRef": "ChartOfCharacteristicTypes",
     "ChartOfAccountsRef": "ChartOfAccounts",
+    "ChartOfCalculationTypesRef": "ChartOfCalculationTypes",
 }
 
 report = Counter()
@@ -919,6 +920,17 @@ def main():
             if o:
                 spec["chartsOfAccounts"].append(o)
                 report["ChartsOfAccounts"] += 1
+
+    if want("ChartsOfCalculationTypes"):
+        spec["chartsOfCalculationTypes"] = []
+        for base, path in iter_object_xml(args.dump_dir, "ChartsOfCalculationTypes", args.limit):
+            r = load_root(path)
+            if r is None:
+                continue
+            o = parse_record_object(r, args.dump_dir, "ChartsOfCalculationTypes", base)
+            if o:
+                spec["chartsOfCalculationTypes"].append(o)
+                report["ChartsOfCalculationTypes"] += 1
 
     if want("Roles"):
         spec["roles"] = []

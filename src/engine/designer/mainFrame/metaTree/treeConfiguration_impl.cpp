@@ -1043,6 +1043,7 @@ const ibMetaTreeGroupDef s_groups[] = {
 	// metaDiff.cpp; the two lists are separate copies of one decision, § metadata-tree.md.)
 	{ g_metaChartOfCharacteristicTypesCLSID, wxTRANSLATE("Charts of characteristic types"), ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaChartOfAccountsCLSID,            wxTRANSLATE("Charts of accounts"),      ibMetaBand::Metadata, 0, ibMetaRow::Item },
+	{ g_metaChartOfCalculationTypesCLSID,    wxTRANSLATE("Charts of calculation types"), ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaInformationRegisterCLSID,        wxTRANSLATE("Information Registers"),  ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaAccumulationRegisterCLSID,       wxTRANSLATE("Accumulation Registers"), ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaAccountingRegisterCLSID,         wxTRANSLATE("Accounting registers"),    ibMetaBand::Metadata, 0, ibMetaRow::Item },
@@ -1070,6 +1071,7 @@ void ibConfigurationTree::ExpandMetaItem(ibValueMetaObject* metaItem, const wxTr
 	else if (clsid == g_metaAccumulationRegisterCLSID)       AddAccumulationRegisterItem(metaItem, item);
 	else if (clsid == g_metaParameterizedJobCLSID)           AddCatalogItem(metaItem, item);
 	else if (clsid == g_metaChartOfCharacteristicTypesCLSID) AddCatalogItem(metaItem, item);
+	else if (clsid == g_metaChartOfCalculationTypesCLSID)    AddCatalogItem(metaItem, item);
 	else if (clsid == g_metaChartOfAccountsCLSID)            AddCatalogItem(metaItem, item);
 	else if (clsid == g_metaAccountingRegisterCLSID)         AddAccumulationRegisterItem(metaItem, item);
 	else if (clsid == g_metaSectionCLSID)                    AddInterfaceItem(metaItem, item);

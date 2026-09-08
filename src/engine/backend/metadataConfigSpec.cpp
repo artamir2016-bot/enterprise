@@ -855,6 +855,7 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	std::vector<std::pair<ibValueMetaObject*, const json*>> constants;
 	std::vector<std::pair<ibValueMetaObject*, const json*>> chartsCCT;   // charts of characteristic types
 	std::vector<std::pair<ibValueMetaObject*, const json*>> chartsCOA;   // charts of accounts
+	std::vector<std::pair<ibValueMetaObject*, const json*>> chartsCLT;   // charts of calculation types
 
 	// ---- Pass 1: create all objects (so references resolve) ----
 	if (!CreateObjects(cfg, root, spec, "catalogs",  g_metaCatalogCLSID,  wxT("Catalog"),  refMap, records, err)) return false;
@@ -866,6 +867,7 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	// dimension/attribute in any object resolves in the second pass.
 	if (!CreateObjects(cfg, root, spec, "chartsOfCharacteristicTypes", g_metaChartOfCharacteristicTypesCLSID, wxT("ChartOfCharacteristicTypes"), refMap, chartsCCT, err)) return false;
 	if (!CreateObjects(cfg, root, spec, "chartsOfAccounts",            g_metaChartOfAccountsCLSID,            wxT("ChartOfAccounts"),            refMap, chartsCOA, err)) return false;
+	if (!CreateObjects(cfg, root, spec, "chartsOfCalculationTypes",    g_metaChartOfCalculationTypesCLSID,    wxT("ChartOfCalculationTypes"),    refMap, chartsCLT, err)) return false;
 
 	// Enumerations + their values (values are child metaobjects). Enum is a valid
 	// reference target, so register it in refMap.
@@ -956,6 +958,8 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 		if (!FillChartOfCharacteristicTypes(cfg, c.first, *c.second, refMap, err)) return false;
 	for (auto& c : chartsCOA)
 		if (!FillChartOfAccounts(cfg, c.first, *c.second, refMap, err)) return false;
+	for (auto& c : chartsCLT)   // charts of calculation types: plain reference hierarchy
+		if (!FillRecordObject(cfg, c.first, *c.second, refMap, err)) return false;
 	for (auto& c : constants) {
 		auto* konst = dynamic_cast<ibValueMetaObjectConstant*>(c.first);
 		if (konst == nullptr) { err = wxT("constant object is not a constant"); return false; }

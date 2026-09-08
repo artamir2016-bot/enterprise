@@ -113,6 +113,7 @@ wxString ibMetaDiffWalker::GroupLabelFor(ibClassID clsid)
 	if (clsid == g_metaInformationRegisterCLSID)        return _("Information Registers");
 	if (clsid == g_metaAccumulationRegisterCLSID)       return _("Accumulation Registers");
 	if (clsid == g_metaChartOfCharacteristicTypesCLSID) return _("Charts of characteristic types");
+	if (clsid == g_metaChartOfCalculationTypesCLSID)    return _("Charts of calculation types");
 	if (clsid == g_metaChartOfAccountsCLSID)            return _("Charts of accounts");
 	if (clsid == g_metaAccountingRegisterCLSID)         return _("Accounting registers");
 
@@ -174,6 +175,7 @@ int ibMetaDiffWalker::GroupOrderRank(ibClassID clsid)
 		// and its analytics. Listing the registers first put the dependants above the things they
 		// depend on, so reading the tree top to bottom met a register before anything it is about.
 		{ g_metaChartOfCharacteristicTypesCLSID, 160 },
+		{ g_metaChartOfCalculationTypesCLSID,    165 },
 		{ g_metaChartOfAccountsCLSID,            170 },
 		{ g_metaInformationRegisterCLSID,        180 },
 		{ g_metaAccumulationRegisterCLSID,       190 },

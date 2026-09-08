@@ -103,6 +103,10 @@ constexpr ibClassID g_metaChartOfCharacteristicTypesCLSID = metadata_to_clsid("M
 constexpr ibClassID g_metaChartOfAccountsCLSID = metadata_to_clsid("MD_CHOA");
 constexpr ibClassID g_metaAccountingRegisterCLSID = metadata_to_clsid("MD_AREG");
 
+//CALCULATION OBJECTS
+constexpr ibClassID g_metaChartOfCalculationTypesCLSID = metadata_to_clsid("MD_CHCL");
+constexpr ibClassID g_metaCalculationRegisterCLSID = metadata_to_clsid("MD_CREG");
+
 // EXTERNAL
 constexpr ibClassID g_metaExternalDataProcessorCLSID = metadata_to_clsid("MD_EDPR");
 constexpr ibClassID g_metaExternalReportCLSID = metadata_to_clsid("MD_ERPT");
