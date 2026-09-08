@@ -243,7 +243,8 @@ TEST(ConfigSpec, BuildFull_CreatesChartsOfCalculationTypes) {
 	const char* spec = R"JSON({
 	  "name": "CalcCfg",
 	  "chartsOfCalculationTypes": [
-	    { "name": "Charges", "attributes": [ { "name": "Note", "type": "String", "length": 30 } ] }
+	    { "name": "Charges", "actionPeriodUse": true, "dependenceOnCalculationTypes": 1,
+	      "attributes": [ { "name": "Note", "type": "String", "length": 30 } ] }
 	  ],
 	  "catalogs": [
 	    { "name": "Refs", "attributes": [ { "name": "Kind", "type": "ref", "refs": ["ChartOfCalculationTypes.Charges"] } ] }

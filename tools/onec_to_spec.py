@@ -929,6 +929,18 @@ def main():
                 continue
             o = parse_record_object(r, args.dump_dir, "ChartsOfCalculationTypes", base)
             if o:
+                # Calculation configuration flags (<Properties>/<ActionPeriodUse>,<DependenceOnCalculationTypes>).
+                obj_el = next(iter(r), None)
+                if obj_el is not None:
+                    props = obj_el.find(MD + "Properties")
+                    if props is not None:
+                        apu = props.find(MD + "ActionPeriodUse")
+                        if apu is not None and _txt(apu).strip().lower() == "true":
+                            o["actionPeriodUse"] = True
+                        dep = props.find(MD + "DependenceOnCalculationTypes")
+                        code = {"dontuse": 0, "onactionperiod": 1, "onperiodofregistration": 2}
+                        if dep is not None:
+                            o["dependenceOnCalculationTypes"] = code.get(_txt(dep).strip().lower(), 0)
                 spec["chartsOfCalculationTypes"].append(o)
                 report["ChartsOfCalculationTypes"] += 1
 

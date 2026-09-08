@@ -167,6 +167,9 @@ bool ibValueMetaObjectChartOfCalculationTypes::WriteData(ibDataNode& node) const
 	node.SetProperty(m_propertyObjectModule->GetName(), m_propertyObjectModule->GetNodeValue());
 	node.SetProperty(m_propertyManagerModule->GetName(), m_propertyManagerModule->GetNodeValue());
 
+	node.SetProperty(m_propertyActionPeriodUse->GetName(), m_propertyActionPeriodUse->GetNodeValue());
+	node.SetProperty(m_propertyDependenceOnCalculationTypes->GetName(), m_propertyDependenceOnCalculationTypes->GetNodeValue());
+
 	node.SetValue(m_propertyDefFormObject->GetName(), GetGuidByID(m_propertyDefFormObject->GetValueAsInteger()).str());
 	node.SetValue(m_propertyDefFormFolder->GetName(), GetGuidByID(m_propertyDefFormFolder->GetValueAsInteger()).str());
 	node.SetValue(m_propertyDefFormList->GetName(), GetGuidByID(m_propertyDefFormList->GetValueAsInteger()).str());
@@ -180,6 +183,9 @@ bool ibValueMetaObjectChartOfCalculationTypes::ReadData(const ibDataNode& node)
 {
 	m_propertyObjectModule->SetNodeValue(node.GetProperty(m_propertyObjectModule->GetName()));
 	m_propertyManagerModule->SetNodeValue(node.GetProperty(m_propertyManagerModule->GetName()));
+
+	m_propertyActionPeriodUse->SetNodeValue(node.GetProperty(m_propertyActionPeriodUse->GetName()));
+	m_propertyDependenceOnCalculationTypes->SetNodeValue(node.GetProperty(m_propertyDependenceOnCalculationTypes->GetName()));
 
 	m_propertyDefFormObject->SetValue(GetIdByGuid(node.GetValue<wxString>(m_propertyDefFormObject->GetName())));
 	m_propertyDefFormFolder->SetValue(GetIdByGuid(node.GetValue<wxString>(m_propertyDefFormFolder->GetName())));

@@ -15,6 +15,7 @@
 #include "backend/metaCollection/partial/constant.h"      // ibValueMetaObjectConstant
 #include "backend/metaCollection/partial/chartOfCharacteristicTypes.h" // ibValueMetaObjectChartOfCharacteristicTypes (value type of characteristics)
 #include "backend/metaCollection/partial/calculationRegister.h"        // ibValueMetaObjectCalculationRegister (action-period flag)
+#include "backend/metaCollection/partial/chartOfCalculationTypes.h"     // ibValueMetaObjectChartOfCalculationTypes (calc config flags)
 #include "backend/metaCollection/partial/chartOfAccounts.h"            // ibValueMetaObjectChartOfAccounts (chart-of-characteristic-types binding)
 #include "backend/propertyManager/property/propertyChartOfCharacteristicTypes.h" // ibPropertyChartOfCharacteristicTypes::SetValue
 #include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm
@@ -961,8 +962,17 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 		if (!FillChartOfCharacteristicTypes(cfg, c.first, *c.second, refMap, err)) return false;
 	for (auto& c : chartsCOA)
 		if (!FillChartOfAccounts(cfg, c.first, *c.second, refMap, err)) return false;
-	for (auto& c : chartsCLT)   // charts of calculation types: plain reference hierarchy
+	for (auto& c : chartsCLT) {  // charts of calculation types: reference hierarchy + calc config flags
 		if (!FillRecordObject(cfg, c.first, *c.second, refMap, err)) return false;
+		if (auto* cct = dynamic_cast<ibValueMetaObjectChartOfCalculationTypes*>(c.first)) {
+			auto ap = c.second->find("actionPeriodUse");
+			if (ap != c.second->end() && ap->is_boolean())
+				cct->SetActionPeriodUse(ap->get<bool>());
+			auto dep = c.second->find("dependenceOnCalculationTypes");
+			if (dep != c.second->end() && dep->is_number_integer())
+				cct->SetDependenceOnCalculationTypes(static_cast<unsigned int>(dep->get<long long>()));
+		}
+	}
 	for (auto& r : calcRegs) {   // calculation registers: dimensions/resources/attributes (recorder-based)
 		if (!FillRegister(cfg, r.first, *r.second, refMap, err)) return false;
 		// Action-period semantics: the 1C register's ActionPeriod flag turns the record from a point

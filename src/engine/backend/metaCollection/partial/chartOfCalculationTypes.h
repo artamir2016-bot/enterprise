@@ -40,6 +40,16 @@ private:
 
 public:
 
+	// ⭐ CALCULATION CONFIGURATION (metadata). ActionPeriodUse: the calc types of this chart carry an
+	// action period. DependenceOnCalculationTypes: how a calc type's computation depends on others —
+	// 0 = don't use, 1 = on action period, 2 = on period of registration. The base / displacing /
+	// leading calc-type LISTS are per-record predefined DATA, not metadata; the runtime dependency
+	// engine (later increment) reads these flags to decide recalculation.
+	bool IsActionPeriodUse() const { return m_propertyActionPeriodUse->GetValueAsBoolean(); }
+	void SetActionPeriodUse(bool v) { m_propertyActionPeriodUse->SetValue(v); }
+	unsigned int GetDependenceOnCalculationTypes() const { return m_propertyDependenceOnCalculationTypes->GetValueAsUInteger(); }
+	void SetDependenceOnCalculationTypes(unsigned int v) { m_propertyDependenceOnCalculationTypes->SetValue(v); }
+
 	//default constructor
 	ibValueMetaObjectChartOfCalculationTypes();
 	virtual ~ibValueMetaObjectChartOfCalculationTypes();
@@ -186,6 +196,10 @@ private:
 
 	ibPropertyInnerModule<ibValueMetaObjectModule>* m_propertyObjectModule = ibPropertyObject::CreateProperty<ibPropertyInnerModule<ibValueMetaObjectModule>>(m_categoryContext, wxT("ObjectModule"), _("Object module"));
 	ibPropertyInnerModule<ibValueMetaObjectManagerModule>* m_propertyManagerModule = ibPropertyObject::CreateProperty<ibPropertyInnerModule<ibValueMetaObjectManagerModule>>(m_categoryContext, wxT("ManagerModule"), _("Manager module"));
+
+	ibPropertyCategory* m_categoryData = ibPropertyObject::CreatePropertyCategory(wxT("Data"), _("Data"));
+	ibPropertyBoolean* m_propertyActionPeriodUse = ibPropertyObject::CreateProperty<ibPropertyBoolean>(m_categoryData, wxT("ActionPeriodUse"), _("Action period used"), false);
+	ibPropertyUInteger* m_propertyDependenceOnCalculationTypes = ibPropertyObject::CreateProperty<ibPropertyUInteger>(m_categoryData, wxT("DependenceOnCalculationTypes"), _("Dependence on calculation types"), 0);
 
 	ibPropertyCategory* m_categoryForm = ibPropertyObject::CreatePropertyCategory(wxT("PresetValues"), _("Preset values"));
 
