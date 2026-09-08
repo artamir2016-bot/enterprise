@@ -77,6 +77,8 @@ bool ibValueMetaObjectCalculationRegister::WriteData(ibDataNode& node) const
 	node.SetProperty(m_propertyUseBasePeriod->GetName(), m_propertyUseBasePeriod->GetNodeValue());
 	node.SetProperty(m_propertyAttributeBasePeriodStart->GetName(), m_propertyAttributeBasePeriodStart->GetNodeValue());
 	node.SetProperty(m_propertyAttributeBasePeriodEnd->GetName(),   m_propertyAttributeBasePeriodEnd->GetNodeValue());
+	node.SetProperty(m_propertyAttributeActualActionPeriodStart->GetName(), m_propertyAttributeActualActionPeriodStart->GetNodeValue());
+	node.SetProperty(m_propertyAttributeActualActionPeriodEnd->GetName(),   m_propertyAttributeActualActionPeriodEnd->GetNodeValue());
 
 	node.SetProperty(m_propertyObjectModule->GetName(), m_propertyObjectModule->GetNodeValue());
 	node.SetProperty(m_propertyManagerModule->GetName(), m_propertyManagerModule->GetNodeValue());
@@ -98,6 +100,8 @@ bool ibValueMetaObjectCalculationRegister::ReadData(const ibDataNode& node)
 	m_propertyUseBasePeriod->SetNodeValue(node.GetProperty(m_propertyUseBasePeriod->GetName()));
 	m_propertyAttributeBasePeriodStart->SetNodeValue(node.GetProperty(m_propertyAttributeBasePeriodStart->GetName()));
 	m_propertyAttributeBasePeriodEnd->SetNodeValue(node.GetProperty(m_propertyAttributeBasePeriodEnd->GetName()));
+	m_propertyAttributeActualActionPeriodStart->SetNodeValue(node.GetProperty(m_propertyAttributeActualActionPeriodStart->GetName()));
+	m_propertyAttributeActualActionPeriodEnd->SetNodeValue(node.GetProperty(m_propertyAttributeActualActionPeriodEnd->GetName()));
 
 	m_propertyObjectModule->SetNodeValue(node.GetProperty(m_propertyObjectModule->GetName()));
 	m_propertyManagerModule->SetNodeValue(node.GetProperty(m_propertyManagerModule->GetName()));
@@ -121,6 +125,8 @@ bool ibValueMetaObjectCalculationRegister::OnCreateMetaObject(ibMetaData* metaDa
 		(*m_propertyAttributeRegistrationPeriod)->OnCreateMetaObject(metaData, flags) &&
 		(*m_propertyAttributeBasePeriodStart)->OnCreateMetaObject(metaData, flags) &&
 		(*m_propertyAttributeBasePeriodEnd)->OnCreateMetaObject(metaData, flags) &&
+		(*m_propertyAttributeActualActionPeriodStart)->OnCreateMetaObject(metaData, flags) &&
+		(*m_propertyAttributeActualActionPeriodEnd)->OnCreateMetaObject(metaData, flags) &&
 		(*m_propertyManagerModule)->OnCreateMetaObject(metaData, flags) &&
 		(*m_propertyObjectModule)->OnCreateMetaObject(metaData, flags);
 }
@@ -138,6 +144,8 @@ bool ibValueMetaObjectCalculationRegister::OnLoadMetaObject(ibMetaData* metaData
 	if (!(*m_propertyAttributeRegistrationPeriod)->OnLoadMetaObject(metaData)) return false;
 	if (!(*m_propertyAttributeBasePeriodStart)->OnLoadMetaObject(metaData)) return false;
 	if (!(*m_propertyAttributeBasePeriodEnd)->OnLoadMetaObject(metaData)) return false;
+	if (!(*m_propertyAttributeActualActionPeriodStart)->OnLoadMetaObject(metaData)) return false;
+	if (!(*m_propertyAttributeActualActionPeriodEnd)->OnLoadMetaObject(metaData)) return false;
 
 	return ibValueMetaObjectRegisterData::OnLoadMetaObject(metaData);
 }
@@ -155,6 +163,8 @@ bool ibValueMetaObjectCalculationRegister::OnSaveMetaObject(int flags)
 	if (!(*m_propertyAttributeRegistrationPeriod)->OnSaveMetaObject(flags)) return false;
 	if (!(*m_propertyAttributeBasePeriodStart)->OnSaveMetaObject(flags)) return false;
 	if (!(*m_propertyAttributeBasePeriodEnd)->OnSaveMetaObject(flags)) return false;
+	if (!(*m_propertyAttributeActualActionPeriodStart)->OnSaveMetaObject(flags)) return false;
+	if (!(*m_propertyAttributeActualActionPeriodEnd)->OnSaveMetaObject(flags)) return false;
 
 	// A calculation register is always subordinate to a recorder, but at IMPORT (or before the posting
 	// documents are linked) the recorder type is legitimately empty. The base treats that as a WARNING,
@@ -176,6 +186,8 @@ bool ibValueMetaObjectCalculationRegister::OnDeleteMetaObject()
 	if (!(*m_propertyAttributeRegistrationPeriod)->OnDeleteMetaObject()) return false;
 	if (!(*m_propertyAttributeBasePeriodStart)->OnDeleteMetaObject()) return false;
 	if (!(*m_propertyAttributeBasePeriodEnd)->OnDeleteMetaObject()) return false;
+	if (!(*m_propertyAttributeActualActionPeriodStart)->OnDeleteMetaObject()) return false;
+	if (!(*m_propertyAttributeActualActionPeriodEnd)->OnDeleteMetaObject()) return false;
 
 	return ibValueMetaObjectRegisterData::OnDeleteMetaObject();
 }

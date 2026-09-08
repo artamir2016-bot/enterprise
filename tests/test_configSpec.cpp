@@ -320,7 +320,7 @@ TEST(ConfigSpec, BuildFull_CalculationRegisterActionPeriod) {
 	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
 
 	for (const char* s : { "Payroll", "Amount", "ActionPeriodStart", "ActionPeriodEnd", "RegistrationPeriod",
-	                       "BasePeriodStart", "BasePeriodEnd" })
+	                       "BasePeriodStart", "BasePeriodEnd", "ActualActionPeriodStart", "ActualActionPeriodEnd" })
 		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
 }
 
