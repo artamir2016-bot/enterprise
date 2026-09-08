@@ -932,6 +932,17 @@ def main():
                 spec["chartsOfCalculationTypes"].append(o)
                 report["ChartsOfCalculationTypes"] += 1
 
+    if want("CalculationRegisters"):
+        spec["calculationRegisters"] = []
+        for base, path in iter_object_xml(args.dump_dir, "CalculationRegisters", args.limit):
+            r = load_root(path)
+            if r is None:
+                continue
+            o = parse_register(r, args.dump_dir, "CalculationRegisters", base)
+            if o:
+                spec["calculationRegisters"].append(o)
+                report["CalculationRegisters"] += 1
+
     if want("Roles"):
         spec["roles"] = []
         for base, path in iter_object_xml(args.dump_dir, "Roles", args.limit):

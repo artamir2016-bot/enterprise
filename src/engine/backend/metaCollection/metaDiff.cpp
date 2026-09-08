@@ -116,6 +116,7 @@ wxString ibMetaDiffWalker::GroupLabelFor(ibClassID clsid)
 	if (clsid == g_metaChartOfCalculationTypesCLSID)    return _("Charts of calculation types");
 	if (clsid == g_metaChartOfAccountsCLSID)            return _("Charts of accounts");
 	if (clsid == g_metaAccountingRegisterCLSID)         return _("Accounting registers");
+	if (clsid == g_metaCalculationRegisterCLSID)        return _("Calculation registers");
 
 	if (clsid == g_metaAttributeCLSID)                  return _("Attributes");
 	if (clsid == g_metaFormCLSID)                       return _("Forms");
@@ -177,6 +178,7 @@ int ibMetaDiffWalker::GroupOrderRank(ibClassID clsid)
 		{ g_metaChartOfCharacteristicTypesCLSID, 160 },
 		{ g_metaChartOfCalculationTypesCLSID,    165 },
 		{ g_metaChartOfAccountsCLSID,            170 },
+		{ g_metaCalculationRegisterCLSID,        175 },
 		{ g_metaInformationRegisterCLSID,        180 },
 		{ g_metaAccumulationRegisterCLSID,       190 },
 		{ g_metaAccountingRegisterCLSID,         200 },

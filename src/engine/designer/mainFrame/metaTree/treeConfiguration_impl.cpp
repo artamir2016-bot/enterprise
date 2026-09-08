@@ -1047,6 +1047,7 @@ const ibMetaTreeGroupDef s_groups[] = {
 	{ g_metaInformationRegisterCLSID,        wxTRANSLATE("Information Registers"),  ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaAccumulationRegisterCLSID,       wxTRANSLATE("Accumulation Registers"), ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaAccountingRegisterCLSID,         wxTRANSLATE("Accounting registers"),    ibMetaBand::Metadata, 0, ibMetaRow::Item },
+	{ g_metaCalculationRegisterCLSID,        wxTRANSLATE("Calculation registers"),   ibMetaBand::Metadata, 0, ibMetaRow::Item },
 };
 
 } // namespace
@@ -1074,6 +1075,7 @@ void ibConfigurationTree::ExpandMetaItem(ibValueMetaObject* metaItem, const wxTr
 	else if (clsid == g_metaChartOfCalculationTypesCLSID)    AddCatalogItem(metaItem, item);
 	else if (clsid == g_metaChartOfAccountsCLSID)            AddCatalogItem(metaItem, item);
 	else if (clsid == g_metaAccountingRegisterCLSID)         AddAccumulationRegisterItem(metaItem, item);
+	else if (clsid == g_metaCalculationRegisterCLSID)        AddInformationRegisterItem(metaItem, item);
 	else if (clsid == g_metaSectionCLSID)                    AddInterfaceItem(metaItem, item);
 
 	// A COMMAND HOLDS COMMANDS. The fill path always knew this (it goes through AppendCommandNode);

@@ -264,6 +264,37 @@ TEST(ConfigSpec, BuildFull_CreatesChartsOfCalculationTypes) {
 		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
 }
 
+// Calculation register — a recorder-based register (dimensions / resources / attributes), no totals,
+// no slices. Created and byte round-trips; the recorder type is legitimately empty at import (a warning,
+// not a refusal), so a clean build here is also the "import tolerates an unlinked recorder" assertion.
+TEST(ConfigSpec, BuildFull_CreatesCalculationRegister) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "CalcRegCfg",
+	  "catalogs": [ { "name": "Employees" } ],
+	  "calculationRegisters": [
+	    { "name": "Main",
+	      "dimensions": [ { "name": "Employee", "type": "ref", "refs": ["Catalog.Employees"] } ],
+	      "resources":  [ { "name": "Result",   "type": "Number", "precision": 15, "scale": 2 } ],
+	      "attributes":  [ { "name": "Reason",   "type": "String", "length": 40 } ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+
+	for (const char* s : { "Employees", "Main", "Employee", "Result", "Reason" })
+		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
+}
+
 TEST(ConfigSpec, BuildFull_CreatesRolesAndSubsystems) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;
