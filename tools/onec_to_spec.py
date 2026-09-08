@@ -611,6 +611,35 @@ def parse_chart_coa(root_el, dump_dir, kind_dir, base_name):
     return o
 
 
+def parse_subsystem(basedir, name):
+    """Subsystem (Section) -> {name, subsystems:[...]}. Children are named in <ChildObjects>/<Subsystem>
+    and their XML lives at <basedir>/<name>/Subsystems/<child>.xml (recursion mirrors the 1C layout).
+    Content/rights are out of MVP — the tree shape is what carries across."""
+    xml_path = os.path.join(basedir, name + ".xml")
+    r = load_root(xml_path)
+    if r is None:
+        return None
+    obj_el = next(iter(r), None)
+    nm = parse_props_name(obj_el) if obj_el is not None else None
+    if not nm:
+        return None
+    out = {"name": nm}
+    child_dir = os.path.join(basedir, name, "Subsystems")
+    kids = []
+    co = obj_el.find(MD + "ChildObjects")
+    if co is not None:
+        for el in co:
+            if _local(el.tag) == "Subsystem":
+                child_name = (el.text or "").strip()
+                if child_name:
+                    kid = parse_subsystem(child_dir, child_name)
+                    if kid:
+                        kids.append(kid)
+    if kids:
+        out["subsystems"] = kids
+    return out
+
+
 def parse_enum(root_el):
     obj_el = next(iter(root_el), None)
     if obj_el is None:
@@ -890,6 +919,26 @@ def main():
             if o:
                 spec["chartsOfAccounts"].append(o)
                 report["ChartsOfAccounts"] += 1
+
+    if want("Roles"):
+        spec["roles"] = []
+        for base, path in iter_object_xml(args.dump_dir, "Roles", args.limit):
+            r = load_root(path)
+            if r is None:
+                continue
+            nm = parse_props_name(next(iter(r), None))
+            if nm:
+                spec["roles"].append({"name": nm})
+                report["Roles"] += 1
+
+    if want("Subsystems"):
+        spec["subsystems"] = []
+        ss_dir = os.path.join(args.dump_dir, "Subsystems")
+        for base, path in iter_object_xml(args.dump_dir, "Subsystems", args.limit):
+            o = parse_subsystem(ss_dir, base)
+            if o:
+                spec["subsystems"].append(o)
+                report["Subsystems"] += 1
 
     if want("CommonModules"):
         spec["commonModules"] = []

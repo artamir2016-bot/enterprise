@@ -791,6 +791,28 @@ bool CreateObjects(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* root,
 	return true;
 }
 
+// Subsystems (Sections) are HIERARCHICAL and metadata-only — no DB tables, not reference targets.
+// Create each under its parent and recurse into nested "subsystems", so the configuration's
+// command-interface tree comes across with its shape. Content (the objects a subsystem groups) and
+// rights are a later iteration; the tree itself is what this brings.
+bool CreateSubsystems(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* parent,
+                      const json& arr, wxString& err) {
+	if (!arr.is_array()) { err = wxT("'subsystems' must be an array"); return false; }
+	for (const json& node : arr) {
+		const wxString name = JStr(node, "name");
+		if (name.IsEmpty()) { err = wxT("subsystem without a 'name'"); return false; }
+		ibValueMetaObject* sec = cfg.CreateMetaObject(g_metaSectionCLSID, parent, /*runObject*/ false, name);
+		if (sec == nullptr) {
+			err = wxString::Format(wxT("failed to create subsystem '%s'"), name);
+			return false;
+		}
+		auto sub = node.find("subsystems");
+		if (sub != node.end() && sub->is_array())
+			if (!CreateSubsystems(cfg, sec, *sub, err)) return false;
+	}
+	return true;
+}
+
 } // namespace
 
 bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
@@ -872,6 +894,29 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 				}
 			}
 		}
+	}
+
+	// Roles — metadata-only, structural. An empty named role (rights are a later iteration): the role
+	// exists in the tree and can be granted, but carries no permissions yet.
+	{
+		auto it = spec.find("roles");
+		if (it != spec.end()) {
+			if (!it->is_array()) { err = wxT("'roles' must be an array"); return false; }
+			for (const json& node : *it) {
+				const wxString name = JStr(node, "name");
+				if (name.IsEmpty()) { err = wxT("role entry without a 'name'"); return false; }
+				if (cfg.CreateMetaObject(g_metaRoleCLSID, root, /*runObject*/ false, name) == nullptr) {
+					err = wxString::Format(wxT("failed to create role '%s'"), name); return false;
+				}
+			}
+		}
+	}
+
+	// Subsystems — hierarchical (Sections), metadata-only.
+	{
+		auto it = spec.find("subsystems");
+		if (it != spec.end())
+			if (!CreateSubsystems(cfg, root, *it, err)) return false;
 	}
 
 	// Common modules (no references; set code now).

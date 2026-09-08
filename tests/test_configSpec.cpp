@@ -232,6 +232,37 @@ TEST(ConfigSpec, BuildFull_CreatesCharts) {
 		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
 }
 
+// Roles (flat) + subsystems (hierarchical). Both are metadata-only (no DB tables, not reference
+// targets); the assertion is that they are created, survive a byte round-trip, and — for subsystems —
+// keep their nested shape.
+TEST(ConfigSpec, BuildFull_CreatesRolesAndSubsystems) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "RSCfg",
+	  "roles": [ { "name": "Administrator" }, { "name": "Manager" } ],
+	  "subsystems": [
+	    { "name": "Sales", "subsystems": [
+	        { "name": "Orders" },
+	        { "name": "Invoices", "subsystems": [ { "name": "Drafts" } ] } ] },
+	    { "name": "Accounting" }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+
+	for (const char* s : { "Administrator", "Manager", "Sales", "Orders", "Invoices", "Drafts", "Accounting" })
+		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
+}
+
 TEST(ConfigSpec, BuildFromJson_CreatesForms) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

@@ -27,6 +27,7 @@ KIND_KEY = {
     "AccumulationRegisters": "accumulationRegisters", "CommonModules": "commonModules",
     "ChartsOfCharacteristicTypes": "chartsOfCharacteristicTypes",
     "ChartsOfAccounts": "chartsOfAccounts",
+    "Roles": "roles", "Subsystems": "subsystems",
     "DataProcessors": "dataProcessors", "Reports": "reports",
 }
 
