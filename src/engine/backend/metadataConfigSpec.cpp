@@ -14,6 +14,7 @@
 #include "backend/metaCollection/partial/commonObject.h"  // ibValueMetaObjectRecordData (module accessors)
 #include "backend/metaCollection/partial/constant.h"      // ibValueMetaObjectConstant
 #include "backend/metaCollection/partial/chartOfCharacteristicTypes.h" // ibValueMetaObjectChartOfCharacteristicTypes (value type of characteristics)
+#include "backend/metaCollection/partial/calculationRegister.h"        // ibValueMetaObjectCalculationRegister (action-period flag)
 #include "backend/metaCollection/partial/chartOfAccounts.h"            // ibValueMetaObjectChartOfAccounts (chart-of-characteristic-types binding)
 #include "backend/propertyManager/property/propertyChartOfCharacteristicTypes.h" // ibPropertyChartOfCharacteristicTypes::SetValue
 #include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm
@@ -962,8 +963,16 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 		if (!FillChartOfAccounts(cfg, c.first, *c.second, refMap, err)) return false;
 	for (auto& c : chartsCLT)   // charts of calculation types: plain reference hierarchy
 		if (!FillRecordObject(cfg, c.first, *c.second, refMap, err)) return false;
-	for (auto& r : calcRegs)    // calculation registers: dimensions/resources/attributes (recorder-based)
+	for (auto& r : calcRegs) {   // calculation registers: dimensions/resources/attributes (recorder-based)
 		if (!FillRegister(cfg, r.first, *r.second, refMap, err)) return false;
+		// Action-period semantics: the 1C register's ActionPeriod flag turns the record from a point
+		// event into an interval [start, end] and adds the action/registration-period standard columns.
+		if (auto* cr = dynamic_cast<ibValueMetaObjectCalculationRegister*>(r.first)) {
+			auto ap = r.second->find("useActionPeriod");
+			if (ap != r.second->end() && ap->is_boolean())
+				cr->SetUseActionPeriod(ap->get<bool>());
+		}
+	}
 	for (auto& c : constants) {
 		auto* konst = dynamic_cast<ibValueMetaObjectConstant*>(c.first);
 		if (konst == nullptr) { err = wxT("constant object is not a constant"); return false; }

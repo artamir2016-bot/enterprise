@@ -50,6 +50,16 @@ public:
 		return m_propertyPeriodicity->GetValueAsEnum();
 	}
 
+	// ⭐ ACTION PERIOD — the semantic heart of a calculation register. When on, a calculation record is
+	// not a point event but an INTERVAL [start, end] over which it is in force; records of competing
+	// calculation types displace each other over overlapping action periods. When off, the record
+	// carries only the registration period (when it was entered). See docs (calculation engine).
+	bool IsUseActionPeriod() const { return m_propertyUseActionPeriod->GetValueAsBoolean(); }
+	void SetUseActionPeriod(bool v) { m_propertyUseActionPeriod->SetValue(v); }
+	ibValueMetaObjectAttributePredefined* GetActionPeriodStart()   const { return m_propertyAttributeActionPeriodStart->GetMetaObject(); }
+	ibValueMetaObjectAttributePredefined* GetActionPeriodEnd()     const { return m_propertyAttributeActionPeriodEnd->GetMetaObject(); }
+	ibValueMetaObjectAttributePredefined* GetRegistrationPeriod()  const { return m_propertyAttributeRegistrationPeriod->GetMetaObject(); }
+
 	//support icons
 	virtual wxIcon GetIcon() const;
 	static wxIcon GetIconGroup();
@@ -117,6 +127,14 @@ protected:
 		array.emplace_back(m_propertyAttributePeriod->GetMetaObject());
 		array.emplace_back(m_propertyAttributeRecorder->GetMetaObject());
 		array.emplace_back(m_propertyAttributeLineNumber->GetMetaObject());
+
+		// Action-period standard attributes become columns only when the register uses an action
+		// period — otherwise a calculation record is a point event and these would be dead columns.
+		if (m_propertyUseActionPeriod->GetValueAsBoolean()) {
+			array.emplace_back(m_propertyAttributeActionPeriodStart->GetMetaObject());
+			array.emplace_back(m_propertyAttributeActionPeriodEnd->GetMetaObject());
+			array.emplace_back(m_propertyAttributeRegistrationPeriod->GetMetaObject());
+		}
 
 		return true;
 	}
@@ -200,6 +218,14 @@ private:
 
 	ibPropertyCategory* m_categoryData = ibPropertyObject::CreatePropertyCategory(wxT("Data"), _("Data"));
 	ibPropertyEnum<ibValueEnumCalculationPeriodicity>* m_propertyPeriodicity = ibPropertyObject::CreateProperty<ibPropertyEnum<ibValueEnumCalculationPeriodicity>>(m_categoryData, wxT("Periodicity"), _("Periodicity"), ibCalculationPeriodicity::eCalcWithinDay);
+
+	// Action period configuration + its standard attributes (predefined). The attributes exist for the
+	// life of the register (stable metaIDs -> stable fld<metaID> columns), but only enter the schema
+	// when UseActionPeriod is on (see FillArrayObjectByPredefinedAttribute).
+	ibPropertyBoolean* m_propertyUseActionPeriod = ibPropertyObject::CreateProperty<ibPropertyBoolean>(m_categoryData, wxT("UseActionPeriod"), _("Use action period"), false);
+	ibPropertyContainer<>* m_propertyAttributeActionPeriodStart  = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("ActionPeriodStart"),  _("Action period start"),  wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
+	ibPropertyContainer<>* m_propertyAttributeActionPeriodEnd    = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("ActionPeriodEnd"),    _("Action period end"),    wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
+	ibPropertyContainer<>* m_propertyAttributeRegistrationPeriod = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("RegistrationPeriod"), _("Registration period"), wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
 
 	friend class ibValueRecordSetObjectCalculationRegister;
 	friend class ibValueRecordManagerObjectCalculationRegister;

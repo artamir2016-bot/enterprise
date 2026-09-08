@@ -940,6 +940,15 @@ def main():
                 continue
             o = parse_register(r, args.dump_dir, "CalculationRegisters", base)
             if o:
+                # Action-period flag (<Properties>/<ActionPeriod>): turns the record into an interval
+                # and adds the action/registration-period standard columns.
+                obj_el = next(iter(r), None)
+                if obj_el is not None:
+                    props = obj_el.find(MD + "Properties")
+                    if props is not None:
+                        ap = props.find(MD + "ActionPeriod")
+                        if ap is not None and _txt(ap).strip().lower() == "true":
+                            o["useActionPeriod"] = True
                 spec["calculationRegisters"].append(o)
                 report["CalculationRegisters"] += 1
 

@@ -295,6 +295,33 @@ TEST(ConfigSpec, BuildFull_CreatesCalculationRegister) {
 		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
 }
 
+// Calculation semantics: with useActionPeriod the register gains the action/registration-period
+// standard attributes (interval records). They must be present in the serialized configuration.
+TEST(ConfigSpec, BuildFull_CalculationRegisterActionPeriod) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "CalcSemCfg",
+	  "calculationRegisters": [
+	    { "name": "Payroll", "useActionPeriod": true,
+	      "resources": [ { "name": "Amount", "type": "Number", "precision": 15, "scale": 2 } ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+
+	for (const char* s : { "Payroll", "Amount", "ActionPeriodStart", "ActionPeriodEnd", "RegistrationPeriod" })
+		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
+}
+
 TEST(ConfigSpec, BuildFull_CreatesRolesAndSubsystems) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;
