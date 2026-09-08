@@ -971,6 +971,9 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 			auto ap = r.second->find("useActionPeriod");
 			if (ap != r.second->end() && ap->is_boolean())
 				cr->SetUseActionPeriod(ap->get<bool>());
+			auto bp = r.second->find("useBasePeriod");
+			if (bp != r.second->end() && bp->is_boolean())
+				cr->SetUseBasePeriod(bp->get<bool>());
 		}
 	}
 	for (auto& c : constants) {

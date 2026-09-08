@@ -303,7 +303,7 @@ TEST(ConfigSpec, BuildFull_CalculationRegisterActionPeriod) {
 	const char* spec = R"JSON({
 	  "name": "CalcSemCfg",
 	  "calculationRegisters": [
-	    { "name": "Payroll", "useActionPeriod": true,
+	    { "name": "Payroll", "useActionPeriod": true, "useBasePeriod": true,
 	      "resources": [ { "name": "Amount", "type": "Number", "precision": 15, "scale": 2 } ] }
 	  ]
 	})JSON";
@@ -318,7 +318,8 @@ TEST(ConfigSpec, BuildFull_CalculationRegisterActionPeriod) {
 	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
 	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
 
-	for (const char* s : { "Payroll", "Amount", "ActionPeriodStart", "ActionPeriodEnd", "RegistrationPeriod" })
+	for (const char* s : { "Payroll", "Amount", "ActionPeriodStart", "ActionPeriodEnd", "RegistrationPeriod",
+	                       "BasePeriodStart", "BasePeriodEnd" })
 		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
 }
 

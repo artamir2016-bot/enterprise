@@ -949,6 +949,9 @@ def main():
                         ap = props.find(MD + "ActionPeriod")
                         if ap is not None and _txt(ap).strip().lower() == "true":
                             o["useActionPeriod"] = True
+                        bp = props.find(MD + "BasePeriod")
+                        if bp is not None and _txt(bp).strip().lower() == "true":
+                            o["useBasePeriod"] = True
                 spec["calculationRegisters"].append(o)
                 report["CalculationRegisters"] += 1
 

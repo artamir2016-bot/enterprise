@@ -60,6 +60,14 @@ public:
 	ibValueMetaObjectAttributePredefined* GetActionPeriodEnd()     const { return m_propertyAttributeActionPeriodEnd->GetMetaObject(); }
 	ibValueMetaObjectAttributePredefined* GetRegistrationPeriod()  const { return m_propertyAttributeRegistrationPeriod->GetMetaObject(); }
 
+	// ⭐ BASE PERIOD — the interval whose already-computed results a dependent calculation reads as its
+	// base (dependency-by-base-period). When on, the record carries [baseStart, baseEnd] naming the span
+	// its base amount is summed over. Independent of the action period.
+	bool IsUseBasePeriod() const { return m_propertyUseBasePeriod->GetValueAsBoolean(); }
+	void SetUseBasePeriod(bool v) { m_propertyUseBasePeriod->SetValue(v); }
+	ibValueMetaObjectAttributePredefined* GetBasePeriodStart() const { return m_propertyAttributeBasePeriodStart->GetMetaObject(); }
+	ibValueMetaObjectAttributePredefined* GetBasePeriodEnd()   const { return m_propertyAttributeBasePeriodEnd->GetMetaObject(); }
+
 	//support icons
 	virtual wxIcon GetIcon() const;
 	static wxIcon GetIconGroup();
@@ -134,6 +142,11 @@ protected:
 			array.emplace_back(m_propertyAttributeActionPeriodStart->GetMetaObject());
 			array.emplace_back(m_propertyAttributeActionPeriodEnd->GetMetaObject());
 			array.emplace_back(m_propertyAttributeRegistrationPeriod->GetMetaObject());
+		}
+
+		if (m_propertyUseBasePeriod->GetValueAsBoolean()) {
+			array.emplace_back(m_propertyAttributeBasePeriodStart->GetMetaObject());
+			array.emplace_back(m_propertyAttributeBasePeriodEnd->GetMetaObject());
 		}
 
 		return true;
@@ -226,6 +239,10 @@ private:
 	ibPropertyContainer<>* m_propertyAttributeActionPeriodStart  = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("ActionPeriodStart"),  _("Action period start"),  wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
 	ibPropertyContainer<>* m_propertyAttributeActionPeriodEnd    = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("ActionPeriodEnd"),    _("Action period end"),    wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
 	ibPropertyContainer<>* m_propertyAttributeRegistrationPeriod = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("RegistrationPeriod"), _("Registration period"), wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
+
+	ibPropertyBoolean* m_propertyUseBasePeriod = ibPropertyObject::CreateProperty<ibPropertyBoolean>(m_categoryData, wxT("UseBasePeriod"), _("Use base period"), false);
+	ibPropertyContainer<>* m_propertyAttributeBasePeriodStart = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("BasePeriodStart"), _("Base period start"), wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
+	ibPropertyContainer<>* m_propertyAttributeBasePeriodEnd   = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("BasePeriodEnd"),   _("Base period end"),   wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
 
 	friend class ibValueRecordSetObjectCalculationRegister;
 	friend class ibValueRecordManagerObjectCalculationRegister;
