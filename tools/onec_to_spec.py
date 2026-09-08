@@ -964,6 +964,10 @@ def main():
                         bp = props.find(MD + "BasePeriod")
                         if bp is not None and _txt(bp).strip().lower() == "true":
                             o["useBasePeriod"] = True
+                        cct = props.find(MD + "ChartOfCalculationTypes")
+                        key = _txt(cct).strip() if cct is not None else ""
+                        if key.startswith("ChartOfCalculationTypes."):
+                            o["chartOfCalculationTypes"] = key
                 spec["calculationRegisters"].append(o)
                 report["CalculationRegisters"] += 1
 

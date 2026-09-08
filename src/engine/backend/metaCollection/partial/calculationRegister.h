@@ -66,6 +66,13 @@ public:
 	ibValueMetaObjectAttributePredefined* GetActualActionPeriodStart() const { return m_propertyAttributeActualActionPeriodStart->GetMetaObject(); }
 	ibValueMetaObjectAttributePredefined* GetActualActionPeriodEnd()   const { return m_propertyAttributeActualActionPeriodEnd->GetMetaObject(); }
 
+	// ⭐ CALCULATION TYPE (ВидРасчёта) — the standard attribute every calculation record carries: which
+	// calculation type of the bound chart this record is. Its priority (from the chart's displacing
+	// lists) is what feeds displacement. The register is BOUND to exactly one chart of calculation types;
+	// binding sets the CalculationType attribute's type to a reference into that chart.
+	ibValueMetaObjectAttributePredefined* GetCalculationType() const { return m_propertyAttributeCalculationType->GetMetaObject(); }
+	void SetChartOfCalculationTypes(const ibMetaID& chartMetaID);   // binds the register to a chart of calc types
+
 	// ⭐ BASE PERIOD — the interval whose already-computed results a dependent calculation reads as its
 	// base (dependency-by-base-period). When on, the record carries [baseStart, baseEnd] naming the span
 	// its base amount is summed over. Independent of the action period.
@@ -141,6 +148,7 @@ protected:
 		array.emplace_back(m_propertyAttributePeriod->GetMetaObject());
 		array.emplace_back(m_propertyAttributeRecorder->GetMetaObject());
 		array.emplace_back(m_propertyAttributeLineNumber->GetMetaObject());
+		array.emplace_back(m_propertyAttributeCalculationType->GetMetaObject());   // ВидРасчёта — always present
 
 		// Action-period standard attributes become columns only when the register uses an action
 		// period — otherwise a calculation record is a point event and these would be dead columns.
@@ -249,6 +257,11 @@ private:
 	ibPropertyContainer<>* m_propertyAttributeRegistrationPeriod = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("RegistrationPeriod"), _("Registration period"), wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
 	ibPropertyContainer<>* m_propertyAttributeActualActionPeriodStart = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("ActualActionPeriodStart"), _("Actual action period start"), wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
 	ibPropertyContainer<>* m_propertyAttributeActualActionPeriodEnd   = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("ActualActionPeriodEnd"),   _("Actual action period end"),   wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));
+
+	// The calculation-type standard attribute — an empty-typed reference whose type is set to the bound
+	// chart of calculation types by SetChartOfCalculationTypes (like the recorder's type is set by its
+	// posting documents). Always a predefined attribute of a calculation register.
+	ibPropertyContainer<>* m_propertyAttributeCalculationType = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateEmptyType(wxT("CalculationType"), _("Calculation type"), wxEmptyString));
 
 	ibPropertyBoolean* m_propertyUseBasePeriod = ibPropertyObject::CreateProperty<ibPropertyBoolean>(m_categoryData, wxT("UseBasePeriod"), _("Use base period"), false);
 	ibPropertyContainer<>* m_propertyAttributeBasePeriodStart = ibPropertyObject::CreateProperty<ibPropertyContainer<>>(m_categoryCommon, ibValueMetaObjectCompositeData::CreateDate(wxT("BasePeriodStart"), _("Base period start"), wxEmptyString, ibDateFractions::ibDateFractions_DateTime, true));

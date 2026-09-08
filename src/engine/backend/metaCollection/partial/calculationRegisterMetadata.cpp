@@ -3,6 +3,16 @@
 #include "backend/system/value/valueDynamicList.h"   // ibValueDynamicList — the standard list migrates onto the universal dynamic list
 #include "backend/metaData.h"
 #include "backend/moduleManager/moduleManager.h"
+#include "backend/clsid.h"   // reference_to_clsid — the calc-type attribute's type is a reference into the bound chart
+
+// Bind the register to a chart of calculation types: the CalculationType standard attribute becomes a
+// reference into that chart. Empty metaID leaves it untyped (no chart bound yet).
+void ibValueMetaObjectCalculationRegister::SetChartOfCalculationTypes(const ibMetaID& chartMetaID)
+{
+	if (chartMetaID == wxNOT_FOUND)
+		return;
+	m_propertyAttributeCalculationType->GetMetaObject()->GetTypeDesc().SetDefaultMetaType(reference_to_clsid((ibClassID)chartMetaID));
+}
 
 //***********************************************************************
 //*                         metaData                                    *
@@ -79,6 +89,7 @@ bool ibValueMetaObjectCalculationRegister::WriteData(ibDataNode& node) const
 	node.SetProperty(m_propertyAttributeBasePeriodEnd->GetName(),   m_propertyAttributeBasePeriodEnd->GetNodeValue());
 	node.SetProperty(m_propertyAttributeActualActionPeriodStart->GetName(), m_propertyAttributeActualActionPeriodStart->GetNodeValue());
 	node.SetProperty(m_propertyAttributeActualActionPeriodEnd->GetName(),   m_propertyAttributeActualActionPeriodEnd->GetNodeValue());
+	node.SetProperty(m_propertyAttributeCalculationType->GetName(), m_propertyAttributeCalculationType->GetNodeValue());
 
 	node.SetProperty(m_propertyObjectModule->GetName(), m_propertyObjectModule->GetNodeValue());
 	node.SetProperty(m_propertyManagerModule->GetName(), m_propertyManagerModule->GetNodeValue());
@@ -102,6 +113,7 @@ bool ibValueMetaObjectCalculationRegister::ReadData(const ibDataNode& node)
 	m_propertyAttributeBasePeriodEnd->SetNodeValue(node.GetProperty(m_propertyAttributeBasePeriodEnd->GetName()));
 	m_propertyAttributeActualActionPeriodStart->SetNodeValue(node.GetProperty(m_propertyAttributeActualActionPeriodStart->GetName()));
 	m_propertyAttributeActualActionPeriodEnd->SetNodeValue(node.GetProperty(m_propertyAttributeActualActionPeriodEnd->GetName()));
+	m_propertyAttributeCalculationType->SetNodeValue(node.GetProperty(m_propertyAttributeCalculationType->GetName()));
 
 	m_propertyObjectModule->SetNodeValue(node.GetProperty(m_propertyObjectModule->GetName()));
 	m_propertyManagerModule->SetNodeValue(node.GetProperty(m_propertyManagerModule->GetName()));
@@ -127,6 +139,7 @@ bool ibValueMetaObjectCalculationRegister::OnCreateMetaObject(ibMetaData* metaDa
 		(*m_propertyAttributeBasePeriodEnd)->OnCreateMetaObject(metaData, flags) &&
 		(*m_propertyAttributeActualActionPeriodStart)->OnCreateMetaObject(metaData, flags) &&
 		(*m_propertyAttributeActualActionPeriodEnd)->OnCreateMetaObject(metaData, flags) &&
+		(*m_propertyAttributeCalculationType)->OnCreateMetaObject(metaData, flags) &&
 		(*m_propertyManagerModule)->OnCreateMetaObject(metaData, flags) &&
 		(*m_propertyObjectModule)->OnCreateMetaObject(metaData, flags);
 }
@@ -146,6 +159,7 @@ bool ibValueMetaObjectCalculationRegister::OnLoadMetaObject(ibMetaData* metaData
 	if (!(*m_propertyAttributeBasePeriodEnd)->OnLoadMetaObject(metaData)) return false;
 	if (!(*m_propertyAttributeActualActionPeriodStart)->OnLoadMetaObject(metaData)) return false;
 	if (!(*m_propertyAttributeActualActionPeriodEnd)->OnLoadMetaObject(metaData)) return false;
+	if (!(*m_propertyAttributeCalculationType)->OnLoadMetaObject(metaData)) return false;
 
 	return ibValueMetaObjectRegisterData::OnLoadMetaObject(metaData);
 }
@@ -165,6 +179,7 @@ bool ibValueMetaObjectCalculationRegister::OnSaveMetaObject(int flags)
 	if (!(*m_propertyAttributeBasePeriodEnd)->OnSaveMetaObject(flags)) return false;
 	if (!(*m_propertyAttributeActualActionPeriodStart)->OnSaveMetaObject(flags)) return false;
 	if (!(*m_propertyAttributeActualActionPeriodEnd)->OnSaveMetaObject(flags)) return false;
+	if (!(*m_propertyAttributeCalculationType)->OnSaveMetaObject(flags)) return false;
 
 	// A calculation register is always subordinate to a recorder, but at IMPORT (or before the posting
 	// documents are linked) the recorder type is legitimately empty. The base treats that as a WARNING,
@@ -188,6 +203,7 @@ bool ibValueMetaObjectCalculationRegister::OnDeleteMetaObject()
 	if (!(*m_propertyAttributeBasePeriodEnd)->OnDeleteMetaObject()) return false;
 	if (!(*m_propertyAttributeActualActionPeriodStart)->OnDeleteMetaObject()) return false;
 	if (!(*m_propertyAttributeActualActionPeriodEnd)->OnDeleteMetaObject()) return false;
+	if (!(*m_propertyAttributeCalculationType)->OnDeleteMetaObject()) return false;
 
 	return ibValueMetaObjectRegisterData::OnDeleteMetaObject();
 }

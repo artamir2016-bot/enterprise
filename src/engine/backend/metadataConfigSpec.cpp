@@ -984,6 +984,13 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 			auto bp = r.second->find("useBasePeriod");
 			if (bp != r.second->end() && bp->is_boolean())
 				cr->SetUseBasePeriod(bp->get<bool>());
+			// Bind the register to its chart of calculation types (the CalculationType attribute's type).
+			const wxString cctKey = JStr(*r.second, "chartOfCalculationTypes");
+			if (!cctKey.IsEmpty()) {
+				auto found = refMap.find(cctKey);
+				if (found != refMap.end() && found->second != nullptr)
+					cr->SetChartOfCalculationTypes(found->second->GetMetaID());
+			}
 		}
 	}
 	for (auto& c : constants) {

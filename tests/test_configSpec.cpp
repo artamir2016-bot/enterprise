@@ -274,8 +274,9 @@ TEST(ConfigSpec, BuildFull_CreatesCalculationRegister) {
 	const char* spec = R"JSON({
 	  "name": "CalcRegCfg",
 	  "catalogs": [ { "name": "Employees" } ],
+	  "chartsOfCalculationTypes": [ { "name": "Charges" } ],
 	  "calculationRegisters": [
-	    { "name": "Main",
+	    { "name": "Main", "chartOfCalculationTypes": "ChartOfCalculationTypes.Charges",
 	      "dimensions": [ { "name": "Employee", "type": "ref", "refs": ["Catalog.Employees"] } ],
 	      "resources":  [ { "name": "Result",   "type": "Number", "precision": 15, "scale": 2 } ],
 	      "attributes":  [ { "name": "Reason",   "type": "String", "length": 40 } ] }
@@ -292,7 +293,7 @@ TEST(ConfigSpec, BuildFull_CreatesCalculationRegister) {
 	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
 	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
 
-	for (const char* s : { "Employees", "Main", "Employee", "Result", "Reason" })
+	for (const char* s : { "Employees", "Main", "Employee", "Result", "Reason", "Charges", "CalculationType" })
 		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
 }
 
