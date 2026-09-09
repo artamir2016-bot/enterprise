@@ -971,6 +971,22 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 			auto dep = c.second->find("dependenceOnCalculationTypes");
 			if (dep != c.second->end() && dep->is_number_integer())
 				cct->SetDependenceOnCalculationTypes(static_cast<unsigned int>(dep->get<long long>()));
+
+			// Predefined calculation types: real records materialised as table SEED rows on config
+			// update. The 1C item id (a guid) is reused as the predefined guid so re-import is idempotent.
+			auto pd = c.second->find("predefined");
+			if (pd != c.second->end() && pd->is_array()) {
+				for (const json& item : *pd) {
+					const wxString pname = JStr(item, "name");
+					if (pname.IsEmpty())
+						continue;
+					const wxString pid   = JStr(item, "id");
+					const wxString pcode = JStr(item, "code");
+					const wxString pdesc = JStr(item, "description");
+					cct->SetPredefinedValue(pid.IsEmpty() ? wxNewUniqueGuid : ibGuid(pid),
+					                        pname, pcode, pdesc.IsEmpty() ? pname : pdesc);
+				}
+			}
 		}
 	}
 	for (auto& r : calcRegs) {   // calculation registers: dimensions/resources/attributes (recorder-based)

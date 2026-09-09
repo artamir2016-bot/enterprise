@@ -265,6 +265,36 @@ TEST(ConfigSpec, BuildFull_CreatesChartsOfCalculationTypes) {
 		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
 }
 
+// Predefined calculation types: the "predefined" array becomes real predefined value definitions on the
+// chart, which serialize (and materialise as table seed rows on config update). Their names round-trip.
+TEST(ConfigSpec, BuildFull_ChartOfCalculationTypesPredefined) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "CalcPredefCfg",
+	  "chartsOfCalculationTypes": [
+	    { "name": "Charges", "actionPeriodUse": true,
+	      "predefined": [
+	        { "id": "9f2817d2-40ad-423b-a449-ac65df0dfaea", "name": "Salary",   "code": "1", "description": "Monthly salary" },
+	        { "id": "c5889c23-7c12-45c9-a766-125af4a14409", "name": "SickLeave","code": "4", "description": "Sick leave" }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+
+	for (const char* s : { "Charges", "Salary", "SickLeave", "Monthly salary" })
+		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
+}
+
 // Calculation register — a recorder-based register (dimensions / resources / attributes), no totals,
 // no slices. Created and byte round-trips; the recorder type is legitimately empty at import (a warning,
 // not a refusal), so a clean build here is also the "import tolerates an unlinked recorder" assertion.

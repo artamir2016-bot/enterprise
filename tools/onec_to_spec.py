@@ -612,6 +612,36 @@ def parse_chart_coa(root_el, dump_dir, kind_dir, base_name):
     return o
 
 
+def parse_predefined(dump_dir, kind_dir, base_name):
+    """Predefined items of a reference object: <base>/Ext/Predefined.xml -> [{id, name, code, description}].
+    Flat list (folders/parent not modelled yet). Returns [] when the object has no predefined data."""
+    path = os.path.join(dump_dir, kind_dir, base_name, "Ext", "Predefined.xml")
+    if not os.path.isfile(path):
+        return []
+    try:
+        root = ET.parse(path).getroot()
+    except Exception:
+        return []
+    out = []
+    for item in root:
+        if _local(item.tag) != "Item":
+            continue
+        name = _txt(item.find("{http://v8.1c.ru/8.3/xcf/predef}Name"))
+        if not name:
+            # namespace-agnostic fallback
+            name = next((_txt(c) for c in item if _local(c.tag) == "Name"), "")
+        name = name.strip()
+        if not name:
+            continue
+        code = desc = ""
+        for c in item:
+            lt = _local(c.tag)
+            if lt == "Code":        code = _txt(c).strip()
+            elif lt == "Description": desc = _txt(c).strip()
+        out.append({"id": item.get("id", ""), "name": name, "code": code, "description": desc})
+    return out
+
+
 def parse_subsystem(basedir, name):
     """Subsystem (Section) -> {name, subsystems:[...]}. Children are named in <ChildObjects>/<Subsystem>
     and their XML lives at <basedir>/<name>/Subsystems/<child>.xml (recursion mirrors the 1C layout).
@@ -983,6 +1013,10 @@ def main():
                         code = {"dontuse": 0, "onactionperiod": 1, "onperiodofregistration": 2}
                         if dep is not None:
                             o["dependenceOnCalculationTypes"] = code.get(_txt(dep).strip().lower(), 0)
+                # Predefined calculation types (Ext/Predefined.xml) — real records materialised on load.
+                pd = parse_predefined(args.dump_dir, "ChartsOfCalculationTypes", base)
+                if pd:
+                    o["predefined"] = pd
                 spec["chartsOfCalculationTypes"].append(o)
                 report["ChartsOfCalculationTypes"] += 1
 
