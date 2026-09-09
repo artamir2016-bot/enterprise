@@ -57,6 +57,7 @@ add_executable(oes_tests
     test_configSpec.cpp
     test_calcDisplacement.cpp
     test_calcBase.cpp
+    test_calcPriority.cpp
     test_propertySerialized.cpp
     test_metadataTree.cpp
     test_commonAttribute.cpp
