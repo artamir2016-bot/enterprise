@@ -18,6 +18,7 @@ enum {
 	eCreateRecordManager,
 	eCreateRecordKey,
 	eGet,
+	eGetDisplacement,
 	eSelect,
 	eGetForm,
 	eGetRecordForm,
@@ -32,6 +33,7 @@ void ibValueManagerDataObjectCalculationRegister::FillManagerMethods(ibMemberTab
 	helper.AppendFunc(wxT("CreateRecordKey"), wxT("CreateRecordKey()"));
 	// TWO ARGUMENTS, because there are two forms: Get(filter) and Get(period, filter).
 	helper.AppendFunc(wxT("Get"), 2, wxT("Get(Period, Filter...)"));
+	helper.AppendFunc(wxT("GetDisplacement"), 1, wxT("GetDisplacement(Filter...)"));
 	helper.AppendFunc(wxT("Select"), wxT("Select()"));
 	helper.AppendFunc(wxT("GetForm"), 3, wxT("GetForm(string, owner, guid)"));
 	helper.AppendFunc(wxT("GetRecordForm"), 3, wxT("GetRecordForm(string, owner, guid)"));
@@ -60,6 +62,11 @@ bool ibValueManagerDataObjectCalculationRegister::CallAsFunc(const long lMethodN
 			: lSizeArray > 0 ?
 			ibValueManagerDataObjectCalculationRegister::Get(*paParams[0]) :
 			ibValueManagerDataObjectCalculationRegister::Get();
+		return true;
+	case eGetDisplacement:
+		pvarRetValue = lSizeArray > 0 ?
+			ibValueManagerDataObjectCalculationRegister::GetDisplacement(*paParams[0])
+			: ibValueManagerDataObjectCalculationRegister::GetDisplacement();
 		return true;
 	case eSelect:
 		pvarRetValue = new ibValueSelectorRegisterDataObject(m_metaObject);

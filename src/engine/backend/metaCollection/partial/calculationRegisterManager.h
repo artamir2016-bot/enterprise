@@ -10,6 +10,13 @@ class ibValueManagerDataObjectCalculationRegister :
 	ibValue Get(const ibValue& cFilter = ibValue());
 	ibValue Get(const ibValue& cPeriod, const ibValue& cFilter);
 
+	// GetDisplacement(Filter) — reads the filtered action-period records and returns them with their
+	// ACTUAL action period (ActualActionPeriodStart/End) computed by the tested displacement kernel
+	// (ibComputeActionPeriodDisplacement). Interim priority = read order, exactly as the record-set
+	// write hook does; the per-calculation-type priority replaces only that derivation once predefined
+	// calculation-type displacing data is imported. Empty table when the register has no action period.
+	ibValue GetDisplacement(const ibValue& cFilter = ibValue());
+
 	ibValueManagerDataObjectCalculationRegister(const ibValueMetaObjectCalculationRegister* metaObject = nullptr) : m_metaObject(metaObject) { m_members.Bind(this, &ibValueManagerDataObjectCalculationRegister::FillManagerMethods); }
 	virtual ~ibValueManagerDataObjectCalculationRegister() {}
 
