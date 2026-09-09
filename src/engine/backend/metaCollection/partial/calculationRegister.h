@@ -294,8 +294,18 @@ public:
 		return new ibValueRecordSetObjectCalculationRegister(*this);
 	}
 
-	// WriteRecordSet / DeleteRecordSet inherited from
-	// ibValueRecordSetObject (Phase B template-method).
+	// WriteRecordSet is OVERRIDDEN: before the base stores the rows, the actual action period of each
+	// record is computed from the set by displacement (ibComputeActionPeriodDisplacement) and written
+	// into the ActualActionPeriod columns. DeleteRecordSet stays inherited.
+	virtual bool WriteRecordSet(bool replace = true, bool clearTable = true) override;
+
+private:
+	// Fill ActualActionPeriodStart/End for every row by displacement over the in-memory set. No-op when
+	// the register does not use an action period. INTERIM priority = line order (a later record displaces
+	// an earlier one); the exact per-calculation-type priority arrives with imported displacing data.
+	void ComputeActualActionPeriod();
+
+public:
 
 	//****************************************************************************
 	//*                              Support methods                             *

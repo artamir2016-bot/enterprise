@@ -4,12 +4,73 @@
 #include "backend/session/session.h"
 #include "backend/databaseLayer/connectionPool.h"
 #include "backend/system/systemManager.h"
+#include "backend/calculation/actionPeriodDisplacement.h"   // ibComputeActionPeriodDisplacement
+
+#include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// WriteRecordSet / DeleteRecordSet inherited from ibValueRecordSetObject
-// (Phase B template-method) — the scaffold is in commonObject.cpp; the
-// Begin/Commit + LockByKeys helpers it calls live in commonObjectRecordSetQuery.cpp.
+// WriteRecordSet is overridden below to compute the actual action period before storing. DeleteRecordSet
+// stays inherited from ibValueRecordSetObject (Phase B template-method) — the scaffold is in
+// commonObject.cpp; the Begin/Commit + LockByKeys helpers it calls live in commonObjectRecordSetQuery.cpp.
+
+// Fill ActualActionPeriodStart/End for every row of the set by displacement over the action periods.
+// A record's actual action period is what remains after subtracting the action periods of higher-priority
+// records — computed by the tested kernel ibComputeActionPeriodDisplacement. The single [start,end] pair
+// stored per record is the bounding span of the remaining sub-intervals (a fully displaced record gets a
+// zero-length span at its start).
+//
+// ⚠ INTERIM PRIORITY = line order: a later record in the set displaces an earlier one. The exact
+// per-calculation-type priority (from the chart's displacing lists) arrives once predefined calculation-
+// type data is imported; only the priority derivation changes then, not this wiring.
+void ibValueRecordSetObjectCalculationRegister::ComputeActualActionPeriod()
+{
+	const auto* meta = dynamic_cast<const ibValueMetaObjectCalculationRegister*>(GetMetaObject());
+	if (meta == nullptr || !meta->IsUseActionPeriod())
+		return;
+
+	const ibMetaID apStart  = meta->GetActionPeriodStart()->GetMetaID();
+	const ibMetaID apEnd    = meta->GetActionPeriodEnd()->GetMetaID();
+	const ibMetaID aapStart = meta->GetActualActionPeriodStart()->GetMetaID();
+	const ibMetaID aapEnd   = meta->GetActualActionPeriodEnd()->GetMetaID();
+
+	const long n = GetRowCount();
+	if (n == 0)
+		return;
+
+	std::vector<ibDataViewItem> items;
+	std::vector<ibActionPeriodRecord> recs;
+	items.reserve(n);
+	recs.reserve(n);
+	for (long i = 0; i < n; ++i) {
+		const ibDataViewItem item = GetItem(i);
+		ibValue s, e;
+		GetValueByMetaID(item, apStart, s);
+		GetValueByMetaID(item, apEnd, e);
+		items.push_back(item);
+		recs.push_back({ /*priority*/ (int64_t)i, /*start*/ (int64_t)s.GetDate(), /*end*/ (int64_t)e.GetDate() });
+	}
+
+	const std::vector<std::vector<ibActionInterval>> actual = ibComputeActionPeriodDisplacement(recs);
+	for (long i = 0; i < n; ++i) {
+		int64_t as, ae;
+		if (actual[i].empty()) {              // fully displaced -> zero-length span at the original start
+			as = recs[i].start;
+			ae = recs[i].start;
+		} else {
+			as = actual[i].front().start;
+			ae = actual[i].back().end;
+		}
+		SetValueByMetaID(items[i], aapStart, ibValue(wxDateTime(wxLongLong(as))));
+		SetValueByMetaID(items[i], aapEnd,   ibValue(wxDateTime(wxLongLong(ae))));
+	}
+}
+
+bool ibValueRecordSetObjectCalculationRegister::WriteRecordSet(bool replace, bool clearTable)
+{
+	ComputeActualActionPeriod();
+	return ibValueRecordSetObject::WriteRecordSet(replace, clearTable);
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
