@@ -95,3 +95,19 @@ TEST(CalcDisplacement, EmptyInput) {
 	auto r = ibComputeActionPeriodDisplacement({});
 	EXPECT_TRUE(r.empty());
 }
+
+TEST(CalcDisplacement, EmptyActionPeriodRecordYieldsNothing) {
+	// A record with a zero-length action period ([5,5)) has no actual period; a normal record beside it
+	// (even with lower priority) is untouched by that empty one.
+	auto r = ibComputeActionPeriodDisplacement({
+		{ 9, 5, 5 },     // high but empty
+		{ 1, 0, 10 },    // low, non-empty
+	});
+	EXPECT_TRUE(r[0].empty()) << "empty base -> no actual period";
+	ExpectIntervals(r[1], { { 0, 10 } }, "empty high does not displace");
+}
+
+TEST(CalcDisplacement, SingleRecordKeepsWholePeriod) {
+	auto r = ibComputeActionPeriodDisplacement({ { 7, 100, 200 } });
+	ExpectIntervals(r[0], { { 100, 200 } }, "lone record");
+}

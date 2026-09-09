@@ -4,46 +4,55 @@
 
 namespace {
 
-// Merge a set of half-open intervals into a minimal sorted, non-overlapping cover. Adjacent
-// intervals ([a,b) + [b,c) = [a,c)) merge too — a gap needs a strictly-positive width to survive,
-// which is what makes "the parts NOT covered" come out right.
-std::vector<ibActionInterval> MergeIntervals(std::vector<ibActionInterval> ints)
+// Sort `iv` and compact it IN PLACE into a minimal non-overlapping cover; returns the logical size of
+// the merged prefix [0, N). Adjacent intervals ([a,b)+[b,c)=[a,c)) merge too — a gap needs a strictly
+// positive width to survive, which is what makes "the parts NOT covered" come out right. In place so no
+// second vector is allocated per record (this runs once per displaced record on the write path).
+size_t MergeInPlace(std::vector<ibActionInterval>& iv)
 {
-	std::vector<ibActionInterval> out;
-	ints.erase(std::remove_if(ints.begin(), ints.end(),
-		[](const ibActionInterval& i) { return i.end <= i.start; }), ints.end());
-	std::sort(ints.begin(), ints.end(),
+	// Drop empty intervals, compacting toward the front.
+	size_t w = 0;
+	for (size_t r = 0; r < iv.size(); ++r)
+		if (iv[r].end > iv[r].start)
+			iv[w++] = iv[r];
+	if (w <= 1)
+		return w;
+
+	std::sort(iv.begin(), iv.begin() + w,
 		[](const ibActionInterval& a, const ibActionInterval& b) {
 			return a.start != b.start ? a.start < b.start : a.end < b.end;
 		});
-	for (const ibActionInterval& i : ints) {
-		if (!out.empty() && i.start <= out.back().end)
-			out.back().end = std::max(out.back().end, i.end);   // overlap or touch -> extend
-		else
-			out.push_back(i);
+
+	size_t m = 0;   // last kept merged index
+	for (size_t r = 1; r < w; ++r) {
+		if (iv[r].start <= iv[m].end) {            // overlap or touch -> extend
+			if (iv[r].end > iv[m].end) iv[m].end = iv[r].end;
+		} else {
+			iv[++m] = iv[r];
+		}
 	}
-	return out;
+	return m + 1;
 }
 
-// Subtract a sorted, merged cover from a base interval [s, e): the remaining sub-intervals.
-std::vector<ibActionInterval> SubtractCover(int64_t s, int64_t e,
-                                            const std::vector<ibActionInterval>& cover)
+// Subtract the merged cover in cover[0, coverN) from base [s, e), APPENDING the remaining sub-intervals
+// straight into `out` (no temporary vector, no return copy).
+void SubtractCoverInto(int64_t s, int64_t e, const std::vector<ibActionInterval>& cover, size_t coverN,
+                       std::vector<ibActionInterval>& out)
 {
-	std::vector<ibActionInterval> result;
 	if (e <= s)
-		return result;   // empty base -> nothing remains
+		return;   // empty base -> nothing remains
 	int64_t cur = s;
-	for (const ibActionInterval& c : cover) {
+	for (size_t k = 0; k < coverN; ++k) {
+		const ibActionInterval& c = cover[k];
 		if (c.end <= cur)          continue;   // entirely before the cursor
 		if (c.start >= e)          break;      // sorted -> the rest are past the base
 		if (c.start > cur)
-			result.push_back({ cur, std::min(c.start, e) });
-		cur = std::max(cur, c.end);
+			out.push_back({ cur, (c.start < e ? c.start : e) });
+		if (c.end > cur) cur = c.end;
 		if (cur >= e)              break;      // base fully consumed
 	}
 	if (cur < e)
-		result.push_back({ cur, e });
-	return result;
+		out.push_back({ cur, e });
 }
 
 } // namespace
@@ -51,17 +60,31 @@ std::vector<ibActionInterval> SubtractCover(int64_t s, int64_t e,
 std::vector<std::vector<ibActionInterval>>
 ibComputeActionPeriodDisplacement(const std::vector<ibActionPeriodRecord>& records)
 {
-	std::vector<std::vector<ibActionInterval>> out(records.size());
-	for (size_t i = 0; i < records.size(); ++i) {
+	const size_t n = records.size();
+	std::vector<std::vector<ibActionInterval>> out(n);
+
+	// ONE scratch cover, reused across records (cleared, not reallocated) — the per-record allocation of
+	// the old code (a fresh `higher`, a merged copy, a subtracted copy) is gone. `out[i]` is written into
+	// directly. The pairwise scan stays O(n²) — inherent to "each record against every higher one" — but a
+	// record set posted by one document is small, and the hot cost was the allocations, not the compares.
+	std::vector<ibActionInterval> higher;
+	for (size_t i = 0; i < n; ++i) {
 		const ibActionPeriodRecord& r = records[i];
-		// The displacers: every record with STRICTLY higher priority (equal priorities coexist).
-		std::vector<ibActionInterval> higher;
-		for (size_t j = 0; j < records.size(); ++j) {
-			if (j == i) continue;
-			if (records[j].priority > r.priority)
+		if (r.end <= r.start)
+			continue;   // empty action period -> no actual period (out[i] stays empty)
+
+		higher.clear();
+		for (size_t j = 0; j < n; ++j)
+			if (j != i && records[j].priority > r.priority && records[j].end > records[j].start)
 				higher.push_back({ records[j].start, records[j].end });
+
+		if (higher.empty()) {          // nothing displaces it (the common case) -> whole period stands
+			out[i].push_back({ r.start, r.end });
+			continue;
 		}
-		out[i] = SubtractCover(r.start, r.end, MergeIntervals(std::move(higher)));
+
+		const size_t coverN = MergeInPlace(higher);
+		SubtractCoverInto(r.start, r.end, higher, coverN, out[i]);
 	}
 	return out;
 }
