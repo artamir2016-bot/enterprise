@@ -363,6 +363,16 @@ def _map_form_children(child_items, in_table):
                 title = _title_loc(el)
                 if title:
                     node["title"] = title
+        # Layout stretch — <HorizontalStretch>/<VerticalStretch> say the element fills/ grows along an
+        # axis. Carried as flags; the C++ side maps them to the wrapping SizerItem's Stretch (cross-axis
+        # fill = wxEXPAND) and Proportion (main-axis growth) RELATIVE to the parent box orientation.
+        # 1C's default is false (no stretch), so only the true flags are emitted.
+        hs = el.find(LF + "HorizontalStretch")
+        if hs is not None and _txt(hs).strip().lower() == "true":
+            node["hstretch"] = True
+        vs = el.find(LF + "VerticalStretch")
+        if vs is not None and _txt(vs).strip().lower() == "true":
+            node["vstretch"] = True
         # Event handlers — bind the 1C element's <Events> to the OES control's events so the
         # imported form procedures actually fire (field OnChange, checkbox click, table selection…).
         events = _control_events(el, kind)

@@ -333,12 +333,32 @@ void SetControlEvents(ibDataNode& node, const json& c) {
 	}
 }
 
+// Map a control's 1C stretch flags onto its SizerItem cell, RELATIVE to the parent box orientation.
+// 1C's HorizontalStretch fills width, VerticalStretch grows height. In a box, one axis is the MAIN axis
+// (the stacking direction — Proportion controls a child's share of it) and the other is the CROSS axis
+// (wxEXPAND makes a child fill it). So the flag along the cross axis becomes Stretch=Expand and the flag
+// along the main axis becomes Proportion=1. Which is which depends on the parent's orientation. No flag
+// leaves the SizerItem's ctor defaults (shrink, proportion 0) untouched.
+void ApplyStretchFlags(ibDataNode& sizerItem, const json& c, int parentOrient) {
+	const bool hstretch = c.contains("hstretch") && c["hstretch"].is_boolean() && c["hstretch"].get<bool>();
+	const bool vstretch = c.contains("vstretch") && c["vstretch"].is_boolean() && c["vstretch"].get<bool>();
+	if (!hstretch && !vstretch)
+		return;
+	const bool vertical  = (parentOrient != kOrientHorizontal);
+	const bool fillCross = vertical ? hstretch : vstretch;   // cross-axis fill -> wxEXPAND
+	const bool growMain  = vertical ? vstretch : hstretch;   // main-axis growth -> Proportion
+	if (fillCross)
+		sizerItem.SetProperty(wxT("Stretch"), ibDataValue::Int(kStretchExpand));
+	if (growMain)
+		sizerItem.SetProp<s32>(wxT("Proportion"), 1);
+}
+
 // Emit one control (and its children) under `parent`. `host` says how the parent lays children out:
 // a Sizerable parent wraps each child in a SizerItem, a Notebook/Table parent adds pages/columns
 // directly. `tableId` is the enclosing tablebox's section metaId (0 otherwise) so a column resolves
 // its 3-hop source. `nextId` hands out form-unique control ids.
 void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
-                      int& nextId, ibMetaID tableId, Host host) {
+                      int& nextId, ibMetaID tableId, Host host, int parentOrient = kOrientVertical) {
 	const wxString kind = JStr(c, "kind", wxT("field")).Lower();
 	const wxString name = JStr(c, "name");
 
@@ -368,8 +388,10 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 		// The box rides a SizerItem cell in a Sizerable parent (expanded to fill it);
 		// in the degenerate non-sizerable case it attaches directly.
 		ibDataNode* boxParent = &parent;
-		if (host == Host::Sizerable)
+		if (host == Host::Sizerable) {
 			boxParent = &AddSizerItem(parent, nextId, Layout::Sizer);
+			ApplyStretchFlags(*boxParent, c, parentOrient);   // group's own stretch in its parent's box
+		}
 		const int id = nextId++;
 		ibDataNode& box = boxParent->AddChild(titled ? kCtrlStaticBox : kCtrlBox, id);
 		box.SetValue(wxT("ControlId"), (s32)id);
@@ -380,7 +402,7 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 			box.SetProp<wxString>(wxT("Title"), title);
 
 		for (const json& sub : *ch)
-			BuildControlNode(box, sub, maps, nextId, tableId, Host::Sizerable);
+			BuildControlNode(box, sub, maps, nextId, tableId, Host::Sizerable, orient);
 		return;
 	}
 
@@ -406,8 +428,10 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	// A Sizerable parent lays out through its sizer, so the control rides a SizerItem cell; a notebook
 	// takes pages directly and a tablebox takes columns directly.
 	ibDataNode* controlParent = &parent;
-	if (host == Host::Sizerable)
+	if (host == Host::Sizerable) {
 		controlParent = &AddSizerItem(parent, nextId, layout);
+		ApplyStretchFlags(*controlParent, c, parentOrient);   // field/table stretch in its parent's box
+	}
 
 	const int id = nextId++;
 	ibDataNode& node = controlParent->AddChild(clsid, id);
