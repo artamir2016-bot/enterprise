@@ -55,6 +55,13 @@ public:
 		return ibValueMetaObjectRegisterData::ResolveChild(clsid);
 	}
 
+	// The Recalculation subordinate objects of this register (public — the designer navigator lists them).
+	std::vector<ibValueMetaObject*> GetRecalculationArrayObject() const {
+		std::vector<ibValueMetaObject*> array;
+		FillArrayObjectByFilter<ibValueMetaObject>(array, { g_metaRecalculationCLSID });
+		return array;
+	}
+
 	ibCalculationPeriodicity GetPeriodicity() const {
 		return m_propertyPeriodicity->GetValueAsEnum();
 	}

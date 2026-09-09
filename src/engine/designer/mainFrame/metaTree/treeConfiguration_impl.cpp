@@ -843,6 +843,7 @@ bool ibConfigurationTree::RenameMetaObject(ibValueMetaObject* metaObject, const 
 }
 
 #include "backend/metaCollection/partial/commonObject.h"
+#include "backend/metaCollection/partial/calculationRegister.h"   // ibValueMetaObjectCalculationRegister — recalc children
 
 void ibConfigurationTree::AddInterfaceItem(ibValueMetaObject* metaObject, const wxTreeItemId& hParentID)
 {
@@ -964,9 +965,10 @@ void ibConfigurationTree::AddCalculationRegisterItem(ibValueMetaObject* metaObje
 	// its own subordinate Recalculation objects (Перерасчёт).
 	AddInformationRegisterItem(metaObject, hParentID);
 
-	std::vector<ibValueMetaObject*> recalcs;
-	metaObject->FillArrayObjectByFilter<ibValueMetaObject>(recalcs, { g_metaRecalculationCLSID });
-	AppendObjectGroup(hParentID, g_metaRecalculationCLSID, objectRecalculationsName, recalcs);
+	ibValueMetaObjectCalculationRegister* reg = metaObject->ConvertToType<ibValueMetaObjectCalculationRegister>();
+	if (reg != nullptr)
+		AppendObjectGroup(hParentID, g_metaRecalculationCLSID, objectRecalculationsName,
+			reg->GetRecalculationArrayObject());
 }
 
 #include "frontend/artProvider/artProvider.h"
