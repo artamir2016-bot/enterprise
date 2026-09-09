@@ -17,6 +17,15 @@ class ibValueManagerDataObjectCalculationRegister :
 	// calculation-type displacing data is imported. Empty table when the register has no action period.
 	ibValue GetDisplacement(const ibValue& cFilter = ibValue());
 
+	// GetBase(BaseRegister, Filter) — the proportional-by-period base (ПолучитьБазу). For each filtered
+	// record of THIS (dependent) register it sums, per base-register resource, that resource weighted by
+	// how much of each base record's ACTUAL action period (after displacement in the base register) lies
+	// inside the dependent record's BASE period: value * overlap / total. Base records are matched to the
+	// dependent record by shared-name dimension VALUES (the main<->base dimension mapping). Returns a value
+	// table = the dependent record's own attributes plus one "Base<Resource>" column per base resource.
+	// Uses the tested kernels ibComputeActionPeriodDisplacement + ibComputeBaseContributions.
+	ibValue GetBase(const ibValue& cBaseRegister, const ibValue& cFilter = ibValue());
+
 	ibValueManagerDataObjectCalculationRegister(const ibValueMetaObjectCalculationRegister* metaObject = nullptr) : m_metaObject(metaObject) { m_members.Bind(this, &ibValueManagerDataObjectCalculationRegister::FillManagerMethods); }
 	virtual ~ibValueManagerDataObjectCalculationRegister() {}
 
