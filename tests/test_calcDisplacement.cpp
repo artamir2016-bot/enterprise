@@ -2,10 +2,56 @@
 #include <gtest/gtest.h>
 #include "backend/calculation/actionPeriodDisplacement.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
+
 namespace {
 
 using I = ibActionInterval;
 using R = ibActionPeriodRecord;
+
+// ---- OLD (pre-optimization) implementation, kept HERE only to benchmark against the new one ---------
+// A faithful copy of the original: a fresh `higher` vector per record, MergeIntervals returns a new
+// vector, SubtractCover returns a new vector -> ~3 allocations per record.
+std::vector<I> Naive_Merge(std::vector<I> ints) {
+	std::vector<I> out;
+	ints.erase(std::remove_if(ints.begin(), ints.end(),
+		[](const I& i) { return i.end <= i.start; }), ints.end());
+	std::sort(ints.begin(), ints.end(),
+		[](const I& a, const I& b) { return a.start != b.start ? a.start < b.start : a.end < b.end; });
+	for (const I& i : ints) {
+		if (!out.empty() && i.start <= out.back().end) out.back().end = std::max(out.back().end, i.end);
+		else out.push_back(i);
+	}
+	return out;
+}
+std::vector<I> Naive_Subtract(int64_t s, int64_t e, const std::vector<I>& cover) {
+	std::vector<I> result;
+	if (e <= s) return result;
+	int64_t cur = s;
+	for (const I& c : cover) {
+		if (c.end <= cur) continue;
+		if (c.start >= e) break;
+		if (c.start > cur) result.push_back({ cur, std::min(c.start, e) });
+		cur = std::max(cur, c.end);
+		if (cur >= e) break;
+	}
+	if (cur < e) result.push_back({ cur, e });
+	return result;
+}
+std::vector<std::vector<I>> NaiveDisplacement(const std::vector<R>& records) {
+	std::vector<std::vector<I>> out(records.size());
+	for (size_t i = 0; i < records.size(); ++i) {
+		const R& r = records[i];
+		std::vector<I> higher;
+		for (size_t j = 0; j < records.size(); ++j)
+			if (j != i && records[j].priority > r.priority)
+				higher.push_back({ records[j].start, records[j].end });
+		out[i] = Naive_Subtract(r.start, r.end, Naive_Merge(std::move(higher)));
+	}
+	return out;
+}
 
 // Convenience: assert result[i] equals the given intervals.
 void ExpectIntervals(const std::vector<I>& got, const std::vector<I>& want, const char* what) {
@@ -110,4 +156,49 @@ TEST(CalcDisplacement, EmptyActionPeriodRecordYieldsNothing) {
 TEST(CalcDisplacement, SingleRecordKeepsWholePeriod) {
 	auto r = ibComputeActionPeriodDisplacement({ { 7, 100, 200 } });
 	ExpectIntervals(r[0], { { 100, 200 } }, "lone record");
+}
+
+// Benchmark: old (naive, ~3 allocs/record) vs new (scratch reuse + in-place + early-outs). DISABLED by
+// default; run with: oes_tests --gtest_also_run_disabled_tests --gtest_filter=*CalcDisplacementBench*
+// Also asserts the two implementations produce IDENTICAL results on the dataset (equivalence, not just
+// speed). This is how the optimization is verified: same output, measured time.
+TEST(CalcDisplacement, DISABLED_CalcDisplacementBench) {
+	// A realistic-ish set: many records, tiered priorities, overlapping action periods.
+	const int N = 3000, TIERS = 40, ITERS = 40;
+	std::vector<R> recs;
+	recs.reserve(N);
+	for (int i = 0; i < N; ++i) {
+		int64_t start = (int64_t)(i % 500);          // heavy overlap across records
+		recs.push_back({ /*priority*/ (int64_t)(i % TIERS), start, start + 50 });
+	}
+
+	// Equivalence on this dataset.
+	{
+		auto a = NaiveDisplacement(recs);
+		auto b = ibComputeActionPeriodDisplacement(recs);
+		ASSERT_EQ(a.size(), b.size());
+		for (size_t i = 0; i < a.size(); ++i) {
+			ASSERT_EQ(a[i].size(), b[i].size()) << "row " << i;
+			for (size_t k = 0; k < a[i].size(); ++k) {
+				EXPECT_EQ(a[i][k].start, b[i][k].start);
+				EXPECT_EQ(a[i][k].end,   b[i][k].end);
+			}
+		}
+	}
+
+	using clock = std::chrono::steady_clock;
+	volatile size_t sink = 0;
+
+	auto t0 = clock::now();
+	for (int it = 0; it < ITERS; ++it) { auto r = NaiveDisplacement(recs); sink += r.size(); }
+	auto t1 = clock::now();
+	for (int it = 0; it < ITERS; ++it) { auto r = ibComputeActionPeriodDisplacement(recs); sink += r.size(); }
+	auto t2 = clock::now();
+
+	const double oldMs = std::chrono::duration<double, std::milli>(t1 - t0).count() / ITERS;
+	const double newMs = std::chrono::duration<double, std::milli>(t2 - t1).count() / ITERS;
+	std::printf("\n[CalcDisplacementBench] N=%d tiers=%d iters=%d\n  OLD (naive): %.3f ms/call\n  NEW (opt):   %.3f ms/call\n  speedup:     %.2fx\n",
+		N, TIERS, ITERS, oldMs, newMs, oldMs / (newMs > 0 ? newMs : 1e-9));
+	(void)sink;
+	SUCCEED();
 }
