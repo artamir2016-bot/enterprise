@@ -62,29 +62,48 @@ ibComputeActionPeriodDisplacement(const std::vector<ibActionPeriodRecord>& recor
 {
 	const size_t n = records.size();
 	std::vector<std::vector<ibActionInterval>> out(n);
+	if (n == 0)
+		return out;
 
-	// ONE scratch cover, reused across records (cleared, not reallocated) — the per-record allocation of
-	// the old code (a fresh `higher`, a merged copy, a subtracted copy) is gone. `out[i]` is written into
-	// directly. The pairwise scan stays O(n²) — inherent to "each record against every higher one" — but a
-	// record set posted by one document is small, and the hot cost was the allocations, not the compares.
-	std::vector<ibActionInterval> higher;
-	for (size_t i = 0; i < n; ++i) {
-		const ibActionPeriodRecord& r = records[i];
-		if (r.end <= r.start)
-			continue;   // empty action period -> no actual period (out[i] stays empty)
+	// ⭐ TIERED SWEEP instead of the O(n²) pairwise scan. Records are visited by DESCENDING priority, and
+	// a single running `cover` — the merged action periods of every STRICTLY-higher tier seen so far — is
+	// carried forward. A record's actual period is just its span minus that cover; equal-priority records
+	// share a tier and never see each other (they do not displace), so the cover is grown only AFTER a
+	// whole tier is computed. With periods that coalesce (the usual case) the cover stays tiny and the
+	// whole pass is ~O(n log n) — versus the previous re-collect-sort-merge of all higher records per row.
+	std::vector<size_t> order(n);
+	for (size_t i = 0; i < n; ++i) order[i] = i;
+	std::sort(order.begin(), order.end(),
+		[&records](size_t a, size_t b) { return records[a].priority > records[b].priority; });
 
-		higher.clear();
-		for (size_t j = 0; j < n; ++j)
-			if (j != i && records[j].priority > r.priority && records[j].end > records[j].start)
-				higher.push_back({ records[j].start, records[j].end });
+	std::vector<ibActionInterval> cover;   // merged, sorted; all strictly-higher tiers so far
+	size_t coverN = 0;
 
-		if (higher.empty()) {          // nothing displaces it (the common case) -> whole period stands
-			out[i].push_back({ r.start, r.end });
-			continue;
+	size_t idx = 0;
+	while (idx < n) {
+		const int64_t prio = records[order[idx]].priority;
+		const size_t tierBegin = idx;
+		while (idx < n && records[order[idx]].priority == prio)
+			++idx;
+
+		// Actuals for this tier against the strictly-higher cover.
+		for (size_t k = tierBegin; k < idx; ++k) {
+			const ibActionPeriodRecord& r = records[order[k]];
+			if (r.end > r.start)
+				SubtractCoverInto(r.start, r.end, cover, coverN, out[order[k]]);
 		}
 
-		const size_t coverN = MergeInPlace(higher);
-		SubtractCoverInto(r.start, r.end, higher, coverN, out[i]);
+		// Fold this tier into the cover for the tiers below it (append the tier's non-empty periods, then
+		// re-merge). Calculation types are a small set, so the number of tiers is small and this is cheap.
+		if (idx < n) {   // no need to grow the cover after the LAST (lowest) tier
+			cover.resize(coverN);
+			for (size_t k = tierBegin; k < idx; ++k) {
+				const ibActionPeriodRecord& r = records[order[k]];
+				if (r.end > r.start)
+					cover.push_back({ r.start, r.end });
+			}
+			coverN = MergeInPlace(cover);
+		}
 	}
 	return out;
 }
