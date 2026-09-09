@@ -325,6 +325,43 @@ TEST(ConfigSpec, BuildFull_CalculationRegisterActionPeriod) {
 		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
 }
 
+// Recalculation (Перерасчёт) — a subordinate object of a calculation register, holding its own
+// dimensions. It creates as a register child and byte round-trips; its name and dimension names
+// appear in the serialized configuration.
+TEST(ConfigSpec, BuildFull_CreatesRecalculation) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "RecalcCfg",
+	  "catalogs": [ { "name": "Employees" }, { "name": "Organizations" } ],
+	  "calculationRegisters": [
+	    { "name": "Charges", "useActionPeriod": true,
+	      "dimensions": [
+	        { "name": "Employee",     "type": "ref", "refs": ["Catalog.Employees"] },
+	        { "name": "Organization", "type": "ref", "refs": ["Catalog.Organizations"] } ],
+	      "resources": [ { "name": "Amount", "type": "Number", "precision": 15, "scale": 2 } ],
+	      "recalculations": [
+	        { "name": "ChargesRecalc", "dimensions": [
+	            { "name": "Employee",     "type": "ref", "refs": ["Catalog.Employees"] },
+	            { "name": "Organization", "type": "ref", "refs": ["Catalog.Organizations"] } ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+
+	for (const char* s : { "Charges", "ChargesRecalc", "Employee", "Organization", "Amount" })
+		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
+}
+
 TEST(ConfigSpec, BuildFull_CreatesRolesAndSubsystems) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

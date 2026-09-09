@@ -992,6 +992,21 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 					cr->SetChartOfCalculationTypes(found->second->GetMetaID());
 			}
 		}
+		// Subordinate Recalculation objects (Перерасчёт): child tables under the register, each with its
+		// own dimensions (in 1C they map register dimensions; structurally each has its own dimension set).
+		auto rc = r.second->find("recalculations");
+		if (rc != r.second->end() && rc->is_array()) {
+			for (const json& rnode : *rc) {
+				const wxString rname = JStr(rnode, "name");
+				ibValueMetaObject* recalc = cfg.CreateMetaObject(g_metaRecalculationCLSID, r.first, /*runObject*/ false, rname);
+				if (recalc == nullptr) {
+					err = wxString::Format(wxT("failed to create recalculation '%s'"), rname);
+					return false;
+				}
+				if (!AddTypedChildren(cfg, recalc, rnode, "dimensions", g_metaDimensionCLSID, refMap, err))
+					return false;
+			}
+		}
 	}
 	for (auto& c : constants) {
 		auto* konst = dynamic_cast<ibValueMetaObjectConstant*>(c.first);

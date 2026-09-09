@@ -128,6 +128,7 @@ wxString ibMetaDiffWalker::GroupLabelFor(ibClassID clsid)
 	if (clsid == g_metaAccountDimensionKindsTableCLSID)         return _("Account dimension kinds tables");
 	if (clsid == g_metaEnumCLSID)                       return _("Enum values");
 	if (clsid == g_metaDimensionCLSID)                  return _("Dimensions");
+	if (clsid == g_metaRecalculationCLSID)              return _("Recalculations");
 	if (clsid == g_metaResourceCLSID)                   return _("Resources");
 	if (clsid == g_metaPredefinedAttributeCLSID)        return _("Predefined attributes");
 
@@ -192,6 +193,7 @@ int ibMetaDiffWalker::GroupOrderRank(ibClassID clsid)
 		{ g_metaTableCLSID,                      350 },
 		{ g_metaTableRefCLSID,                   351 },
 		{ g_metaAccountDimensionKindsTableCLSID,         360 },
+		{ g_metaRecalculationCLSID,              365 },   // Recalculation subordinate tables (under a calc register)
 		{ g_metaFormCLSID,                       370 },
 		{ g_metaCommandCLSID,                    375 },   // an object's own commands sit between forms and templates
 		{ g_metaTemplateCLSID,                   380 },

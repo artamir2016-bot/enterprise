@@ -507,6 +507,7 @@ private:
 	void AddReportItem(ibValueMetaObject* obj, const wxTreeItemId& item);
 	void AddInformationRegisterItem(ibValueMetaObject* obj, const wxTreeItemId& item);
 	void AddAccumulationRegisterItem(ibValueMetaObject* obj, const wxTreeItemId& item);
+	void AddCalculationRegisterItem(ibValueMetaObject* obj, const wxTreeItemId& item);
 
 	void FillData();
 

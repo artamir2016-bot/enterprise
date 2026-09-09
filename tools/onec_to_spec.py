@@ -708,6 +708,48 @@ def parse_register(root_el, dump_dir, kind_dir, base_name):
     forms = parse_forms(dump_dir, kind_dir, base_name)
     if forms:
         out["forms"] = forms
+    # Subordinate Recalculations (Перерасчёт): <kind>/<base>/Recalculations/*.xml. Each recalc's
+    # dimension INHERITS its type from the register dimension it maps (the 1C recalc XML carries no
+    # own Type), so its type is copied from the register dimension of the same name.
+    recalcs = parse_recalculations(dump_dir, kind_dir, base_name, out["dimensions"])
+    if recalcs:
+        out["recalculations"] = recalcs
+    return out
+
+
+def parse_recalculations(dump_dir, kind_dir, base_name, register_dims):
+    rc_dir = os.path.join(dump_dir, kind_dir, base_name, "Recalculations")
+    if not os.path.isdir(rc_dir):
+        return []
+    dim_by_name = {d.get("name"): d for d in (register_dims or [])}
+    out = []
+    for fn in sorted(os.listdir(rc_dir)):
+        if not fn.lower().endswith(".xml"):
+            continue
+        r = load_root(os.path.join(rc_dir, fn))
+        if r is None:
+            continue
+        obj_el = next(iter(r), None)
+        if obj_el is None:
+            continue
+        rname = parse_props_name(obj_el)
+        if not rname:
+            continue
+        dims = []
+        co = child_objects(obj_el)
+        if co is not None:
+            for el in co:
+                if _local(el.tag) != "Dimension":
+                    continue
+                dname = parse_props_name(el)
+                if not dname:
+                    continue
+                # Copy the matching register dimension's type; fall back to an untyped dimension.
+                src = dim_by_name.get(dname)
+                d = dict(src) if src else {}
+                d["name"] = dname
+                dims.append(d)
+        out.append({"name": rname, "dimensions": dims})
     return out
 
 

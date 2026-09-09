@@ -46,6 +46,15 @@ public:
 	ibValueMetaObjectCalculationRegister();
 	virtual ~ibValueMetaObjectCalculationRegister();
 
+	// A calculation register additionally owns Recalculation subordinate objects (Перерасчёт) —
+	// child tables keyed by (recalc object, dimensions). Everything else (Dimension/Resource/Attribute)
+	// stays with the register-data base.
+	virtual ibClassID ResolveChild(const ibClassID& clsid) const override {
+		if (clsid == g_metaRecalculationCLSID)
+			return clsid;
+		return ibValueMetaObjectRegisterData::ResolveChild(clsid);
+	}
+
 	ibCalculationPeriodicity GetPeriodicity() const {
 		return m_propertyPeriodicity->GetValueAsEnum();
 	}

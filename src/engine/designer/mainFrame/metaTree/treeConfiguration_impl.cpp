@@ -33,6 +33,7 @@
 
 #define objectTablesName _("Tables")
 #define objectEnumerationsName _("Enums")
+#define objectRecalculationsName _("Recalculations")
 
 //***********************************************************************
 //*								metadata                                * 
@@ -957,6 +958,17 @@ void ibConfigurationTree::AddAccumulationRegisterItem(ibValueMetaObject* metaObj
 	AddInformationRegisterItem(metaObject, hParentID);   // same shape — an accounting register too
 }
 
+void ibConfigurationTree::AddCalculationRegisterItem(ibValueMetaObject* metaObject, const wxTreeItemId& hParentID)
+{
+	// A calculation register has the register shape (dimensions/resources/attributes/forms/...) PLUS
+	// its own subordinate Recalculation objects (Перерасчёт).
+	AddInformationRegisterItem(metaObject, hParentID);
+
+	std::vector<ibValueMetaObject*> recalcs;
+	metaObject->FillArrayObjectByFilter<ibValueMetaObject>(recalcs, { g_metaRecalculationCLSID });
+	AppendObjectGroup(hParentID, g_metaRecalculationCLSID, objectRecalculationsName, recalcs);
+}
+
 #include "frontend/artProvider/artProvider.h"
 
 ////////////////////////////////////////////////////////////////////////////
@@ -1075,7 +1087,7 @@ void ibConfigurationTree::ExpandMetaItem(ibValueMetaObject* metaItem, const wxTr
 	else if (clsid == g_metaChartOfCalculationTypesCLSID)    AddCatalogItem(metaItem, item);
 	else if (clsid == g_metaChartOfAccountsCLSID)            AddCatalogItem(metaItem, item);
 	else if (clsid == g_metaAccountingRegisterCLSID)         AddAccumulationRegisterItem(metaItem, item);
-	else if (clsid == g_metaCalculationRegisterCLSID)        AddInformationRegisterItem(metaItem, item);
+	else if (clsid == g_metaCalculationRegisterCLSID)        AddCalculationRegisterItem(metaItem, item);
 	else if (clsid == g_metaSectionCLSID)                    AddInterfaceItem(metaItem, item);
 
 	// A COMMAND HOLDS COMMANDS. The fill path always knew this (it goes through AppendCommandNode);

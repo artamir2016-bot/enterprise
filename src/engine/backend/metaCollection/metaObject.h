@@ -106,6 +106,7 @@ constexpr ibClassID g_metaAccountingRegisterCLSID = metadata_to_clsid("MD_AREG")
 //CALCULATION OBJECTS
 constexpr ibClassID g_metaChartOfCalculationTypesCLSID = metadata_to_clsid("MD_CHCL");
 constexpr ibClassID g_metaCalculationRegisterCLSID = metadata_to_clsid("MD_CREG");
+constexpr ibClassID g_metaRecalculationCLSID = metadata_to_clsid("MD_RCLC");   // subordinate: Recalculation under a calc register
 
 // EXTERNAL
 constexpr ibClassID g_metaExternalDataProcessorCLSID = metadata_to_clsid("MD_EDPR");
