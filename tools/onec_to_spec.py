@@ -1100,6 +1100,63 @@ def main():
                 spec["accountingRegisters"].append(o)
                 report["AccountingRegisters"] += 1
 
+    if want("SessionParameters"):
+        spec["sessionParameters"] = []
+        for base, path in iter_object_xml(args.dump_dir, "SessionParameters", args.limit):
+            r = load_root(path)
+            if r is None:
+                continue
+            obj_el = next(iter(r), None)
+            props = obj_el.find(MD + "Properties") if obj_el is not None else None
+            if props is None:
+                continue
+            name = _txt(props.find(MD + "Name")).strip()
+            if not name:
+                continue
+            d = map_type(props.find(MD + "Type"))   # a session parameter IS a typed attribute of the session
+            d["name"] = name
+            spec["sessionParameters"].append(d)
+            report["SessionParameters"] += 1
+
+    if want("ScheduledJobs"):
+        spec["scheduledJobs"] = []
+        for base, path in iter_object_xml(args.dump_dir, "ScheduledJobs", args.limit):
+            r = load_root(path)
+            if r is None:
+                continue
+            obj_el = next(iter(r), None)
+            props = obj_el.find(MD + "Properties") if obj_el is not None else None
+            if props is None:
+                continue
+            name = _txt(props.find(MD + "Name")).strip()
+            if not name:
+                continue
+            job = {"name": name}
+            use = props.find(MD + "Use")
+            if use is not None:
+                job["use"] = (_txt(use).strip().lower() == "true")
+            spec["scheduledJobs"].append(job)
+            report["ScheduledJobs"] += 1
+
+    if want("CommonForms"):
+        spec["commonForms"] = []
+        for base, path in iter_object_xml(args.dump_dir, "CommonForms", args.limit):
+            form_xml = os.path.join(args.dump_dir, "CommonForms", base, "Ext", "Form.xml")
+            module = read_file(os.path.join(args.dump_dir, "CommonForms", base, "Ext", "Form", "Module.bsl"))
+            entry = {"name": base, "module": maybe_translate(module)}
+            controls = parse_form_controls(form_xml)
+            if controls:
+                entry["controls"] = controls
+                report["FormControls"] += 1
+            fattrs = parse_form_attributes(form_xml)
+            if fattrs:
+                entry["formAttributes"] = fattrs
+            commands = parse_form_commands(form_xml)
+            if commands:
+                entry["commands"] = commands
+            spec["commonForms"].append(entry)
+            report["CommonForms"] += 1
+
     if want("Roles"):
         spec["roles"] = []
         for base, path in iter_object_xml(args.dump_dir, "Roles", args.limit):

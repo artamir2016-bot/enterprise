@@ -32,6 +32,8 @@ KIND_KEY = {
     "AccountingRegisters": "accountingRegisters",
     "Roles": "roles", "Subsystems": "subsystems",
     "DataProcessors": "dataProcessors", "Reports": "reports",
+    "SessionParameters": "sessionParameters", "ScheduledJobs": "scheduledJobs",
+    "CommonForms": "commonForms",
 }
 
 ERR_MARKERS = ("error", "ошибк", "exception", "fail", "cannot", "не удал", "assert", "0xC0000")

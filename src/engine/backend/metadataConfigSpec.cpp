@@ -20,7 +20,9 @@
 #include "backend/metaCollection/partial/chartOfAccounts.h"            // ibValueMetaObjectChartOfAccounts (chart-of-characteristic-types binding)
 #include "backend/metaCollection/partial/accountingRegister.h"         // ibValueMetaObjectAccountingRegister (chart-of-accounts binding)
 #include "backend/propertyManager/property/propertyChartOfCharacteristicTypes.h" // ibPropertyChartOfCharacteristicTypes::SetValue
-#include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm
+#include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm / ibValueMetaObjectCommonForm
+#include "backend/metaCollection/metaSessionParameterObject.h"  // ibValueMetaObjectSessionParameter
+#include "backend/metaCollection/metaScheduledJobObject.h"      // ibValueMetaObjectScheduledJob
 #include "backend/serialize/dataBuilder.h"                 // ibDataNode / ibDataValue (form control tree)
 #include "backend/sourceDescription.h"                     // ibSourceDescription / ibSourceDescriptionMemory (control Source binding)
 #include "backend/commandDescription.h"                    // ibCommandDescription / ibCommandDescriptionMemory (button -> form command)
@@ -892,6 +894,9 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	std::vector<std::pair<ibValueMetaObject*, const json*>> chartsCLT;   // charts of calculation types
 	std::vector<std::pair<ibValueMetaObject*, const json*>> calcRegs;   // calculation registers
 	std::vector<std::pair<ibValueMetaObject*, const json*>> acctRegs;   // accounting registers
+	std::vector<std::pair<ibValueMetaObject*, const json*>> sessionParams; // session parameters
+	std::vector<std::pair<ibValueMetaObject*, const json*>> scheduledJobs; // scheduled jobs
+	std::vector<std::pair<ibValueMetaObject*, const json*>> commonForms;   // common forms
 
 	// ---- Pass 1: create all objects (so references resolve) ----
 	if (!CreateObjects(cfg, root, spec, "catalogs",  g_metaCatalogCLSID,  wxT("Catalog"),  refMap, records, err)) return false;
@@ -908,6 +913,9 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	if (!CreateObjects(cfg, root, spec, "chartsOfCalculationTypes",    g_metaChartOfCalculationTypesCLSID,    wxT("ChartOfCalculationTypes"),    refMap, chartsCLT, err)) return false;
 	if (!CreateObjects(cfg, root, spec, "calculationRegisters",        g_metaCalculationRegisterCLSID,        wxEmptyString,                     refMap, calcRegs,  err)) return false;
 	if (!CreateObjects(cfg, root, spec, "accountingRegisters",         g_metaAccountingRegisterCLSID,         wxT("AccountingRegister"),         refMap, acctRegs,  err)) return false;
+	if (!CreateObjects(cfg, root, spec, "sessionParameters", g_metaSessionParameterCLSID, wxEmptyString, refMap, sessionParams, err)) return false;
+	if (!CreateObjects(cfg, root, spec, "scheduledJobs",     g_metaScheduledJobCLSID,     wxEmptyString, refMap, scheduledJobs, err)) return false;
+	if (!CreateObjects(cfg, root, spec, "commonForms",       g_metaCommonFormCLSID,       wxEmptyString, refMap, commonForms,   err)) return false;
 
 	// Enumerations + their values (values are child metaobjects). Enum is a valid
 	// reference target, so register it in refMap.
@@ -1027,6 +1035,34 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 			}
 		}
 	}
+	// Session parameters — each is a typed attribute of the session; fill its type.
+	for (auto& s : sessionParams)
+		if (auto* sp = dynamic_cast<ibValueMetaObjectSessionParameter*>(s.first))
+			if (!ApplyType(sp->GetTypeDesc(), *s.second, refMap, sp->GetName(), err)) return false;
+
+	// Scheduled jobs — set the Use flag (schedule / method binding are a later iteration).
+	for (auto& j : scheduledJobs)
+		if (auto* job = dynamic_cast<ibValueMetaObjectScheduledJob*>(j.first)) {
+			auto use = j.second->find("use");
+			if (use != j.second->end() && use->is_boolean())
+				if (ibProperty* p = job->GetProperty(wxT("Use")))
+					p->SetValue(wxVariant(use->get<bool>()));
+		}
+
+	// Common forms — a config-level form: build its control tree + module exactly like an object form,
+	// but standalone (no owner object, so only the form's own attributes bind).
+	for (auto& cf : commonForms)
+		if (auto* form = dynamic_cast<ibValueMetaObjectCommonForm*>(cf.first)) {
+			const wxString code = JStr(*cf.second, "module");
+			if (!code.IsEmpty())
+				form->SetModuleText(code);
+			AttrMaps maps;   // no owner attributes
+			const wxMemoryBuffer formData = BuildFormData(*cf.second, form->GetName(), maps,
+				form->GetMetaID(), refMap, form->GetMetaData());
+			if (!formData.IsEmpty())
+				form->SetFormData(formData);
+		}
+
 	for (auto& c : chartsCCT)
 		if (!FillChartOfCharacteristicTypes(cfg, c.first, *c.second, refMap, err)) return false;
 	for (auto& c : chartsCOA)

@@ -26,6 +26,8 @@
 #include "backend/metaCollection/partial/document.h"    // ibValueMetaObjectDocument (RegisterRecords)
 #include "backend/metaCollection/partial/accountingRegister.h"  // ibValueMetaObjectAccountingRegister
 #include "backend/metaCollection/partial/chartOfAccounts.h"     // ibValueMetaObjectChartOfAccounts
+#include "backend/metaCollection/metaSessionParameterObject.h"  // ibValueMetaObjectSessionParameter
+#include "backend/metaCollection/metaScheduledJobObject.h"      // ibValueMetaObjectScheduledJob
 #include "backend/serialize/dataBuilder.h"             // ibDataNode / ibDataValue (form control tree)
 #include "backend/clsid.h"                             // control_to_clsid
 #include "backend/commandDescription.h"                // ibCommandDescription / ibCommandDescriptionMemory (button binding)
@@ -66,6 +68,20 @@ ibValueMetaObjectAccountingRegister* FindAccountingRegister(ibValueMetaObject* o
 			return ar;
 	for (unsigned int i = 0; i < obj->GetChildCount(); i++)
 		if (ibValueMetaObjectAccountingRegister* found = FindAccountingRegister(obj->GetChild(i), name))
+			return found;
+	return nullptr;
+}
+
+// Depth-first search for a metaobject of type T by name (nullptr name = first of that type).
+template <class T>
+T* FindMeta(ibValueMetaObject* obj, const wxString& name = wxEmptyString) {
+	if (obj == nullptr)
+		return nullptr;
+	if (auto* t = dynamic_cast<T*>(obj))
+		if (name.IsEmpty() || t->GetName().IsSameAs(name))
+			return t;
+	for (unsigned int i = 0; i < obj->GetChildCount(); i++)
+		if (T* found = FindMeta<T>(obj->GetChild(i), name))
 			return found;
 	return nullptr;
 }
@@ -498,6 +514,60 @@ TEST(ConfigSpec, BuildFull_CreatesAccountingRegister) {
 	ibValueMetaObjectAccountingRegister* ar2 = FindAccountingRegister(back.GetCommonMetaObject(), wxT("Ledger"));
 	ASSERT_NE(ar2, nullptr);
 	EXPECT_NE(ar2->GetChartOfAccounts(), nullptr);
+}
+
+// Config-level metatypes that had no importer before: session parameters (a typed session attribute),
+// scheduled jobs (with a Use flag), and common forms (a standalone form + module). All three create,
+// carry their key state, and round-trip.
+TEST(ConfigSpec, BuildFull_CreatesConfigLevelObjects) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "ConfigLevelCfg",
+	  "sessionParameters": [
+	    { "name": "CurrentUser", "type": "String", "length": 50 },
+	    { "name": "WorkDate",    "type": "Date" }
+	  ],
+	  "scheduledJobs": [
+	    { "name": "NightlyExchange", "use": true },
+	    { "name": "OldJob",          "use": false }
+	  ],
+	  "commonForms": [
+	    { "name": "AboutBox", "module": "Procedure OnOpen() EndProcedure",
+	      "formAttributes": [ { "name": "Caption", "type": "String", "length": 100 } ],
+	      "controls": [ { "kind": "field", "name": "Caption", "attr": "Caption" } ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	// Session parameter: created and typed.
+	ibValueMetaObjectSessionParameter* sp = FindMeta<ibValueMetaObjectSessionParameter>(cfg.GetCommonMetaObject(), wxT("CurrentUser"));
+	ASSERT_NE(sp, nullptr);   // created as a session parameter (its 1C <Type> is applied on fill)
+
+	// Scheduled job: the Use flag survived.
+	ibValueMetaObjectScheduledJob* job = FindMeta<ibValueMetaObjectScheduledJob>(cfg.GetCommonMetaObject(), wxT("NightlyExchange"));
+	ASSERT_NE(job, nullptr);
+	EXPECT_TRUE(job->IsUsed());
+	ibValueMetaObjectScheduledJob* off = FindMeta<ibValueMetaObjectScheduledJob>(cfg.GetCommonMetaObject(), wxT("OldJob"));
+	ASSERT_NE(off, nullptr);
+	EXPECT_FALSE(off->IsUsed());
+
+	// Common form: created with form data (its control tree was built).
+	ibValueMetaObjectCommonForm* form = FindMeta<ibValueMetaObjectCommonForm>(cfg.GetCommonMetaObject(), wxT("AboutBox"));
+	ASSERT_NE(form, nullptr);
+	EXPECT_FALSE(form->GetFormData().IsEmpty());
+
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+
+	for (const char* s : { "CurrentUser", "WorkDate", "NightlyExchange", "AboutBox" })
+		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
 }
 
 TEST(ConfigSpec, BuildFull_CreatesRolesAndSubsystems) {
