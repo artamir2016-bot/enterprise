@@ -302,7 +302,12 @@ def _map_form_children(child_items, in_table):
         name = el.get("name") or ""
         if in_table:
             if kind in ("field", "checkbox"):
-                out.append({"kind": "column", "name": name, "field": _last_seg(_data_path(el))})
+                col = {"kind": "column", "name": name, "field": _last_seg(_data_path(el))}
+                # 1C column width lives on the field element (rarely set — 1C auto-sizes otherwise).
+                w = el.find(LF + "Width")
+                if w is not None and _txt(w).strip().isdigit() and int(_txt(w).strip()) > 0:
+                    col["width"] = int(_txt(w).strip())
+                out.append(col)
             elif kind in ("group", "pages", "page"):
                 sub = el.find(LF + "ChildItems")
                 if sub is not None:

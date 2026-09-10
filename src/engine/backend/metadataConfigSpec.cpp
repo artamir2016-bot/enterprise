@@ -512,6 +512,12 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 			node.SetProperty(wxT("Source"), MakeSource({ (ibSourceId)kFormMainAttrId, (ibSourceId)tableId, (ibSourceId)colId }));
 		if (!title.IsEmpty())
 			node.SetProp<wxString>(wxT("Title"), title);
+		// Column width (1C carries it on the field; rarely set). 0/absent -> the column's default width.
+		if (c.contains("width") && c["width"].is_number_integer()) {
+			const int w = c["width"].get<int>();
+			if (w > 0)
+				node.SetProp<s32>(wxT("Width"), w);
+		}
 	}
 
 	// Recurse — children hang off the real control node (not the SizerItem wrapper).
