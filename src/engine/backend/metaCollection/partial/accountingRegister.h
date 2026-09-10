@@ -336,6 +336,16 @@ public:
 
 	// One line = a whole posting (both accounts named) rather than one side of one.
 	bool IsCorrespondence() const { return m_propertyCorrespondence->GetValueAsBoolean(); }
+	void SetCorrespondence(bool v) { m_propertyCorrespondence->SetValue(v); }
+
+	// Bind the register to its chart of accounts (the account column's type, the analytics count and
+	// their contour all come from it — OnSaveMetaObject refuses a register with no chart). Used by the
+	// importer, mirroring the calc register's SetChartOfCalculationTypes.
+	void SetChartOfAccounts(const ibMetaID& coaMetaID) {
+		ibMetaDescription md;
+		md.AppendMetaType(coaMetaID);
+		m_propertyChartOfAccounts->SetValue(md);
+	}
 
 	// ⭐⭐ ONE CHART OF ACCOUNTS, AND ONLY ONE.
 	//
@@ -351,7 +361,7 @@ public:
 	// Null while nothing is chosen — a register under construction is a legitimate state; what is not
 	// legitimate is SAVING one with two, and that is refused at the write (OnSaveMetaObject), where an
 	// import cannot walk around it.
-	const ibValueMetaObjectChartOfAccounts* GetChartOfAccounts() const;
+	BACKEND_API const ibValueMetaObjectChartOfAccounts* GetChartOfAccounts() const;
 
 	// A SLOT IS A PAIR, and the two halves take different types.
 	//

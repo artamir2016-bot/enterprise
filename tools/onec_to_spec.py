@@ -1071,6 +1071,30 @@ def main():
                 spec["calculationRegisters"].append(o)
                 report["CalculationRegisters"] += 1
 
+    if want("AccountingRegisters"):
+        spec["accountingRegisters"] = []
+        for base, path in iter_object_xml(args.dump_dir, "AccountingRegisters", args.limit):
+            r = load_root(path)
+            if r is None:
+                continue
+            o = parse_register(r, args.dump_dir, "AccountingRegisters", base)
+            if o:
+                # <ChartOfAccounts> binding (mandatory — the account column's type, analytics count and
+                # their contour come from it) and <Correspondence> (one line names both accounts).
+                obj_el = next(iter(r), None)
+                if obj_el is not None:
+                    props = obj_el.find(MD + "Properties")
+                    if props is not None:
+                        coa = props.find(MD + "ChartOfAccounts")
+                        key = _txt(coa).strip() if coa is not None else ""
+                        if key.startswith("ChartOfAccounts."):
+                            o["chartOfAccounts"] = key
+                        corr = props.find(MD + "Correspondence")
+                        if corr is not None:
+                            o["correspondence"] = (_txt(corr).strip().lower() == "true")
+                spec["accountingRegisters"].append(o)
+                report["AccountingRegisters"] += 1
+
     if want("Roles"):
         spec["roles"] = []
         for base, path in iter_object_xml(args.dump_dir, "Roles", args.limit):

@@ -18,6 +18,7 @@
 #include "backend/metaCollection/partial/calculationRegister.h"        // ibValueMetaObjectCalculationRegister (action-period flag)
 #include "backend/metaCollection/partial/chartOfCalculationTypes.h"     // ibValueMetaObjectChartOfCalculationTypes (calc config flags)
 #include "backend/metaCollection/partial/chartOfAccounts.h"            // ibValueMetaObjectChartOfAccounts (chart-of-characteristic-types binding)
+#include "backend/metaCollection/partial/accountingRegister.h"         // ibValueMetaObjectAccountingRegister (chart-of-accounts binding)
 #include "backend/propertyManager/property/propertyChartOfCharacteristicTypes.h" // ibPropertyChartOfCharacteristicTypes::SetValue
 #include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm
 #include "backend/serialize/dataBuilder.h"                 // ibDataNode / ibDataValue (form control tree)
@@ -884,6 +885,7 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	std::vector<std::pair<ibValueMetaObject*, const json*>> chartsCOA;   // charts of accounts
 	std::vector<std::pair<ibValueMetaObject*, const json*>> chartsCLT;   // charts of calculation types
 	std::vector<std::pair<ibValueMetaObject*, const json*>> calcRegs;   // calculation registers
+	std::vector<std::pair<ibValueMetaObject*, const json*>> acctRegs;   // accounting registers
 
 	// ---- Pass 1: create all objects (so references resolve) ----
 	if (!CreateObjects(cfg, root, spec, "catalogs",  g_metaCatalogCLSID,  wxT("Catalog"),  refMap, records, err)) return false;
@@ -899,6 +901,7 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	if (!CreateObjects(cfg, root, spec, "chartsOfAccounts",            g_metaChartOfAccountsCLSID,            wxT("ChartOfAccounts"),            refMap, chartsCOA, err)) return false;
 	if (!CreateObjects(cfg, root, spec, "chartsOfCalculationTypes",    g_metaChartOfCalculationTypesCLSID,    wxT("ChartOfCalculationTypes"),    refMap, chartsCLT, err)) return false;
 	if (!CreateObjects(cfg, root, spec, "calculationRegisters",        g_metaCalculationRegisterCLSID,        wxEmptyString,                     refMap, calcRegs,  err)) return false;
+	if (!CreateObjects(cfg, root, spec, "accountingRegisters",         g_metaAccountingRegisterCLSID,         wxT("AccountingRegister"),         refMap, acctRegs,  err)) return false;
 
 	// Enumerations + their values (values are child metaobjects). Enum is a valid
 	// reference target, so register it in refMap.
@@ -1003,6 +1006,21 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 		if (!FillRegister(cfg, r.first, *r.second, refMap, err)) return false;
 	for (auto& r : accumRegs)
 		if (!FillRegister(cfg, r.first, *r.second, refMap, err)) return false;
+	for (auto& r : acctRegs) {   // accounting registers: dimensions/resources/attributes + chart-of-accounts binding
+		if (!FillRegister(cfg, r.first, *r.second, refMap, err)) return false;
+		if (auto* ar = dynamic_cast<ibValueMetaObjectAccountingRegister*>(r.first)) {
+			auto corr = r.second->find("correspondence");
+			if (corr != r.second->end() && corr->is_boolean())
+				ar->SetCorrespondence(corr->get<bool>());
+			// The chart of accounts is MANDATORY — without it OnSaveMetaObject refuses the register.
+			const wxString coaKey = JStr(*r.second, "chartOfAccounts");
+			if (!coaKey.IsEmpty()) {
+				auto found = refMap.find(coaKey);
+				if (found != refMap.end() && found->second != nullptr)
+					ar->SetChartOfAccounts(found->second->GetMetaID());
+			}
+		}
+	}
 	for (auto& c : chartsCCT)
 		if (!FillChartOfCharacteristicTypes(cfg, c.first, *c.second, refMap, err)) return false;
 	for (auto& c : chartsCOA)

@@ -29,6 +29,7 @@ KIND_KEY = {
     "ChartsOfAccounts": "chartsOfAccounts",
     "ChartsOfCalculationTypes": "chartsOfCalculationTypes",
     "CalculationRegisters": "calculationRegisters",
+    "AccountingRegisters": "accountingRegisters",
     "Roles": "roles", "Subsystems": "subsystems",
     "DataProcessors": "dataProcessors", "Reports": "reports",
 }

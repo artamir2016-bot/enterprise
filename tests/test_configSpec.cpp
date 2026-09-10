@@ -24,6 +24,8 @@
 #include "backend/metadataConfigSpec.h"
 #include "backend/metaCollection/metaFormObject.h"     // ibValueMetaObjectForm / FormBlobToNode
 #include "backend/metaCollection/partial/document.h"    // ibValueMetaObjectDocument (RegisterRecords)
+#include "backend/metaCollection/partial/accountingRegister.h"  // ibValueMetaObjectAccountingRegister
+#include "backend/metaCollection/partial/chartOfAccounts.h"     // ibValueMetaObjectChartOfAccounts
 #include "backend/serialize/dataBuilder.h"             // ibDataNode / ibDataValue (form control tree)
 #include "backend/clsid.h"                             // control_to_clsid
 #include "backend/commandDescription.h"                // ibCommandDescription / ibCommandDescriptionMemory (button binding)
@@ -51,6 +53,19 @@ ibValueMetaObjectDocument* FindDocument(ibValueMetaObject* obj, const wxString& 
 			return doc;
 	for (unsigned int i = 0; i < obj->GetChildCount(); i++)
 		if (ibValueMetaObjectDocument* found = FindDocument(obj->GetChild(i), name))
+			return found;
+	return nullptr;
+}
+
+// Depth-first search for an accounting register metaobject by name.
+ibValueMetaObjectAccountingRegister* FindAccountingRegister(ibValueMetaObject* obj, const wxString& name) {
+	if (obj == nullptr)
+		return nullptr;
+	if (auto* ar = dynamic_cast<ibValueMetaObjectAccountingRegister*>(obj))
+		if (ar->GetName().IsSameAs(name))
+			return ar;
+	for (unsigned int i = 0; i < obj->GetChildCount(); i++)
+		if (ibValueMetaObjectAccountingRegister* found = FindAccountingRegister(obj->GetChild(i), name))
 			return found;
 	return nullptr;
 }
@@ -445,6 +460,44 @@ TEST(ConfigSpec, BuildFull_DocumentRegisterRecords) {
 	ibValueMetaObjectDocument* doc2 = FindDocument(back.GetCommonMetaObject(), wxT("Receipt"));
 	ASSERT_NE(doc2, nullptr);
 	EXPECT_EQ(doc2->GetRecordDescription().GetTypeCount(), 2u);
+}
+
+// An accounting register imports with its dimensions/resources and — crucially — its mandatory
+// chart-of-accounts binding (without which OnSaveMetaObject refuses it). The binding and the
+// correspondence flag are present after build and survive a round-trip.
+TEST(ConfigSpec, BuildFull_CreatesAccountingRegister) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "AcctCfg",
+	  "catalogs": [ { "name": "Firms" } ],
+	  "chartsOfCharacteristicTypes": [ { "name": "ExtDim" } ],
+	  "chartsOfAccounts": [ { "name": "Main", "chartOfCharacteristicTypes": "ChartOfCharacteristicTypes.ExtDim" } ],
+	  "accountingRegisters": [
+	    { "name": "Ledger", "correspondence": true, "chartOfAccounts": "ChartOfAccounts.Main",
+	      "dimensions": [ { "name": "Firm", "type": "ref", "refs": ["Catalog.Firms"] } ],
+	      "resources":  [ { "name": "Amount", "type": "Number", "precision": 15, "scale": 2 } ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectAccountingRegister* ar = FindAccountingRegister(cfg.GetCommonMetaObject(), wxT("Ledger"));
+	ASSERT_NE(ar, nullptr);
+	EXPECT_NE(ar->GetChartOfAccounts(), nullptr);   // mandatory binding resolved
+	EXPECT_TRUE(ar->IsCorrespondence());
+
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	wxMemoryBuffer b2;
+	ASSERT_TRUE(back.SaveConfigToBuffer(b2));
+	ASSERT_EQ(b1.GetDataLen(), b2.GetDataLen());
+	EXPECT_EQ(0, std::memcmp(b1.GetData(), b2.GetData(), b1.GetDataLen()));
+
+	ibValueMetaObjectAccountingRegister* ar2 = FindAccountingRegister(back.GetCommonMetaObject(), wxT("Ledger"));
+	ASSERT_NE(ar2, nullptr);
+	EXPECT_NE(ar2->GetChartOfAccounts(), nullptr);
 }
 
 TEST(ConfigSpec, BuildFull_CreatesRolesAndSubsystems) {
