@@ -35,6 +35,11 @@ constexpr ibClassID g_metaScheduledJobCLSID = metadata_to_clsid("MD_SJOB");   //
 // here beside the jobs because that is where it sits in the tree: configuration-level, no data
 // of its own, set once per session by the session module (docs/access-policy-rls.md).
 constexpr ibClassID g_metaSessionParameterCLSID = metadata_to_clsid("MD_SPRM");
+// Config-level metadata-only metatypes (no own table): a settings storage (Load/Save modules), an
+// event subscription (binds a handler to a source's event), a document journal (a list over documents).
+constexpr ibClassID g_metaSettingsStorageCLSID  = metadata_to_clsid("MD_STOR");
+constexpr ibClassID g_metaEventSubscriptionCLSID = metadata_to_clsid("MD_ESUB");
+constexpr ibClassID g_metaDocumentJournalCLSID  = metadata_to_clsid("MD_JRNL");
 
 constexpr ibClassID g_metaRoleCLSID = metadata_to_clsid("MD_ROLE");
 constexpr ibClassID g_metaSectionCLSID = metadata_to_clsid("MD_SSYST");

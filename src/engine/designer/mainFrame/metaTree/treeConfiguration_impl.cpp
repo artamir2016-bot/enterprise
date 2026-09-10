@@ -1032,6 +1032,8 @@ const ibMetaTreeGroupDef s_groups[] = {
 	// SESSION PARAMETERS sit beside the jobs for the same reason: each is an ATTRIBUTE whose owner
 	// is the session — declared here, set once by the session module, read everywhere.
 	{ g_metaSessionParameterCLSID, wxTRANSLATE("Session parameters"), ibMetaBand::Common, 0, ibMetaRow::Item },
+	{ g_metaSettingsStorageCLSID,  wxTRANSLATE("Settings storages"),  ibMetaBand::Common, 0, ibMetaRow::Item },
+	{ g_metaEventSubscriptionCLSID, wxTRANSLATE("Event subscriptions"), ibMetaBand::Common, 0, ibMetaRow::Item },
 	// COMMON ATTRIBUTES — declared here, carried by many objects. What the declaration puts INTO
 	// each object is a child of THAT object and appears there, in its own attribute list.
 	{ g_metaCommonAttributeCLSID,  wxTRANSLATE("Common attributes"),  ibMetaBand::Common, 0, ibMetaRow::Item },
@@ -1045,6 +1047,7 @@ const ibMetaTreeGroupDef s_groups[] = {
 	{ g_metaConstantCLSID,                   wxTRANSLATE("Constants"),        ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaCatalogCLSID,                    wxTRANSLATE("Catalogs"),         ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaDocumentCLSID,                   wxTRANSLATE("Documents"),        ibMetaBand::Metadata, 0, ibMetaRow::Item },
+	{ g_metaDocumentJournalCLSID,            wxTRANSLATE("Document journals"), ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaEnumerationCLSID,                wxTRANSLATE("Enumerations"),     ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaDataProcessorCLSID,              wxTRANSLATE("Data processors"),  ibMetaBand::Metadata, 0, ibMetaRow::Item },
 	{ g_metaReportCLSID,                     wxTRANSLATE("Reports"),          ibMetaBand::Metadata, 0, ibMetaRow::Item },

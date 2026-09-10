@@ -90,6 +90,9 @@ wxString ibMetaDiffWalker::GroupLabelFor(ibClassID clsid)
 	if (clsid == g_metaCommonTemplateCLSID)             return _("Common templates");
 	if (clsid == g_metaScheduledJobCLSID)               return _("Predefined jobs");
 	if (clsid == g_metaSessionParameterCLSID)           return _("Session parameters");
+	if (clsid == g_metaSettingsStorageCLSID)            return _("Settings storages");
+	if (clsid == g_metaEventSubscriptionCLSID)          return _("Event subscriptions");
+	if (clsid == g_metaDocumentJournalCLSID)            return _("Document journals");
 	if (clsid == g_metaCommonAttributeCLSID)            return _("Common attributes");
 	// The copy inside an object compares under the same caption — what a reader wants to see
 	// there is "this object carries a common attribute", not a second kind of thing.
@@ -157,7 +160,9 @@ int ibMetaDiffWalker::GroupOrderRank(ibClassID clsid)
 		{ g_metaParameterizedJobCLSID,            35 },
 		{ g_metaScheduledJobCLSID,                36 },
 		{ g_metaSessionParameterCLSID,            37 },
-		{ g_metaCommonAttributeCLSID,             38 },
+		{ g_metaSettingsStorageCLSID,             38 },
+		{ g_metaEventSubscriptionCLSID,           39 },
+		{ g_metaCommonAttributeCLSID,             41 },
 		{ g_metaPictureCLSID,                     40 },
 		{ g_metaSectionCLSID,                   50 },
 		{ g_metaRoleCLSID,                        60 },
@@ -167,6 +172,7 @@ int ibMetaDiffWalker::GroupOrderRank(ibClassID clsid)
 		{ g_metaConstantCLSID,                   100 },
 		{ g_metaCatalogCLSID,                    110 },
 		{ g_metaDocumentCLSID,                   120 },
+		{ g_metaDocumentJournalCLSID,            125 },
 		{ g_metaEnumerationCLSID,                130 },
 		{ g_metaDataProcessorCLSID,              140 },
 		{ g_metaReportCLSID,                     150 },

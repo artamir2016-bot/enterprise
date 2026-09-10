@@ -62,7 +62,10 @@ public:
 			clsid == g_metaChartOfAccountsCLSID ||
 			clsid == g_metaAccountingRegisterCLSID ||
 			clsid == g_metaChartOfCalculationTypesCLSID ||
-			clsid == g_metaCalculationRegisterCLSID
+			clsid == g_metaCalculationRegisterCLSID ||
+			clsid == g_metaSettingsStorageCLSID ||
+			clsid == g_metaEventSubscriptionCLSID ||
+			clsid == g_metaDocumentJournalCLSID
 			)
 			return clsid;
 
