@@ -934,6 +934,20 @@ def main():
                 continue
             o = parse_record_object(r, args.dump_dir, "Documents", base)
             if o:
+                # RegisterRecords ("движения") — the registers this document posts into. Each item is a
+                # ref key like "AccumulationRegister.X" / "InformationRegister.Y"; carried as-is so the
+                # importer resolves them to register metaobjects and fills the document's record binding.
+                obj_el = next(iter(r), None)
+                props = obj_el.find(MD + "Properties") if obj_el is not None else None
+                rr = props.find(MD + "RegisterRecords") if props is not None else None
+                if rr is not None:
+                    refs = [_txt(it).strip() for it in rr if _txt(it).strip()]
+                    refs = [x for x in refs if x.startswith(("AccumulationRegister.",
+                                                             "InformationRegister.",
+                                                             "AccountingRegister.",
+                                                             "CalculationRegister."))]
+                    if refs:
+                        o["registerRecords"] = refs
                 spec["documents"].append(o)
                 report["Documents"] += 1
 

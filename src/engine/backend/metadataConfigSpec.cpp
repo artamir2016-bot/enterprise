@@ -13,6 +13,7 @@
 #include "backend/metaCollection/attribute/metaAttributeObject.h"  // ibValueMetaObjectAttribute
 #include "backend/metaCollection/partial/commonObject.h"  // ibValueMetaObjectRecordData (module accessors)
 #include "backend/metaCollection/partial/constant.h"      // ibValueMetaObjectConstant
+#include "backend/metaCollection/partial/document.h"        // ibValueMetaObjectDocument (RegisterRecords / движения)
 #include "backend/metaCollection/partial/chartOfCharacteristicTypes.h" // ibValueMetaObjectChartOfCharacteristicTypes (value type of characteristics)
 #include "backend/metaCollection/partial/calculationRegister.h"        // ibValueMetaObjectCalculationRegister (action-period flag)
 #include "backend/metaCollection/partial/chartOfCalculationTypes.h"     // ibValueMetaObjectChartOfCalculationTypes (calc config flags)
@@ -887,8 +888,10 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	// ---- Pass 1: create all objects (so references resolve) ----
 	if (!CreateObjects(cfg, root, spec, "catalogs",  g_metaCatalogCLSID,  wxT("Catalog"),  refMap, records, err)) return false;
 	if (!CreateObjects(cfg, root, spec, "documents", g_metaDocumentCLSID, wxT("Document"), refMap, records, err)) return false;
-	if (!CreateObjects(cfg, root, spec, "informationRegisters",  g_metaInformationRegisterCLSID,  wxEmptyString, refMap, infoRegs,  err)) return false;
-	if (!CreateObjects(cfg, root, spec, "accumulationRegisters", g_metaAccumulationRegisterCLSID, wxEmptyString, refMap, accumRegs, err)) return false;
+	// Registers carry a ref prefix so a document's RegisterRecords ("движения") can resolve them by
+	// the 1C ref key ("AccumulationRegister.X" / "InformationRegister.X").
+	if (!CreateObjects(cfg, root, spec, "informationRegisters",  g_metaInformationRegisterCLSID,  wxT("InformationRegister"),  refMap, infoRegs,  err)) return false;
+	if (!CreateObjects(cfg, root, spec, "accumulationRegisters", g_metaAccumulationRegisterCLSID, wxT("AccumulationRegister"), refMap, accumRegs, err)) return false;
 	if (!CreateObjects(cfg, root, spec, "constants", g_metaConstantCLSID, wxEmptyString, refMap, constants, err)) return false;
 	// Charts are valid reference targets: register each under its KIND name so a *Ссылка -> *Ref
 	// dimension/attribute in any object resolves in the second pass.
@@ -976,8 +979,26 @@ bool ibBuildConfigFromJsonSpec(const wxString& jsonText,
 	}
 
 	// ---- Pass 2: fill attributes / types / tabular sections / modules ----
-	for (auto& rec : records)
+	for (auto& rec : records) {
 		if (!FillRecordObject(cfg, rec.first, *rec.second, refMap, err)) return false;
+		// A document's RegisterRecords ("движения") — the registers it posts into. Resolve each 1C ref
+		// key to its register metaobject and append its metaID to the document's record MetaDescription;
+		// ibRecorderRegister::CreateRecordSet reads exactly these metaIDs to build the movement sets.
+		if (auto* doc = dynamic_cast<ibValueMetaObjectDocument*>(rec.first)) {
+			auto rr = rec.second->find("registerRecords");
+			if (rr != rec.second->end() && rr->is_array()) {
+				ibMetaDescription& md = doc->GetRecordDescription();
+				for (const json& item : *rr) {
+					if (!item.is_string())
+						continue;
+					const wxString key = wxString::FromUTF8(item.get<std::string>().c_str());
+					auto found = refMap.find(key);
+					if (found != refMap.end() && found->second != nullptr)
+						md.AppendMetaType(found->second->GetMetaID());
+				}
+			}
+		}
+	}
 	for (auto& r : infoRegs)
 		if (!FillRegister(cfg, r.first, *r.second, refMap, err)) return false;
 	for (auto& r : accumRegs)

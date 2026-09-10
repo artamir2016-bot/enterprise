@@ -23,6 +23,7 @@
 #include "backend/metadataConfiguration.h"
 #include "backend/metadataConfigSpec.h"
 #include "backend/metaCollection/metaFormObject.h"     // ibValueMetaObjectForm / FormBlobToNode
+#include "backend/metaCollection/partial/document.h"    // ibValueMetaObjectDocument (RegisterRecords)
 #include "backend/serialize/dataBuilder.h"             // ibDataNode / ibDataValue (form control tree)
 #include "backend/clsid.h"                             // control_to_clsid
 #include "backend/commandDescription.h"                // ibCommandDescription / ibCommandDescriptionMemory (button binding)
@@ -37,6 +38,19 @@ ibValueMetaObjectForm* FindFirstForm(ibValueMetaObject* obj) {
 		return form;
 	for (unsigned int i = 0; i < obj->GetChildCount(); i++)
 		if (ibValueMetaObjectForm* found = FindFirstForm(obj->GetChild(i)))
+			return found;
+	return nullptr;
+}
+
+// Depth-first search for a document metaobject by name.
+ibValueMetaObjectDocument* FindDocument(ibValueMetaObject* obj, const wxString& name) {
+	if (obj == nullptr)
+		return nullptr;
+	if (auto* doc = dynamic_cast<ibValueMetaObjectDocument*>(obj))
+		if (doc->GetName().IsSameAs(name))
+			return doc;
+	for (unsigned int i = 0; i < obj->GetChildCount(); i++)
+		if (ibValueMetaObjectDocument* found = FindDocument(obj->GetChild(i), name))
 			return found;
 	return nullptr;
 }
@@ -390,6 +404,47 @@ TEST(ConfigSpec, BuildFull_CreatesRecalculation) {
 
 	for (const char* s : { "Charges", "ChargesRecalc", "Employee", "Organization", "Amount" })
 		EXPECT_TRUE(BufferContains(b1, s)) << "missing: " << s;
+}
+
+// A document's RegisterRecords ("движения"): the registers it posts into resolve to real metaobjects
+// and populate the document's record MetaDescription — which ibRecorderRegister reads to build movement
+// sets. The binding must be present after build (GetTypeCount == number of resolved registers).
+TEST(ConfigSpec, BuildFull_DocumentRegisterRecords) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "MoveCfg",
+	  "catalogs": [ { "name": "Goods" } ],
+	  "accumulationRegisters": [
+	    { "name": "Stock",
+	      "dimensions": [ { "name": "Item", "type": "ref", "refs": ["Catalog.Goods"] } ],
+	      "resources":  [ { "name": "Qty",  "type": "Number", "precision": 15, "scale": 3 } ] }
+	  ],
+	  "informationRegisters": [
+	    { "name": "Prices",
+	      "dimensions": [ { "name": "Item", "type": "ref", "refs": ["Catalog.Goods"] } ],
+	      "resources":  [ { "name": "Price", "type": "Number", "precision": 15, "scale": 2 } ] }
+	  ],
+	  "documents": [
+	    { "name": "Receipt", "attributes": [ { "name": "Note", "type": "String", "length": 20 } ],
+	      "registerRecords": [ "AccumulationRegister.Stock", "InformationRegister.Prices" ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectDocument* doc = FindDocument(cfg.GetCommonMetaObject(), wxT("Receipt"));
+	ASSERT_NE(doc, nullptr);
+	// Both registers resolved and bound as movement targets.
+	EXPECT_EQ(doc->GetRecordDescription().GetTypeCount(), 2u);
+
+	wxMemoryBuffer b1;
+	ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back;
+	ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	// The binding survives a serialize round-trip.
+	ibValueMetaObjectDocument* doc2 = FindDocument(back.GetCommonMetaObject(), wxT("Receipt"));
+	ASSERT_NE(doc2, nullptr);
+	EXPECT_EQ(doc2->GetRecordDescription().GetTypeCount(), 2u);
 }
 
 TEST(ConfigSpec, BuildFull_CreatesRolesAndSubsystems) {
