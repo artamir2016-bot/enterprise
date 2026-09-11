@@ -190,12 +190,19 @@ void ibValueForm::DeleteAttribute(unsigned int idx)
 	}
 }
 
-// The 1C Russian names the MAIN attribute is ALSO reachable under, so a form module imported from 1C
-// (whose text is kept verbatim) resolves `Объект` / `Список` the way it was written — regardless of
-// what the OES main attribute is actually named (Object / List / a loaded name). Both are bound for
-// any main attribute: an object form's module writes `Объект`, a list form's writes `Список`, and a
-// spare alias on the other kind is harmless. The English name stays bound too.
-static const wxChar* const kMainRuAliases[] = { wxT("Объект"), wxT("Список"), wxT("Object"), wxT("List") };
+// The names the MAIN attribute is ALSO reachable under, so BOTH imported-from-1C modules (kept
+// verbatim, referencing `Объект` / `Список`) and native OES code (Object / List) resolve it,
+// regardless of what the main attribute is actually named. This TU has no UTF-8 BOM and the build
+// sets no /utf-8, so the Russian names MUST be byte-escaped through FromUTF8 (a bare wxT("Объект")
+// would mis-encode) — same convention as systemManager.cpp's aliases.
+static std::vector<wxString> MainAttributeAliases()
+{
+	return {
+		wxString::FromUTF8("\xD0\x9E\xD0\xB1\xD1\x8A\xD0\xB5\xD0\xBA\xD1\x82"),           // Объект
+		wxString::FromUTF8("\xD0\xA1\xD0\xBF\xD0\xB8\xD1\x81\xD0\xBE\xD0\xBA"),           // Список
+		wxT("Object"), wxT("List"),
+	};
+}
 
 void ibValueForm::BindAttributeVariable(ibFormAttributeValue* entry)
 {
@@ -208,7 +215,7 @@ void ibValueForm::BindAttributeVariable(ibFormAttributeValue* entry)
 	// reachable under its 1C Russian names so imported modules resolve `Объект` / `Список`.
 	if (entry->IsMain()) {
 		BindExportVariable(wxT("DataSource"), entry->GetBindValue());
-		for (const wxChar* alias : kMainRuAliases)
+		for (const wxString& alias : MainAttributeAliases())
 			if (name != alias)
 				BindLocalVariable(alias, entry->GetBindValue());
 	}
@@ -226,7 +233,7 @@ void ibValueForm::DropAttributeBinds(ibFormAttributeValue* entry)
 	UnbindVariable(entry->GetName());
 	if (entry->IsMain()) {
 		UnbindVariable(wxT("DataSource"));
-		for (const wxChar* alias : kMainRuAliases)
+		for (const wxString& alias : MainAttributeAliases())
 			if (entry->GetName() != alias)
 				UnbindVariable(alias);
 	}

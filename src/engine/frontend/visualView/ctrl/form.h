@@ -5,6 +5,7 @@
 #include "frontend/docView/docView.h"   // ibDocument / ibMetaDocument — the doc-parent a form opens under
 #include "backend/sourceDescription.h"   // ibSourceDescription — the binding-path wrapper (Get/SetValueByAttributePath)
 #include "backend/backend_command.h"   // ibBackendCommandSender — the form IS-A command-hop source (entry gate)
+#include "backend/system/value/valueMap.h"   // ibValueStructure — the form's open-parameters value (`Параметры`)
 
 #include <memory>   // std::unique_ptr — owns the form's attribute/value registry entries
 
@@ -544,6 +545,11 @@ private:
 	std::map<wxString, std::shared_ptr<ibFrontendTimer>> m_idleHandlerArray;
 
 	ibValuePtr<ibValueFormCollectionControl> m_formCollectionControl;
+
+	// Form open PARAMETERS (1C `Параметры`) — an (empty by default) structure bound into the form
+	// module so imported modules that read open parameters resolve the name. A real open-parameters
+	// pipeline can later fill it; for now it exists and is empty.
+	ibValuePtr<ibValueStructure> m_formParameters;
 
 	ibPropertyCategory* m_categoryFrame = ibPropertyObject::CreatePropertyCategory(wxT("Frame"), _("Frame"));
 	ibPropertyTString* m_propertyTitle = ibPropertyObject::CreateProperty<ibPropertyTString>(m_categoryFrame, wxT("Title"), _("Title"), wxT(""));

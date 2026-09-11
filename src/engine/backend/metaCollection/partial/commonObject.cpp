@@ -2742,7 +2742,7 @@ bool ibValueRecordDataObjectRecorderRef::InitializeObject(const ibGuid& copyGuid
 	ibRuntimeModuleDataObject::SetParent(ibSession::EditModuleManagerFor(m_metaObject->GetMetaData()));
 	ibRecorderRegister* recordSet = m_registerRecords;
 	BindExportVariable(wxT("RegisterRecords"), recordSet);
-	BindExportVariable(wxT("Движения"), recordSet);   // 1C Russian name — imported object modules use it
+	BindExportVariable(wxString::FromUTF8("\xD0\x94\xD0\xB2\xD0\xB8\xD0\xB6\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"), recordSet);   // "Движения" (build has no /utf-8, this TU has no BOM -> byte-escape)
 	return ibValueRecordDataObjectRef::InitializeObject(copyGuid);
 }
 
@@ -2751,7 +2751,7 @@ bool ibValueRecordDataObjectRecorderRef::InitializeObject(ibValueRecordDataObjec
 	ibRuntimeModuleDataObject::SetParent(ibSession::EditModuleManagerFor(m_metaObject->GetMetaData()));
 	ibRecorderRegister* recordSet = m_registerRecords;
 	BindExportVariable(wxT("RegisterRecords"), recordSet);
-	BindExportVariable(wxT("Движения"), recordSet);   // 1C Russian name — imported object modules use it
+	BindExportVariable(wxString::FromUTF8("\xD0\x94\xD0\xB2\xD0\xB8\xD0\xB6\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"), recordSet);   // "Движения" (build has no /utf-8, this TU has no BOM -> byte-escape)
 	return ibValueRecordDataObjectRef::InitializeObject(source, generate);
 }
 

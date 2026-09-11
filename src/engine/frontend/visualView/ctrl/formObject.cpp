@@ -276,6 +276,11 @@ bool ibValueForm::InitializeFormModule()
 		BindContextVariable(wxT("ЭтаФорма"), this);                                   // 1C alias of ThisForm
 		BindExportVariable(wxT("Controls"), m_formCollectionControl);                 // exported
 		BindExportVariable(wxT("Элементы"), m_formCollectionControl);                 // 1C alias of Controls
+		// Form open parameters — 1C `Параметры`. Empty structure by default so imported modules that
+		// read the open parameters resolve the name (a real open-parameters pipeline can fill it later).
+		if (!m_formParameters)
+			m_formParameters = ibValuePtr<ibValueStructure>(new ibValueStructure());
+		BindExportVariable(wxT("Параметры"), m_formParameters);
 		// Bind each source attribute as a form-module variable: its value cell as a LOCAL named
 		// <attrName>, and — for the MAIN — the exported DataSource. Same self-managed path that
 		// designer add / become-main reuse (BindAttributeVariable), so the wiring is one place.
