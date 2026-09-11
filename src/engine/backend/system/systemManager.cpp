@@ -237,6 +237,7 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	// Source of truth is the BSL->VES import map (tools/bsl_to_ves.py BUILTINS). Spellings are
 	// UTF-8 byte escapes (build sets no /utf-8) via FromUTF8.
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x81\xD0\xBE\xD0\xBE\xD0\xB1\xD1\x89\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Message"));  // сообщить
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD0\xBF\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x81\xD1\x82\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Message"));  // Оповестить (1C Notify -> user message)
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x81\xD1\x82\xD1\x80\xD0\xBE\xD0\xBA\xD0\xB0"), wxT("String"));  // строка
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x87\xD0\xB8\xD1\x81\xD0\xBB\xD0\xBE"), wxT("Number"));  // число
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xB4\xD0\xB0\xD1\x82\xD0\xB0"), wxT("Date"));  // дата
