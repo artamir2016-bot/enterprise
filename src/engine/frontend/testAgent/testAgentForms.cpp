@@ -250,6 +250,32 @@ namespace {
 		return json{ {"ok", true} };
 	}
 
+	// Resolve a reference object (catalog / document / chart) by name over the config root's children.
+	static ibValueMetaObjectRecordDataMutableRef* FindRefObjectByName(ibMetaData* md, const wxString& name)
+	{
+		if (md == nullptr || md->GetCommonMetaObject() == nullptr)
+			return nullptr;
+		for (auto* r : md->GetCommonMetaObject()->GetAnyArrayObject<ibValueMetaObjectRecordDataMutableRef>())
+			if (r != nullptr && r->GetName().IsSameAs(name))
+				return r;
+		return nullptr;
+	}
+
+	// OES-TEST: enumerate every reference object (name + metatype), so a GUI smoke can walk the whole
+	// configuration — open each object's form, create / write / mark-for-deletion, check its events.
+	json Cmd_ListObjects()
+	{
+		auto* md = ibApplicationData::GetActiveMetaData();
+		if (md == nullptr || md->GetCommonMetaObject() == nullptr)
+			throw std::runtime_error("no active configuration");
+		json arr = json::array();
+		for (auto* r : md->GetCommonMetaObject()->GetAnyArrayObject<ibValueMetaObjectRecordDataMutableRef>())
+			if (r != nullptr)
+				arr.push_back({ {"name", ToUtf8(r->GetName())},
+				                {"clsid", (long long)r->GetClassType()} });
+		return json{ {"objects", arr} };
+	}
+
 	json Cmd_OpenForm(const json& args)
 	{
 		const wxString name = FromUtf8(args.at("name"));
@@ -259,12 +285,13 @@ namespace {
 		if (md == nullptr)
 			throw std::runtime_error("no active configuration");
 
-		// MVP: catalogs (Товары is a catalog). Other metatypes follow the same recipe.
-		// FindAnyObjectByFilter is the PUBLIC by-name lookup (the raw walk is protected).
-		auto* cat = md->FindAnyObjectByFilter<ibValueMetaObjectCatalog>(
-			name, g_metaCatalogCLSID, true);
-		if (cat == nullptr)
-			throw std::runtime_error("catalog not found: " + ToUtf8(name));
+		// ANY reference object — catalog / document / chart of characteristic types / chart of accounts /
+		// chart of calculation types all derive ibValueMetaObjectRecordDataMutableRef, which is where
+		// GetObjectForm / GetListForm live. Resolve by NAME over the config root's direct children (the
+		// objects sit there), so the GUI smoke can open every object, not just catalogs.
+		auto* obj = FindRefObjectByName(md, name);
+		if (obj == nullptr)
+			throw std::runtime_error("object not found: " + ToUtf8(name));
 
 		const bool listKind = (kind == "list");
 		// DEFERRED: opening an OBJECT form runs the ОбработкаЗаполнения (Filling) handler and compiles
@@ -272,9 +299,9 @@ namespace {
 		// callback and that modal blocks the agent forever. On the event loop the modal interceptor
 		// auto-answers it; the reply returns at once. The runner settles briefly before asserting.
 		if (wxTheApp != nullptr) {
-			wxTheApp->CallAfter([cat, listKind]() {
+			wxTheApp->CallAfter([obj, listKind]() {
 				try {
-					ibBackendValueForm* form = listKind ? cat->GetListForm() : cat->GetObjectForm();
+					ibBackendValueForm* form = listKind ? obj->GetListForm() : obj->GetObjectForm();
 					if (form != nullptr)
 						form->ShowForm();
 				} catch (...) { /* errors surface via the diagnostic/modal taps */ }
@@ -1121,6 +1148,7 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "getAttribute")    result = Cmd_GetAttribute(args);
 	else if (cmd == "setAttribute")    result = Cmd_SetAttribute(args);
 	else if (cmd == "openForm")        result = Cmd_OpenForm(args);
+	else if (cmd == "listObjects")     result = Cmd_ListObjects();
 	else if (cmd == "openMetaEditor")  result = Cmd_OpenMetaEditor(args);
 	else if (cmd == "pressCommand")    result = Cmd_PressCommand(args);
 	else if (cmd == "getMessages")     result = Cmd_GetMessages();
