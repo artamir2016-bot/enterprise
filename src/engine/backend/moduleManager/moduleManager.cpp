@@ -375,13 +375,24 @@ bool ibValueModuleManagerRuntimeConfiguration::CreateMainModule()
 	// AttachRuntime(ctx). The manager itself no longer carries
 	// a ProcUnit field.
 	if (!appData->DesignerMode()) {
+		// A failure compiling the global modules must NEVER crash or abort startup — 1C starts and
+		// surfaces such an error only when a module is actually called. Report it and KEEP GOING: the
+		// unresolved names simply fail at use, which the caller can debug, instead of the whole client
+		// failing to open. Catch EVERYTHING — an imperfectly translated import can throw a
+		// non-ibBackendException, which previously escaped to std::terminate (process exit 255) and made
+		// a single bad common module take the entire enterprise down at startup.
 		try {
 			Compile();
 		}
 		catch (const ibBackendException& err) {
-			wxLogWarning(_("Global module init failed: %s"), err.GetErrorDescription());
-			return false;
-		};
+			wxLogError(wxT("%s"), err.GetErrorDescription());
+		}
+		catch (const std::exception& err) {
+			wxLogError(_("Global module init failed: %s"), wxString::FromUTF8(err.what()));
+		}
+		catch (...) {
+			wxLogError(_("Global module init failed (unknown error)"));
+		}
 	}
 
 	// Setup common modules. A single module that fails to compile (e.g. an imperfectly
