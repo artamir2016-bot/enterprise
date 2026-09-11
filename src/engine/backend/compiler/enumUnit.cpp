@@ -17,7 +17,12 @@ ibValueEnumerationWrapper::~ibValueEnumerationWrapper()
 
 void ibValueEnumerationWrapper::FillMembers(ibMemberTable& helper) const
 {
-	for (auto &obj : m_listEnumStr) {
-		helper.AppendProp(obj);
-	}
+	// Primary value names, in declaration order (== sorted m_listEnumData order that GetPropVal
+	// advances by), each pinned to its explicit index.
+	long i = 0;
+	for (auto& obj : m_listEnumStr)
+		helper.AppendProp(obj, i++);
+	// Extra names (e.g. Russian aliases) point at the same value slot as their primary.
+	for (auto& a : m_listEnumAlias)
+		helper.AppendProp(a.first, a.second);
 }

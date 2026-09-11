@@ -18,6 +18,10 @@ public:
 
 protected:
 	std::vector<wxString> m_listEnumStr;
+	// Additional names a value is ALSO reachable under (e.g. Russian aliases for imported 1C modules:
+	// ВидДвиженияНакопления.Расход). Each pair is (alias name, the value's prop index) so FillMembers
+	// can point the alias at the same GetPropVal slot as the primary name.
+	std::vector<std::pair<wxString, long>> m_listEnumAlias;
 };
 
 //***************************************************************************************************
@@ -202,6 +206,18 @@ public:
 		m_listEnumDesc.insert_or_assign(v, descr.IsEmpty() ? name : descr);
 
 		this->m_listEnumStr.push_back(name);
+	}
+
+	// Give an EXISTING value an extra name (e.g. its 1C Russian spelling). The alias resolves to the
+	// same value as the primary name — FillMembers points it at the value's prop index (its position
+	// in the sorted m_listEnumData, which is what GetPropVal advances by). Call AFTER AddEnumeration(v).
+	inline void AddEnumAlias(const valT& v, const wxString& aliasName) {
+		auto it = m_listEnumData.find(v);
+		wxASSERT(it != m_listEnumData.end());
+		if (it == m_listEnumData.end())
+			return;
+		const long idx = static_cast<long>(std::distance(m_listEnumData.begin(), it));
+		this->m_listEnumAlias.emplace_back(aliasName, idx);
 	}
 
 	ibValueEnumeration() : ibValueEnumerationBase<valT>(true), m_value(nullptr) { InitializeEnumeration(); }
