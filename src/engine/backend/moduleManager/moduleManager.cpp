@@ -116,7 +116,14 @@ bool ibValueModuleRuntimeManager::RuntimeRegisterCommonModule(ibValueMetaObjectC
 	else {
 		const wxString& strModuleName = commonModule->GetName();
 		UnbindVariable(strModuleName);
-		m_compileModule->AppendModule(moduleValue->GetCompileModule());
+		// EnsureCompileModule, not a raw m_compileModule deref: at CreateMainModule's register loop the
+		// compile module is created LAZILY (the non-global branch's BindExportVariable makes it, but a
+		// GLOBAL module is registered through here where nothing has yet). A base whose FIRST common
+		// module is Global (e.g. ApAccess) hit m_compileModule == nullptr -> AppendModule crashed the
+		// whole enterprise at startup with an access violation (0xC0000005). Designer never reaches this
+		// (DesignerMode skips the runtime register), which is why only the client crashed.
+		if (ibCompileModule* cm = EnsureCompileModule())
+			cm->AppendModule(moduleValue->GetCompileModule());
 	}
 
 	if (compileNow) {

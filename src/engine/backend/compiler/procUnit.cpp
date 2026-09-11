@@ -1860,12 +1860,28 @@ void ibProcUnit::Execute(const ibByteCode& cByteCode, ibByteBinder& br, ibValue*
 
 	m_pByteCode = &cByteCode;
 
-	//check the conformity of modules (compiled and running)
-	if (GetParent() && GetParent()->m_pByteCode != m_pByteCode->m_parent) {
+	// Check the conformity of modules (compiled and running) — the runtime parent
+	// chain must match what this bytecode was compiled against. This is only
+	// meaningful once the parent has actually LOADED a bytecode (m_pByteCode set by
+	// its own Execute). Two legitimate cases leave GetParent()->m_pByteCode == null:
+	//   (a) split init — AttachRuntime runs a child's Run(false) (register-only) BEFORE
+	//       the parent's body has run, so the parent frame exists (InitializeRuntime)
+	//       but no bytecode is loaded yet;
+	//   (b) a global common module that FAILS to compile: its compile throws, is
+	//       swallowed at CreateMainModule so startup degrades gracefully (1C-style —
+	//       unresolved names fail only at use), and the root parent never loads a
+	//       bytecode at all.
+	// In both, there is nothing to conform to yet, and the child's scope chain is wired
+	// from the parent FRAME (BuildScopeChain below), not from this dynamic pointer.
+	// Firing here would be a false positive AND — building the message — dereference the
+	// null parent bytecode (GetParent()->m_pByteCode->m_strModuleName), which crashed the
+	// whole client at startup with 0xC0000005. So assert only when BOTH sides are live.
+	if (GetParent() && GetParent()->m_pByteCode != nullptr &&
+		GetParent()->m_pByteCode != m_pByteCode->m_parent) {
 		m_pByteCode = nullptr;
 		ibBackendCoreException::Error(_("System error - compilation failed (#1)\nModule:%s\nParent1:%s\nParent2:%s"),
 			cByteCode.m_strModuleName,
-			cByteCode.m_parent->m_strModuleName,
+			cByteCode.m_parent != nullptr ? cByteCode.m_parent->m_strModuleName : wxString(wxT("<none>")),
 			GetParent()->m_pByteCode->m_strModuleName
 		);
 	}
