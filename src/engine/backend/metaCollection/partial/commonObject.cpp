@@ -1725,19 +1725,41 @@ void ibValueRecordDataObject::FillDataMembers(ibMemberTable& helper) const
 
 	wxString objectName;
 
+	// 1C Russian names of the STANDARD attributes, so imported object modules (kept verbatim) resolve
+	// bare Дата / Номер / Ссылка / … . Custom attributes already carry their (Russian) 1C names, so they
+	// need no aliasing. This TU has no UTF-8 BOM and the build sets no /utf-8 -> byte-escape via FromUTF8.
+	static const std::vector<std::pair<wxString, wxString>> stdAttrRu = {
+		{ wxT("Date"), wxString::FromUTF8("\xD0\x94\xD0\xB0\xD1\x82\xD0\xB0") },  // Дата
+		{ wxT("Number"), wxString::FromUTF8("\xD0\x9D\xD0\xBE\xD0\xBC\xD0\xB5\xD1\x80") },  // Номер
+		{ wxT("Posted"), wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD0\xB4\xD0\xB5\xD0\xBD") },  // Проведен
+		{ wxT("Ref"), wxString::FromUTF8("\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0") },  // Ссылка
+		{ wxT("DeletionMark"), wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBC\xD0\xB5\xD1\x82\xD0\xBA\xD0\xB0\xD0\xA3\xD0\xB4\xD0\xB0\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F") },  // ПометкаУдаления
+		{ wxT("Code"), wxString::FromUTF8("\xD0\x9A\xD0\xBE\xD0\xB4") },  // Код
+		{ wxT("Description"), wxString::FromUTF8("\xD0\x9D\xD0\xB0\xD0\xB8\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xBE\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5") },  // Наименование
+		{ wxT("Parent"), wxString::FromUTF8("\xD0\xA0\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C") },  // Родитель
+		{ wxT("IsFolder"), wxString::FromUTF8("\xD0\xAD\xD1\x82\xD0\xBE\xD0\x93\xD1\x80\xD1\x83\xD0\xBF\xD0\xBF\xD0\xB0") },  // ЭтоГруппа
+	};
+
 	//fill custom attributes
 	for (const auto object : metaObject->GetGenericAttributeArrayObject()) {
 		if (object->IsDeleted())
 			continue;
 		if (!object->GetObjectNameAsString(objectName))
 			continue;
+		const bool writable = !metaObject->IsReadOnlyAttribute(object->GetMetaID());
 		helper.AppendProp(
 			objectName,
 			true,
-			!metaObject->IsReadOnlyAttribute(object->GetMetaID()),   // the reference is one of these
+			writable,   // the reference is one of these
 			object->GetMetaID(),
 			eProperty
 		);
+		// If this is a standard attribute, ALSO surface its 1C Russian name pointing at the same metaID.
+		for (const auto& a : stdAttrRu)
+			if (objectName == a.first) {
+				helper.AppendProp(a.second, true, writable, object->GetMetaID(), eProperty);
+				break;
+			}
 	}
 
 	//fill custom tables
