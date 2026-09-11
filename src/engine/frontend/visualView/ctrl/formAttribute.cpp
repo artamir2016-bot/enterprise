@@ -190,6 +190,13 @@ void ibValueForm::DeleteAttribute(unsigned int idx)
 	}
 }
 
+// The 1C Russian names the MAIN attribute is ALSO reachable under, so a form module imported from 1C
+// (whose text is kept verbatim) resolves `Объект` / `Список` the way it was written — regardless of
+// what the OES main attribute is actually named (Object / List / a loaded name). Both are bound for
+// any main attribute: an object form's module writes `Объект`, a list form's writes `Список`, and a
+// spare alias on the other kind is harmless. The English name stays bound too.
+static const wxChar* const kMainRuAliases[] = { wxT("Объект"), wxT("Список"), wxT("Object"), wxT("List") };
+
 void ibValueForm::BindAttributeVariable(ibFormAttributeValue* entry)
 {
 	if (entry == nullptr)
@@ -197,9 +204,14 @@ void ibValueForm::BindAttributeVariable(ibFormAttributeValue* entry)
 	const wxString name = entry->GetName();
 	if (!name.IsEmpty())
 		BindLocalVariable(name, entry->GetBindValue());   // <name> / ThisForm.<name>
-	// The MAIN attribute additionally drives the exported DataSource (the form's source).
-	if (entry->IsMain())
+	// The MAIN attribute additionally drives the exported DataSource (the form's source) and is
+	// reachable under its 1C Russian names so imported modules resolve `Объект` / `Список`.
+	if (entry->IsMain()) {
 		BindExportVariable(wxT("DataSource"), entry->GetBindValue());
+		for (const wxChar* alias : kMainRuAliases)
+			if (name != alias)
+				BindLocalVariable(alias, entry->GetBindValue());
+	}
 }
 
 void ibValueForm::DropAttributeBinds(ibFormAttributeValue* entry)
@@ -212,8 +224,12 @@ void ibValueForm::DropAttributeBinds(ibFormAttributeValue* entry)
 	if (entry == nullptr)
 		return;
 	UnbindVariable(entry->GetName());
-	if (entry->IsMain())
+	if (entry->IsMain()) {
 		UnbindVariable(wxT("DataSource"));
+		for (const wxChar* alias : kMainRuAliases)
+			if (entry->GetName() != alias)
+				UnbindVariable(alias);
+	}
 }
 
 bool ibValueForm::IsAttributeNameUnique(const wxString& name, const ibFormAttributeValue* except) const

@@ -241,8 +241,10 @@ void ibValueForm::InitializeForm(const ibValueMetaObjectFormBase* creator,
 		// the incoming source; controls / source explorer work off this attribute.
 		// List vs object = the source-class table fact via the factory (IsTableSource), not the
 		// explorer flag.
+		// The main attribute takes its 1C name (Объект / Список) so imported form modules — kept
+		// verbatim — resolve it; the English alias (Object / List) is bound alongside for native code.
 		(void)AddMainAttribute(
-			srcObject->IsTableSource() ? wxT("List") : wxT("Object"),
+			srcObject->IsTableSource() ? wxT("Список") : wxT("Объект"),
 			srcObject->GetSourceClassType(), srcObject);
 	}
 }
@@ -271,7 +273,9 @@ bool ibValueForm::InitializeFormModule()
 		// Designer-guarded; Compile internally too. Session linkage
 		// flows through the parent chain (descriptor → root → session).
 		BindContextVariable(thisForm, this);                                          // contextual
+		BindContextVariable(wxT("ЭтаФорма"), this);                                   // 1C alias of ThisForm
 		BindExportVariable(wxT("Controls"), m_formCollectionControl);                 // exported
+		BindExportVariable(wxT("Элементы"), m_formCollectionControl);                 // 1C alias of Controls
 		// Bind each source attribute as a form-module variable: its value cell as a LOCAL named
 		// <attrName>, and — for the MAIN — the exported DataSource. Same self-managed path that
 		// designer add / become-main reuse (BindAttributeVariable), so the wiring is one place.

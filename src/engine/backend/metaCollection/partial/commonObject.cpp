@@ -2742,6 +2742,7 @@ bool ibValueRecordDataObjectRecorderRef::InitializeObject(const ibGuid& copyGuid
 	ibRuntimeModuleDataObject::SetParent(ibSession::EditModuleManagerFor(m_metaObject->GetMetaData()));
 	ibRecorderRegister* recordSet = m_registerRecords;
 	BindExportVariable(wxT("RegisterRecords"), recordSet);
+	BindExportVariable(wxT("Движения"), recordSet);   // 1C Russian name — imported object modules use it
 	return ibValueRecordDataObjectRef::InitializeObject(copyGuid);
 }
 
@@ -2750,6 +2751,7 @@ bool ibValueRecordDataObjectRecorderRef::InitializeObject(ibValueRecordDataObjec
 	ibRuntimeModuleDataObject::SetParent(ibSession::EditModuleManagerFor(m_metaObject->GetMetaData()));
 	ibRecorderRegister* recordSet = m_registerRecords;
 	BindExportVariable(wxT("RegisterRecords"), recordSet);
+	BindExportVariable(wxT("Движения"), recordSet);   // 1C Russian name — imported object modules use it
 	return ibValueRecordDataObjectRef::InitializeObject(source, generate);
 }
 
