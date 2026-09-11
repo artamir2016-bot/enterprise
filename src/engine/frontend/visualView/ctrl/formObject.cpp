@@ -276,6 +276,16 @@ bool ibValueForm::InitializeFormModule()
 		BindContextVariable(wxT("ЭтаФорма"), this);                                   // 1C alias of ThisForm
 		BindExportVariable(wxT("Controls"), m_formCollectionControl);                 // exported
 		BindExportVariable(wxT("Элементы"), m_formCollectionControl);                 // 1C alias of Controls
+		// GLOBAL CONTEXT into the form module's scope: the runtime manager binds it as a transparent
+		// scope container ("Manager"), which surfaces the top-level managers (Справочники / Документы /
+		// Перечисления / …). Common and object modules see it through the manager; a FORM module lives
+		// off to the side of that chain, so imported form modules that reference these bare names failed
+		// to compile. Bind the SAME container here so the form resolves them identically. Enterprise
+		// only — the Designer session has no runtime root manager.
+		if (ibSession* s = ibSession::Current())
+			if (ibValueModuleManagerRuntimeConfiguration* mm = s->GetManagerModule())
+				if (ibValue* globalContext = mm->GetObjectManager())
+					BindScopeVariable(wxT("Manager"), globalContext);
 		// Form open parameters — 1C `Параметры`. Empty structure by default so imported modules that
 		// read the open parameters resolve the name (a real open-parameters pipeline can fill it later).
 		if (!m_formParameters)
