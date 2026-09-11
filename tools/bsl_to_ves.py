@@ -106,7 +106,12 @@ def preprocess_onec_module(code: str) -> str:
             continue
         if emitting():
             out.append(line)
-    return "\n".join(out)
+    text = "\n".join(out)
+    # Normalise the two-word 1C keyword «Для Каждого» to the single token «ДляКаждого». OES lexes
+    # keywords as one token and offers the one-word Russian alias only (translateCode.cpp), so the
+    # two-word form must be collapsed even on the keep-Russian import path (no full BSL->VES translate).
+    text = re.sub("\\bДля\\s+Каждого\\b", "ДляКаждого", text, flags=re.IGNORECASE)
+    return text
 
 # --- 1C keyword -> VES keyword (lower-cased 1C key) ------------------------
 # Multi-word "Для Каждого" is handled before single-word mapping.

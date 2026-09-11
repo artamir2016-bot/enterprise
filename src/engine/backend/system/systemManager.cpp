@@ -238,6 +238,10 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	// UTF-8 byte escapes (build sets no /utf-8) via FromUTF8.
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x81\xD0\xBE\xD0\xBE\xD0\xB1\xD1\x89\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Message"));  // сообщить
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD0\xBF\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x81\xD1\x82\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Message"));  // Оповестить (1C Notify -> user message)
+	// ОткрытьФорму — INTERIM alias to ShowCommonForm: unblocks imported modules and handles the common
+	// case ОткрытьФорму("ОбщаяФорма.X"); a general script form-open (any metatype form by path) is a
+	// later feature. ShowCommonForm resolves by name, so a non-common path simply finds nothing.
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD1\x82\xD0\xBA\xD1\x80\xD1\x8B\xD1\x82\xD1\x8C\xD0\xA4\xD0\xBE\xD1\x80\xD0\xBC\xD1\x83"), wxT("ShowCommonForm"));  // ОткрытьФорму
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x81\xD1\x82\xD1\x80\xD0\xBE\xD0\xBA\xD0\xB0"), wxT("String"));  // строка
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x87\xD0\xB8\xD1\x81\xD0\xBB\xD0\xBE"), wxT("Number"));  // число
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xB4\xD0\xB0\xD1\x82\xD0\xB0"), wxT("Date"));  // дата
