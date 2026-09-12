@@ -21,7 +21,12 @@ from agent_client import TestAgentClient, AgentError
 
 # The object kinds worth a GUI walk (they have object forms + write/deletion events). Registers, charts
 # of accounts etc. are covered by the load/CheckModules smoke; here we drive the data-entry objects.
-KINDS = "Catalogs,Documents,Enums,ChartsOfCharacteristicTypes"
+# CommonModules are imported too so a data object's module can resolve functions that live in a
+# (global) common module — e.g. ЗначениеНеЗаполнено / УниверсальныеМеханизмы. Without them those
+# references fail as "Procedure or function not detected", a slice artifact rather than a platform bug.
+# Use a high --limit so ALL common modules land (the per-kind cap also bounds the driven data kinds;
+# pair with --objects to keep the drive itself short).
+KINDS = "Catalogs,Documents,Enums,ChartsOfCharacteristicTypes,CommonModules"
 
 _failures = []
 def record(name, ok, detail=""):
