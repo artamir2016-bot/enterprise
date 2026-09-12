@@ -1677,6 +1677,11 @@ ibValueModel* ibValueRecordDataObject::GetTableByMetaID(const ibMetaID& id) cons
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define thisObject wxT("ThisObject")
+// Russian alias for ThisObject, reached as `ЭтотОбъект` from object modules — bound
+// alongside the English name at every InitializeObject site so an imported 1C module
+// (which writes ЭтотОбъект) compiles + runs. This TU has no UTF-8 BOM and the build
+// sets no /utf-8 -> byte-escape via FromUTF8.
+#define thisObjectRu wxString::FromUTF8("\xD0\xAD\xD1\x82\xD0\xBE\xD1\x82\xD0\x9E\xD0\xB1\xD1\x8A\xD0\xB5\xD0\xBA\xD1\x82")
 
 void ibValueRecordDataObject::PrepareEmptyObject()
 {
@@ -1905,6 +1910,7 @@ bool ibValueRecordDataObjectExt::InitializeObject()
 		// pick up parent automatically on creation.
 		ibRuntimeModuleDataObject::SetParent(moduleManager);
 		BindContextVariable(thisObject, this);
+		BindContextVariable(thisObjectRu, this);
 		InitializeRuntime();
 
 		try {
@@ -1936,6 +1942,7 @@ bool ibValueRecordDataObjectExt::InitializeObject(ibValueRecordDataObjectExt* so
 
 		ibRuntimeModuleDataObject::SetParent(moduleManager);
 		BindContextVariable(thisObject, this);
+		BindContextVariable(thisObjectRu, this);
 		InitializeRuntime();
 
 		try {
@@ -2011,6 +2018,7 @@ bool ibValueRecordDataObjectRef::InitializeObject(const ibGuid& copyGuid)
 
 	ibRuntimeModuleDataObject::SetParent(moduleManager);
 	BindContextVariable(thisObject, this);
+	BindContextVariable(thisObjectRu, this);
 
 	try {
 		Compile();
@@ -2066,6 +2074,7 @@ bool ibValueRecordDataObjectRef::InitializeObject(ibValueRecordDataObjectRef* so
 
 	ibRuntimeModuleDataObject::SetParent(moduleManager);
 	BindContextVariable(thisObject, this);
+	BindContextVariable(thisObjectRu, this);
 
 	try {
 		Compile();
@@ -3281,6 +3290,7 @@ bool ibValueRecordSetObject::InitializeObject(const ibValueRecordSetObject* sour
 
 	ibRuntimeModuleDataObject::SetParent(moduleManager);
 	BindContextVariable(thisObject, this);                   // contextual
+	BindContextVariable(thisObjectRu, this);                 // ЭтотОбъект
 	BindExportVariable(wxT("Filter"), m_recordSetKeyValue);  // exported — register filter/key
 
 	try {
