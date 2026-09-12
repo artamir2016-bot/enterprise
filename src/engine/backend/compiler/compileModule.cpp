@@ -45,8 +45,19 @@ bool ibCompileModule::Compile()
 
 		Load(m_moduleObject->GetModuleText());
 
-		return m_parentModule != nullptr ?
-			m_parentModule->Compile() : true;
+		if (m_parentModule == nullptr)
+			return true;
+		// A global module has no bytecode of its own — it is inlined into the parent (root) compile
+		// unit, so "compiling" it means compiling the parent. But parent->Compile() Reset()s the parent's
+		// bytecode FIRST; if that recompile then fails (another broken inlined global), the parent is left
+		// EMPTY — wiping the whole system-function / alias table that every runtime-compiled module resolves
+		// against, so imported catalog/document/form modules can no longer see СокрЛП / Сообщить / etc.
+		// CreateMainModule already appends every global and compiles the root ONCE. So once the root is
+		// compiled, re-driving it from each global is both redundant and destructive: skip it. Only cascade
+		// while the root has not been built yet (the first global to compile triggers the initial build).
+		if (m_parentModule->m_cByteCode.m_bCompile)
+			return true;
+		return m_parentModule->Compile();
 	}
 
 	//recursively compile modules in case of any changes
@@ -128,8 +139,14 @@ bool ibCompileModule::Recompile()
 
 			Load(m_moduleObject->GetModuleText());
 
-			return m_parentModule != nullptr ?
-				m_parentModule->Compile() : true;
+			if (m_parentModule == nullptr)
+				return true;
+			// See ibCompileModule::Compile — a global is inlined into the root, and root->Compile()
+			// Reset()s the root first, so re-driving it once the root is already built would wipe the
+			// system-function table on any failure. Skip when the root is compiled.
+			if (m_parentModule->m_cByteCode.m_bCompile)
+				return true;
+			return m_parentModule->Compile();
 		}
 	}
 
