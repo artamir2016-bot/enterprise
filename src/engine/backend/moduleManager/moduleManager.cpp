@@ -330,13 +330,24 @@ bool ibValueModuleRuntimeManager::AttachRuntime(ibSession* session)
 			// so no separate ProcUnit either. Main's ProcUnit executes
 			// the spliced code as part of its own top-level.
 			continue;
+		// CONTINUE, don't abort, when one module fails to prepare. These modules are inlined-independent
+		// (each has its own ProcUnit); a single one that throws — an imperfectly translated import, a
+		// module referencing something only some configurations have — must NOT stop the REST from being
+		// prepared. Aborting here (the old `return false`) left every later module with an uncompiled
+		// ProcUnit, so the first call into one during a form's Filling raised "Module not compiled!" and
+		// no form opened. Skip the broken one; its own calls fail at use, the rest of the runtime is live.
 		try {
 			moduleValue->InitializeRuntime();
 			moduleValue->Run(false);
 		}
 		catch (const ibBackendException& err) {
-			wxLogWarning(_("AttachRuntime common: %s"), err.GetErrorDescription());
-			return false;
+			wxLogWarning(_("AttachRuntime common '%s': %s"), moduleValue->GetModuleName(), err.GetErrorDescription());
+		}
+		catch (const std::exception& err) {
+			wxLogWarning(_("AttachRuntime common '%s': %s"), moduleValue->GetModuleName(), wxString::FromUTF8(err.what()));
+		}
+		catch (...) {
+			wxLogWarning(_("AttachRuntime common '%s': unknown error"), moduleValue->GetModuleName());
 		}
 	}
 	// LOAD-BEARING — invalidate BEFORE Phase 2, do not drop. The compile-time

@@ -2007,8 +2007,15 @@ void ibProcUnit::Execute(const ibByteCode& cByteCode, ibByteBinder& br, ibValue*
 //bExportOnly=2-search for exported functions in the current module only
 long ibProcUnit::FindMethod(const wxString& strMethodName, bool bError, int bExportOnly) const
 {
-	if (m_pByteCode == nullptr ||
-		!m_pByteCode->m_bCompile) {
+	if (m_pByteCode == nullptr || !m_pByteCode->m_bCompile) {
+		// A LOOKUP, not a call: an uncompiled module simply offers no names. When this module is being
+		// walked as an ANCESTOR in the scope chain (bExportOnly != 0 — the parent walk asks only for
+		// exports), skip it gracefully — it contributes nothing. Only a DIRECT lookup on an uncompiled
+		// module (bExportOnly == 0) is a genuine error. This is what let an object with no Filling handler
+		// open its form: the walk reached the root module (which, with common modules inlined, may not have
+		// executed a body yet) and threw "Module not compiled!" instead of returning "not here".
+		if (bExportOnly != 0)
+			return wxNOT_FOUND;
 		ibBackendCoreException::Error(_("Module not compiled!"));
 	}
 
@@ -2035,8 +2042,9 @@ long ibProcUnit::FindMethod(const wxString& strMethodName, bool bError, int bExp
 
 long ibProcUnit::FindFunction(const wxString& strMethodName, bool bError, int bExportOnly) const
 {
-	if (m_pByteCode == nullptr ||
-		!m_pByteCode->m_bCompile) {
+	if (m_pByteCode == nullptr || !m_pByteCode->m_bCompile) {
+		if (bExportOnly != 0)       // ancestor scope-chain walk — an uncompiled module offers no names
+			return wxNOT_FOUND;
 		ibBackendCoreException::Error(_("Module not compiled!"));
 	}
 
@@ -2063,8 +2071,9 @@ long ibProcUnit::FindFunction(const wxString& strMethodName, bool bError, int bE
 
 long ibProcUnit::FindProcedure(const wxString& strMethodName, bool bError, int bExportOnly) const
 {
-	if (m_pByteCode == nullptr ||
-		!m_pByteCode->m_bCompile) {
+	if (m_pByteCode == nullptr || !m_pByteCode->m_bCompile) {
+		if (bExportOnly != 0)       // ancestor scope-chain walk — an uncompiled module offers no names
+			return wxNOT_FOUND;
 		ibBackendCoreException::Error(_("Module not compiled!"));
 	}
 
