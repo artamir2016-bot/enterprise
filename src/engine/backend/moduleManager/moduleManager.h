@@ -352,6 +352,12 @@ public:
 	bool RuntimeRenameCommonModule(ibValueMetaObjectCommonModule* commonModule, const wxString& newName);
 	bool RuntimeUnregisterCommonModule(ibValueMetaObjectCommonModule* commonModule);
 
+	// Recovery path when the initial (all-globals-inlined) Compile() of the root fails: strip the
+	// global modules from root, compile a clean baseline, then re-add them one at a time and keep only
+	// those that compile. Isolates a single broken global (imported module with an unresolvable name)
+	// so it fails only at call, not at every form open. Called from CreateMainModule's catch.
+	void RecompileIsolatingBrokenGlobals();
+
 	ibValueModuleUnit* FindCommonModule(const ibValueMetaObjectCommonModule* commonModule) const override;
 
 	virtual std::vector<ibValuePtr<ibValueRuntimeModuleUnit>>& GetCommonModules() { return m_listCommonModuleManager; }

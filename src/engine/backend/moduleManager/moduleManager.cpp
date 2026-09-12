@@ -199,6 +199,59 @@ bool ibValueModuleRuntimeManager::RuntimeUnregisterCommonModule(ibValueMetaObjec
 	return true;
 }
 
+void ibValueModuleRuntimeManager::RecompileIsolatingBrokenGlobals()
+{
+	ibCompileModule* cm = GetCompileModule();
+	if (cm == nullptr)
+		return;
+
+	// The global modules that were inlined into root (RuntimeRegisterCommonModule appended each one's
+	// compile module here). Collect them so we can strip and re-add individually.
+	std::vector<ibValueRuntimeModuleUnit*> globals;
+	for (auto& mv : m_listCommonModuleManager) {
+		if (mv && mv->IsGlobalModule() && mv->GetCompileModule() != nullptr)
+			globals.push_back(&*mv);
+	}
+	if (globals.empty())
+		return;                                   // nothing to isolate — the failure was elsewhere
+
+	// Strip ALL globals, then compile a clean baseline (root + non-global children only). This must
+	// succeed; if it doesn't the failure isn't a global module and there's nothing more to do here.
+	for (ibValueRuntimeModuleUnit* g : globals)
+		cm->RemoveModule(g->GetCompileModule());
+	try {
+		Compile();
+	}
+	catch (const ibBackendException& err) {
+		wxLogError(_("Runtime compile failed even without global modules: %s"), err.GetErrorDescription());
+		return;
+	}
+	catch (...) {
+		wxLogError(_("Runtime compile failed even without global modules (unknown error)"));
+		return;
+	}
+
+	// Re-add each global on its own and keep only the ones that compile. A broken global is removed and
+	// its inlined names simply resolve nowhere — failing at call, not at every form open.
+	for (ibValueRuntimeModuleUnit* g : globals) {
+		cm->AppendModule(g->GetCompileModule());
+		try {
+			Compile();
+		}
+		catch (const ibBackendException& err) {
+			cm->RemoveModule(g->GetCompileModule());
+			wxLogError(_("Global common module '%s' skipped (does not compile): %s"),
+				g->GetModuleName(), err.GetErrorDescription());
+			try { Compile(); } catch (...) {}     // restore the last-known-good compile state
+		}
+		catch (...) {
+			cm->RemoveModule(g->GetCompileModule());
+			wxLogError(_("Global common module '%s' skipped (does not compile, unknown error)"), g->GetModuleName());
+			try { Compile(); } catch (...) {}
+		}
+	}
+}
+
 //**********************************************************************
 //*          Per-session runtime (compile / runtime split)             *
 //**********************************************************************
@@ -393,12 +446,23 @@ bool ibValueModuleManagerRuntimeConfiguration::CreateMainModule()
 		}
 		catch (const ibBackendException& err) {
 			wxLogError(wxT("%s"), err.GetErrorDescription());
+			// ISOLATE THE BROKEN GLOBAL. Global common modules are inlined into THIS root compile unit,
+			// so one unresolvable name (e.g. an imported module calling a 1C function OES doesn't have)
+			// takes the WHOLE root compile down — and every form's module links to root, so no form
+			// opens. "Fails only at use" (above) is then not achieved: it fails at open, for everything.
+			// Recover so the promise holds: strip the globals, compile a clean baseline, then re-add them
+			// ONE AT A TIME and keep only those that compile. The broken module is left out — its names
+			// resolve nowhere and fail at call, exactly as intended, while the rest of the configuration
+			// (and its forms) runs. Only pays this cost on the failure path; the clean path is one Compile.
+			RecompileIsolatingBrokenGlobals();
 		}
 		catch (const std::exception& err) {
 			wxLogError(_("Global module init failed: %s"), wxString::FromUTF8(err.what()));
+			RecompileIsolatingBrokenGlobals();
 		}
 		catch (...) {
 			wxLogError(_("Global module init failed (unknown error)"));
+			RecompileIsolatingBrokenGlobals();
 		}
 	}
 
