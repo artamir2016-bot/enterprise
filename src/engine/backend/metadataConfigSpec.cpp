@@ -472,6 +472,21 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 		const wxString title = JStr(c, "title");
 		if (!title.IsEmpty())
 			node.SetProp<wxString>(wxT("Title"), title);
+		// Width — the importer translated 1C's char widths (Ширина / МаксимальнаяШирина, bounded by
+		// АвтоМаксимальнаяШирина) into pixels: minWidth/maxWidth. Apply them as the control's
+		// MinimumSize / MaximumSize (width only; height -1 leaves the control's natural height), so a
+		// field renders at the developer's chosen width instead of the sizer's default. ibPropertySize
+		// parses "w,h".
+		if (c.contains("minWidth") && c["minWidth"].is_number_integer()) {
+			const int w = c["minWidth"].get<int>();
+			if (w > 0)
+				node.SetProp<wxString>(wxT("MinimumSize"), wxString::Format(wxT("%d,-1"), w));
+		}
+		if (c.contains("maxWidth") && c["maxWidth"].is_number_integer()) {
+			const int w = c["maxWidth"].get<int>();
+			if (w > 0)
+				node.SetProp<wxString>(wxT("MaximumSize"), wxString::Format(wxT("%d,-1"), w));
+		}
 	}
 	else if (kind == wxT("table")) {
 		const wxString attr = JStr(c, "attr");

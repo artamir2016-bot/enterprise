@@ -287,6 +287,46 @@ def _title_loc(el):
     return "".join(parts)
 
 
+# A 1C managed-form element's width is measured in CHARACTERS of the form's default font, not pixels.
+# Approx one character ≈ this many px for the standard interface font (Tahoma/Segoe ~8-9pt): the width
+# of a digit is ~7px. Used to translate 1C's char widths into OES's pixel MinimumSize / MaximumSize.
+_CHAR_PX = 7
+
+def _field_width_px(el):
+    """1C field width model -> (minWidthPx, maxWidthPx), 0 = unset.
+
+    Three properties drive an input field's horizontal size (all in CHARACTERS):
+      * <Width>                 — the desired width. Fixes the field's base width.
+      * <AutoMaxWidth>          — default TRUE. When FALSE the field must NOT auto-grow past its cap,
+                                  so it becomes a fixed / bounded field; when TRUE it may stretch.
+      * <MaxWidth>              — the cap (used when AutoMaxWidth is off; else an explicit upper bound).
+    Effective pixel sizes:
+      * minWidth = Width*charpx  (the field wants at least this).
+      * maxWidth = cap*charpx    where cap = MaxWidth (if set) else Width, but ONLY when the field is
+                                 bounded — AutoMaxWidth off, or MaxWidth explicitly set. An auto-max
+                                 field with only a Width keeps growing (no max), which the sizer honours
+                                 together with <HorizontalStretch>."""
+    def _int(tag):
+        e = el.find(LF + tag)
+        s = _txt(e).strip() if e is not None else ""
+        return int(s) if s.lstrip("-").isdigit() else 0
+    def _bool(tag, default):
+        e = el.find(LF + tag)
+        if e is None:
+            return default
+        return _txt(e).strip().lower() == "true"
+    w  = _int("Width")
+    mw = _int("MaxWidth")
+    auto_max = _bool("AutoMaxWidth", True)   # 1C default is auto-max ON
+    min_px = w * _CHAR_PX if w > 0 else 0
+    max_px = 0
+    if mw > 0:
+        max_px = mw * _CHAR_PX               # explicit cap always honoured
+    elif not auto_max and w > 0:
+        max_px = w * _CHAR_PX                # bounded field with only a Width -> fixed at Width
+    return min_px, max_px
+
+
 def _map_form_children(child_items, in_table):
     """Map a <ChildItems> element to a list of OES control dicts.
 
@@ -323,6 +363,14 @@ def _map_form_children(child_items, in_table):
             ftitle = _title_loc(el)
             if ftitle:
                 node["title"] = ftitle
+            # Width — 1C's Ширина / АвтоМаксимальнаяШирина / МаксимальнаяШирина (in characters) mapped to
+            # OES pixel MinimumSize / MaximumSize. Carried as minWidth/maxWidth so a field imports at the
+            # size the developer chose instead of the sizer's default.
+            min_px, max_px = _field_width_px(el)
+            if min_px > 0:
+                node["minWidth"] = min_px
+            if max_px > 0:
+                node["maxWidth"] = max_px
         elif kind == "table":
             node["attr"] = _last_seg(_data_path(el))
         elif kind == "label":
