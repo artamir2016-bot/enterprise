@@ -471,34 +471,16 @@ def parse_form_attributes(form_xml_path):
         name = a.get("name") or ""
         if not name:
             continue
-        t = a.find(LF + "Type")
-        tt = t.find(CORE + "Type") if t is not None else None
-        xstype = _txt(tt).strip() if tt is not None else ""
-        node = {"name": name}
-        if xstype == "xs:decimal":
-            node["type"] = "Number"
-            nq = t.find(CORE + "NumberQualifiers")
-            if nq is not None:
-                d = nq.find(CORE + "Digits")
-                fd = nq.find(CORE + "FractionDigits")
-                if d is not None and _txt(d).strip().isdigit():
-                    node["precision"] = int(_txt(d).strip())
-                if fd is not None and _txt(fd).strip().isdigit():
-                    node["scale"] = int(_txt(fd).strip())
-        elif xstype == "xs:boolean":
-            node["type"] = "Boolean"
-        elif xstype in ("xs:dateTime", "xs:date"):
-            node["type"] = "Date"
-        elif xstype == "xs:string":
-            node["type"] = "String"
-            sq = t.find(CORE + "StringQualifiers")
-            if sq is not None:
-                ln = sq.find(CORE + "Length")
-                if ln is not None and _txt(ln).strip().isdigit():
-                    node["length"] = int(_txt(ln).strip())
-        else:
-            # Main object, composite, or ref-typed form attribute: not modelled here.
-            continue
+        # Type resolution is UNIFIED with catalog/document attributes: map_type handles
+        # primitives (String/Number/Date/Boolean, with qualifiers) AND reference/composite
+        # types (CatalogRef.X, DocumentRef.X, mixed) — the LF "Type" element's children are
+        # in the same v8 core namespace map_type reads (V8 == CORE), so it consumes it directly.
+        # Previously only primitives were modelled and every ref-typed form attribute was dropped,
+        # so a form module referencing it (e.g. СсылкаДоговор / СделкаОтбор — a ref requisite)
+        # failed to compile with "Var is not found". map_type falls back to String for a truly
+        # unmodelled type, so the attribute is always emitted and always resolvable.
+        node = map_type(a.find(LF + "Type"))
+        node["name"] = name
         out.append(node)
     return out
 
