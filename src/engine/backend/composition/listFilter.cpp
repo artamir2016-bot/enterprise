@@ -118,6 +118,12 @@ void ibValueFilterItem::FillMembers(ibMemberTable& helper) const {
 	helper.AppendProp(wxT("Right"));
 	helper.AppendProp(wxT("DisplayMode"));
 	helper.AppendProp(wxT("Presentation"));
+	// Russian aliases (1C ЭлементОтбораКомпоновкиДанных) — same order as enUseRu.. in the enum. No BOM
+	// here + no /utf-8 → byte-escape. They dispatch to the same fields in Get/SetPropVal below.
+	helper.AppendProp(wxString::FromUTF8("\xD0\x98\xD1\x81\xD0\xBF\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xB7\xD0\xBE\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5"));         // Использование
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9B\xD0\xB5\xD0\xB2\xD0\xBE\xD0\xB5\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"));         // ЛевоеЗначение
+	helper.AppendProp(wxString::FromUTF8("\xD0\x92\xD0\xB8\xD0\xB4\xD0\xA1\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"));                 // ВидСравнения
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBE\xD0\xB5\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5")); // ПравоеЗначение
 }
 
 bool ibValueFilterItem::Init(ibValue** paParams, const long lSizeArray) {
@@ -143,9 +149,13 @@ bool ibValueFilterItem::Init(ibValue** paParams, const long lSizeArray) {
 
 bool ibValueFilterItem::GetPropVal(const long lPropNum, ibValue& pvarPropVal) {
 	switch (lPropNum) {
+	case enUseRu:
 	case enUse:          pvarPropVal = m_use; return true;
+	case enLeftRu:
 	case enLeft:         pvarPropVal = m_left; return true;
+	case enComparisonRu:
 	case enComparison:   pvarPropVal = ibValue::CreateAndConvertEnumObjectRef<ibValueEnumComparisonKind>(m_comparison); return true;
+	case enRightRu:
 	case enRight:        pvarPropVal = m_right; return true;
 	case enDisplayMode:  pvarPropVal = ibValue::CreateAndConvertEnumObjectRef<ibValueEnumFilterDisplayMode>(m_displayMode); return true;
 	case enPresentation: pvarPropVal = GetString(); return true;
@@ -155,7 +165,9 @@ bool ibValueFilterItem::GetPropVal(const long lPropNum, ibValue& pvarPropVal) {
 
 bool ibValueFilterItem::SetPropVal(const long lPropNum, const ibValue& varPropVal) {
 	switch (lPropNum) {
+	case enUseRu:
 	case enUse:  m_use = varPropVal.GetBoolean(); return true;
+	case enLeftRu:
 	case enLeft:
 		// A STRING on the left names a field — that is what a path is. Any other
 		// value is taken as itself, which is what makes `True = True` expressible.
@@ -164,7 +176,9 @@ bool ibValueFilterItem::SetPropVal(const long lPropNum, const ibValue& varPropVa
 		else
 			m_left = varPropVal;
 		return true;
+	case enComparisonRu:
 	case enComparison:   m_comparison = varPropVal.ConvertToEnumValue<ibComparisonKind>(); return true;
+	case enRightRu:
 	case enRight:        m_right = varPropVal; return true;
 	case enDisplayMode:  m_displayMode = varPropVal.ConvertToEnumValue<ibFilterDisplayMode>(); return true;
 	case enPresentation: m_presentation = varPropVal.GetString(); return true;
@@ -483,6 +497,15 @@ void ibValueFilterList::FillMembers(ibMemberTable& helper) const {
 	helper.AppendFunc(wxT("Count"),    wxT("Count()"));
 	helper.AppendFunc(wxT("Get"),   1, wxT("Get(index)"));
 	helper.AppendProc(wxT("Clear"));
+	// Russian surface (1C ОтборКомпоновкиДанных.Элементы): .Добавить(Тип) adds an empty item to configure,
+	// .Элементы is this collection itself. No BOM + no /utf-8 → byte-escape.
+	helper.AppendFunc(wxString::FromUTF8("\xD0\x94\xD0\xBE\xD0\xB1\xD0\xB0\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C"), 1, wxT("\xD0\x94\xD0\xBE\xD0\xB1\xD0\xB0\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C(\xD0\xA2\xD0\xB8\xD0\xBF)")); // Добавить
+	helper.AppendProp(wxString::FromUTF8("\xD0\xAD\xD0\xBB\xD0\xB5\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x82\xD1\x8B"));  // Элементы
+}
+
+bool ibValueFilterList::GetPropVal(const long lPropNum, ibValue& pvarPropVal) {
+	if (lPropNum == enItemsRu) { pvarPropVal = this; return true; }   // .Элементы → the collection itself
+	return false;
 }
 
 bool   ibValueFilterList::IsEmpty() const { return Count() == 0; }
@@ -555,6 +578,14 @@ bool ibValueFilterList::CallAsFunc(const long lMethodNum, ibValue& pvarRetValue,
 		ibValueFilterItem* item = GetItem(idx);
 		if (item == nullptr) return false;
 		pvarRetValue = item;
+		return true;
+	}
+	case enAddRu: {
+		// 1C .Добавить(Тип) — add an EMPTY item (default Equal, empty sides) and hand it back so the
+		// caller fills .ЛевоеЗначение / .ВидСравнения / .ПравоеЗначение. The type argument is ignored:
+		// the only item this flat list holds is a filter condition. The item lives in the collection, so
+		// property writes on the returned value mutate the stored condition.
+		pvarRetValue = Add(wxString(), ibComparisonKind_Equal, ibValue(), true);
 		return true;
 	}
 	}

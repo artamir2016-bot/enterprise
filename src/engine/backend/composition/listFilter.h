@@ -173,6 +173,17 @@ public:
 		// express becomes offerable by being named here and nowhere else.
 		AddEnumeration(ibComparisonKind_In,          wxT("In"),          _("In"));
 		AddEnumeration(ibComparisonKind_InHierarchy, wxT("InHierarchy"), _("In hierarchy"));
+		// Russian member aliases — this is 1C's ВидСравненияКомпоновкиДанных, so an imported module
+		// writes ВидСравненияКомпоновкиДанных.Равно / .Больше / … . No BOM here + no /utf-8 → byte-escape.
+		AddEnumAlias(ibComparisonKind_Equal,        wxString::FromUTF8("\xD0\xA0\xD0\xB0\xD0\xB2\xD0\xBD\xD0\xBE"));                                                                 // Равно
+		AddEnumAlias(ibComparisonKind_NotEqual,     wxString::FromUTF8("\xD0\x9D\xD0\xB5\xD0\xA0\xD0\xB0\xD0\xB2\xD0\xBD\xD0\xBE"));                                                 // НеРавно
+		AddEnumAlias(ibComparisonKind_Greater,      wxString::FromUTF8("\xD0\x91\xD0\xBE\xD0\xBB\xD1\x8C\xD1\x88\xD0\xB5"));                                                         // Больше
+		AddEnumAlias(ibComparisonKind_Less,         wxString::FromUTF8("\xD0\x9C\xD0\xB5\xD0\xBD\xD1\x8C\xD1\x88\xD0\xB5"));                                                         // Меньше
+		AddEnumAlias(ibComparisonKind_GreaterEqual, wxString::FromUTF8("\xD0\x91\xD0\xBE\xD0\xBB\xD1\x8C\xD1\x88\xD0\xB5\xD0\x98\xD0\xBB\xD0\xB8\xD0\xA0\xD0\xB0\xD0\xB2\xD0\xBD\xD0\xBE")); // БольшеИлиРавно
+		AddEnumAlias(ibComparisonKind_LessEqual,    wxString::FromUTF8("\xD0\x9C\xD0\xB5\xD0\xBD\xD1\x8C\xD1\x88\xD0\xB5\xD0\x98\xD0\xBB\xD0\xB8\xD0\xA0\xD0\xB0\xD0\xB2\xD0\xBD\xD0\xBE")); // МеньшеИлиРавно
+		AddEnumAlias(ibComparisonKind_Contains,     wxString::FromUTF8("\xD0\xA1\xD0\xBE\xD0\xB4\xD0\xB5\xD1\x80\xD0\xB6\xD0\xB8\xD1\x82"));                                         // Содержит
+		AddEnumAlias(ibComparisonKind_In,           wxString::FromUTF8("\xD0\x92\xD0\xA1\xD0\xBF\xD0\xB8\xD1\x81\xD0\xBA\xD0\xB5"));                                                 // ВСписке
+		AddEnumAlias(ibComparisonKind_InHierarchy,  wxString::FromUTF8("\xD0\x92\xD0\x93\xD1\x80\xD1\x83\xD0\xBF\xD0\xBF\xD0\xB5"));                                                 // ВГруппе
 	}
 };
 
@@ -198,7 +209,11 @@ public:
 // choice on both sides (a data type, or a field of the source).
 class BACKEND_API ibValueFilterItem : public ibValueDynamicMembers {
 public:
-	enum Prop { enUse = 0, enLeft, enComparison, enRight, enDisplayMode, enPresentation };
+	// The Ru* entries are Russian-name aliases (1C ЭлементОтбораКомпоновкиДанных) for the four
+	// core props — they dispatch to the SAME fields; kept as distinct positions because the member
+	// table is positional. An imported module writes .ЛевоеЗначение / .ВидСравнения / … .
+	enum Prop { enUse = 0, enLeft, enComparison, enRight, enDisplayMode, enPresentation,
+	            enUseRu, enLeftRu, enComparisonRu, enRightRu };
 
 	ibValueFilterItem();
 	ibValueFilterItem(const wxString& field, ibComparisonKind comparison, const ibValue& value, bool use = true);
@@ -391,7 +406,11 @@ BACKEND_API wxString ibRenderFilterTree(class ibDataComposer& composer, const cl
 //   list.Filter.Add(field, comparison, value) / .Count() / .Get(i) / .Clear()
 class BACKEND_API ibValueFilterList : public ibValueDynamicMembers {
 public:
-	enum Method { enAdd = 0, enCount, enGet, enClear };
+	// enAddRu is 1C's ОтборКомпоновкиДанных.Элементы.Добавить(Тип) — add an EMPTY item and return it for
+	// the caller to configure by property (build-then-set), the opposite order of Add's one-shot form.
+	enum Method { enAdd = 0, enCount, enGet, enClear, enAddRu };
+	// Prop: enItemsRu is 1C's `.Элементы` — the items collection, which in this flat model IS this list.
+	enum Prop { enItemsRu = 0 };
 
 	// ONE STORE: the settings' ROOT GROUP. This list is the flat DOOR onto it —
 	// what a script writes (`List.Settings.Filter.Add(…)`) and what the quick
@@ -405,6 +424,7 @@ public:
 	void FillMembers(ibMemberTable& helper) const;
 	virtual bool CallAsFunc(const long lMethodNum, ibValue& pvarRetValue, ibValue** paParams, const long lSizeArray) override;
 	virtual bool CallAsProc(const long lMethodNum, ibValue** paParams, const long lSizeArray) override;
+	virtual bool GetPropVal(const long lPropNum, ibValue& pvarPropVal) override;   // .Элементы → this
 	virtual bool IsEmpty() const override;
 	virtual wxString GetString() const override;
 

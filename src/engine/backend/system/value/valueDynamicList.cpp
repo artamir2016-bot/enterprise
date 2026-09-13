@@ -608,6 +608,8 @@ void ibValueDynamicList::FillMembers(ibMemberTable& helper) const
 	helper.AppendProp(wxT("Group"),    true, false, wxNOT_FOUND);
 	helper.AppendProp(wxT("Settings"), true, false, wxNOT_FOUND);
 	helper.AppendProc(wxT("Refresh"), wxT("Refresh()"));
+	// Russian alias (1C ДинамическийСписок.Отбор) — same as Filter. No BOM + no /utf-8 → byte-escape.
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9E\xD1\x82\xD0\xB1\xD0\xBE\xD1\x80"), true, false, wxNOT_FOUND);  // Отбор  (prop position 4)
 }
 
 bool ibValueDynamicList::GetPropVal(const long lPropNum, ibValue& pvarPropVal)
@@ -618,6 +620,7 @@ bool ibValueDynamicList::GetPropVal(const long lPropNum, ibValue& pvarPropVal)
 	case 1: pvarPropVal = s->GetOrder();  return true;   // Order
 	case 2: pvarPropVal = s->GetGroup();  return true;   // Group
 	case 3: pvarPropVal = s;              return true;   // Settings (the whole object)
+	case 4: pvarPropVal = s->GetFilter(); return true;   // Отбор — Russian alias of Filter
 	}
 	return false;
 }
