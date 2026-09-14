@@ -173,12 +173,25 @@ void ibCompileCode::PrepareModuleData()
 
 	// Pass 1: external values — kind=External on the bc mirror. Binder
 	// fills the slot at runtime; pre-flight verifies clsid match.
+	//
+	// Access = PUBLIC: an external is a HOST-injected global (a common module
+	// surfaced by name, Metadata, a global constant) and belongs to the whole
+	// configuration's namespace — a child module (object / record-set / form)
+	// must resolve it up the parent-bc chain at compile time. The visibility
+	// gate (compileContext tryEmit) admits a parent-scope var only when it is
+	// Public / Protected, and PrepareModuleData never stamped access, so these
+	// system bindings sat at the default Private and a qualified sibling call
+	// (ОбщегоНазначения.Функция()) failed to compile in an object module even
+	// though root bound the name. The header already documents the intent
+	// ("a system binding … is Public-visible"); this realises it. Runtime is
+	// unchanged — the name still resolves to root's existing export binding.
 	for (auto& externValue : m_listExternValue) {
 		m_rootContext->AddVariable(externValue.first, 0, true);
 		const ibClassID clsid = externValue.second ? externValue.second->GetClassType() : ibClassID(0);
 		stampOnContext(externValue.first, [&](ibCompileContext::ibVariable& v) {
-			v.m_kind  = ibVarKind::External;
-			v.m_clsid = clsid;
+			v.m_kind   = ibVarKind::External;
+			v.m_access = ACCESS_PUBLIC;
+			v.m_clsid  = clsid;
 		});
 	}
 
