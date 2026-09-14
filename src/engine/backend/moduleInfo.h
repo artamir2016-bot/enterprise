@@ -88,6 +88,18 @@ public:
 	void BindExportVariable(const wxString& name, class ibValue* value);
 	void BindLocalVariable(const wxString& name, class ibValue* value);
 
+	// Bind the global-context scope container (Documents / Catalogs /
+	// РегистрыСведений / …) so this module's body resolves bare global-collection
+	// names at compile time — exactly what a common module gets. Pass the owning
+	// module manager's GetObjectManager(); a nullptr is a safe no-op. The parent-
+	// compile-module walk does NOT surface a scope container's member props, so an
+	// object / record-set module must bind it locally or its body fails to compile
+	// the moment it touches a global collection.
+	void BindGlobalCollections(class ibValue* globalContext) {
+		if (globalContext != nullptr)
+			BindScopeVariable(wxT("Manager"), globalContext);
+	}
+
 	// Symmetric teardown for the Bind… family. RemoveVariable erases the name
 	// from BOTH the extern and context maps, so one Unbind undoes any flavour
 	// of bind. No-op when no compile module is wired yet.
