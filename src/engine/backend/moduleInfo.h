@@ -100,6 +100,14 @@ public:
 			BindScopeVariable(wxT("Manager"), globalContext);
 	}
 
+	// Bind the platform's transparent system-scope containers — EnumManager and
+	// SystemManager (the ibCtorObjectType_object_context ctors) — into this module's
+	// compile scope, so bare system-enum type names (ВидСравненияКомпоновкиДанных /
+	// ВидДвиженияНакопления / СтатусСообщения / …) resolve. The runtime manager binds
+	// these on ROOT; a child (object / record-set / form) module lives off to the side
+	// of that chain and must bind the same scopes locally, exactly as it binds "Manager".
+	void BindSystemScopes();
+
 	// Symmetric teardown for the Bind… family. RemoveVariable erases the name
 	// from BOTH the extern and context maps, so one Unbind undoes any flavour
 	// of bind. No-op when no compile module is wired yet.
@@ -354,6 +362,10 @@ protected:
 	// m_binder->SetVar() so descriptor-instance values (ThisObject,
 	// Reference) are wired without compile-time staging.
 	std::unique_ptr<ibByteBinder> m_binder;
+
+	// Owns the locally-bound system-scope containers (EnumManager / SystemManager) so the
+	// raw ibValue* handed to BindScopeVariable stays alive for this module's lifetime.
+	std::vector<ibValuePtr<class ibValue>> m_systemScopes;
 
 	// Parent descriptor — set by creation paths (AddCommonModule,
 	// CreateNewForm, AddObject) so scope chain walks up correctly.

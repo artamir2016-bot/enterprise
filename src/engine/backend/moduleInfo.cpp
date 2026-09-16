@@ -154,6 +154,23 @@ void ibRuntimeModuleDataObject::BindScopeVariable(const wxString& name, ibValue*
 		m_binder->SetVar(name, value);
 }
 
+// Bind the object_context system scopes (EnumManager / SystemManager) locally — the same
+// containers the runtime manager binds on ROOT. A child (object / record-set / form) module
+// lives off to the side of the root scope chain, so a bare system-enum type name resolves
+// only when the scope is bound here too. Instances owned by m_systemScopes for lifetime.
+void ibRuntimeModuleDataObject::BindSystemScopes()
+{
+	for (auto ctor : ibValue::GetListCtorsByType(ibCtorObjectType_object_context)) {
+		if (ctor == nullptr)
+			continue;
+		ibValuePtr<ibValue> scope(ctor->CreateObject());
+		if (scope == nullptr)
+			continue;
+		BindScopeVariable(ctor->GetClassName(), &*scope);
+		m_systemScopes.push_back(scope);
+	}
+}
+
 // Export variable — name VISIBLE, stored in the extern map (global constants,
 // module-valued names).
 void ibRuntimeModuleDataObject::BindExportVariable(const wxString& name, ibValue* value)

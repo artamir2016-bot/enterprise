@@ -1912,6 +1912,7 @@ bool ibValueRecordDataObjectExt::InitializeObject()
 		BindContextVariable(thisObject, this);
 		BindContextVariable(thisObjectRu, this);
 		BindGlobalCollections(moduleManager->GetObjectManager());
+		BindSystemScopes();
 		InitializeRuntime();
 
 		try {
@@ -1945,6 +1946,7 @@ bool ibValueRecordDataObjectExt::InitializeObject(ibValueRecordDataObjectExt* so
 		BindContextVariable(thisObject, this);
 		BindContextVariable(thisObjectRu, this);
 		BindGlobalCollections(moduleManager->GetObjectManager());
+		BindSystemScopes();
 		InitializeRuntime();
 
 		try {
@@ -2022,6 +2024,7 @@ bool ibValueRecordDataObjectRef::InitializeObject(const ibGuid& copyGuid)
 	BindContextVariable(thisObject, this);
 	BindContextVariable(thisObjectRu, this);
 	BindGlobalCollections(moduleManager->GetObjectManager());
+	BindSystemScopes();
 
 	try {
 		Compile();
@@ -2079,6 +2082,7 @@ bool ibValueRecordDataObjectRef::InitializeObject(ibValueRecordDataObjectRef* so
 	BindContextVariable(thisObject, this);
 	BindContextVariable(thisObjectRu, this);
 	BindGlobalCollections(moduleManager->GetObjectManager());
+	BindSystemScopes();
 
 	try {
 		Compile();
@@ -3296,6 +3300,7 @@ bool ibValueRecordSetObject::InitializeObject(const ibValueRecordSetObject* sour
 	BindContextVariable(thisObject, this);                   // contextual
 	BindContextVariable(thisObjectRu, this);                 // ЭтотОбъект
 	BindGlobalCollections(moduleManager->GetObjectManager()); // Документы / РегистрыСведений / …
+	BindSystemScopes();                                       // EnumManager / SystemManager
 	BindExportVariable(wxT("Filter"), m_recordSetKeyValue);  // exported — register filter/key
 
 	try {

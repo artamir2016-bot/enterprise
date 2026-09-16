@@ -286,6 +286,9 @@ bool ibValueForm::InitializeFormModule()
 			if (ibValueModuleManagerRuntimeConfiguration* mm = s->GetManagerModule())
 				if (ibValue* globalContext = mm->GetObjectManager())
 					BindScopeVariable(wxT("Manager"), globalContext);
+		// System-scope containers (EnumManager / SystemManager): bare system-enum type names
+		// (ВидСравненияКомпоновкиДанных / …) a form module may reference.
+		BindSystemScopes();
 		// Form open parameters — 1C `Параметры`. Empty structure by default so imported modules that
 		// read the open parameters resolve the name (a real open-parameters pipeline can fill it later).
 		if (!m_formParameters)
