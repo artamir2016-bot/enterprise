@@ -13,6 +13,15 @@ class ibValueEnumStatusMessage : public ibValueEnumeration<ibStatusMessage> {
 		AddEnumeration(ibStatusMessage::ibStatusMessage_Information, wxT("Information"), _("Information"));
 		AddEnumeration(ibStatusMessage::ibStatusMessage_Warning, wxT("Warning"), _("Warning"));
 		AddEnumeration(ibStatusMessage::ibStatusMessage_Error, wxT("Error"), _("Error"));
+		// OES-RU: 1C СтатусСообщения member names, mapped onto the three severities.
+		// Byte-escaped UTF-8 (no BOM, no /utf-8). Обычное/Информация/БезСтатуса → Information;
+		// Внимание/Важное → Warning; ОченьВажное → Error.
+		AddEnumAlias(ibStatusMessage::ibStatusMessage_Information, wxString::FromUTF8("\xD0\x98\xD0\xBD\xD1\x84\xD0\xBE\xD1\x80\xD0\xBC\xD0\xB0\xD1\x86\xD0\xB8\xD1\x8F"));                 // Информация
+		AddEnumAlias(ibStatusMessage::ibStatusMessage_Information, wxString::FromUTF8("\xD0\x9E\xD0\xB1\xD1\x8B\xD1\x87\xD0\xBD\xD0\xBE\xD0\xB5"));                                         // Обычное
+		AddEnumAlias(ibStatusMessage::ibStatusMessage_Information, wxString::FromUTF8("\xD0\x91\xD0\xB5\xD0\xB7\xD0\xA1\xD1\x82\xD0\xB0\xD1\x82\xD1\x83\xD1\x81\xD0\xB0"));                 // БезСтатуса
+		AddEnumAlias(ibStatusMessage::ibStatusMessage_Warning,     wxString::FromUTF8("\xD0\x92\xD0\xBD\xD0\xB8\xD0\xBC\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5"));                                 // Внимание
+		AddEnumAlias(ibStatusMessage::ibStatusMessage_Warning,     wxString::FromUTF8("\xD0\x92\xD0\xB0\xD0\xB6\xD0\xBD\xD0\xBE\xD0\xB5"));                                                 // Важное
+		AddEnumAlias(ibStatusMessage::ibStatusMessage_Error,       wxString::FromUTF8("\xD0\x9E\xD1\x87\xD0\xB5\xD0\xBD\xD1\x8C\xD0\x92\xD0\xB0\xD0\xB6\xD0\xBD\xD0\xBE\xD0\xB5"));         // ОченьВажное
 	}
 };
 
