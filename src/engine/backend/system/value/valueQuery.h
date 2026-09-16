@@ -50,6 +50,10 @@ public:
 		AddEnumeration(ibSelectKind::ibSelectKind_Direct,            wxT("Direct"),            _("Direct"));
 		AddEnumeration(ibSelectKind::ibSelectKind_ByGroups,          wxT("ByGroups"),          _("ByGroups"));
 		AddEnumeration(ibSelectKind::ibSelectKind_ByGroupsHierarchy, wxT("ByGroupsHierarchy"), _("ByGroupsHierarchy"));
+		// OES-RU: 1C ОбходРезультатаЗапроса member names. Byte-escaped UTF-8 (no BOM, no /utf-8).
+		AddEnumAlias(ibSelectKind::ibSelectKind_Direct,            wxString::FromUTF8("\xD0\x9F\xD1\x80\xD1\x8F\xD0\xBC\xD0\xBE\xD0\xB9"));                                                                                 // Прямой
+		AddEnumAlias(ibSelectKind::ibSelectKind_ByGroups,          wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\x93\xD1\x80\xD1\x83\xD0\xBF\xD0\xBF\xD0\xB8\xD1\x80\xD0\xBE\xD0\xB2\xD0\xBA\xD0\xB0\xD0\xBC"));                 // ПоГруппировкам
+		AddEnumAlias(ibSelectKind::ibSelectKind_ByGroupsHierarchy, wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\x93\xD1\x80\xD1\x83\xD0\xBF\xD0\xBF\xD0\xB8\xD1\x80\xD0\xBE\xD0\xB2\xD0\xBA\xD0\xB0\xD0\xBC\xD0\xA1\xD0\x98\xD0\xB5\xD1\x80\xD0\xB0\xD1\x80\xD1\x85\xD0\xB8\xD0\xB5\xD0\xB9")); // ПоГруппировкамСИерархией
 	}
 };
 

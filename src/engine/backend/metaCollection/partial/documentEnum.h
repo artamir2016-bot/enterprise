@@ -24,6 +24,10 @@ class ibValueEnumDocumentWriteMode : public ibValueEnumeration<ibDocumentWriteMo
 		AddEnumeration(ibDocumentWriteMode::ibDocumentWriteMode_Posting, wxT("Posting"), _("Posting"));
 		AddEnumeration(ibDocumentWriteMode::ibDocumentWriteMode_UndoPosting, wxT("UndoPosting"), _("Undo posting"));
 		AddEnumeration(ibDocumentWriteMode::ibDocumentWriteMode_Write, wxT("Write"), _("Write"));
+		// OES-RU: 1C РежимЗаписиДокумента member names. Byte-escaped UTF-8 (no BOM, no /utf-8).
+		AddEnumAlias(ibDocumentWriteMode::ibDocumentWriteMode_Posting,     wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"));                                 // Проведение
+		AddEnumAlias(ibDocumentWriteMode::ibDocumentWriteMode_UndoPosting, wxString::FromUTF8("\xD0\x9E\xD1\x82\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB0\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F")); // ОтменаПроведения
+		AddEnumAlias(ibDocumentWriteMode::ibDocumentWriteMode_Write,       wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xBF\xD0\xB8\xD1\x81\xD1\x8C"));                                                                 // Запись
 	}
 };
 class ibValueEnumDocumentPostingMode : public ibValueEnumeration<ibDocumentPostingMode> {

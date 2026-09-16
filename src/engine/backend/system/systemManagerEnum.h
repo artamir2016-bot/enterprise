@@ -35,6 +35,11 @@ class ibValueEnumQuestionMode : public ibValueEnumeration<ibQuestionMode> {
 		AddEnumeration(ibQuestionMode::ibQuestionMode_YesNoCancel, wxT("YesNoCancel"), _("Yes or no or cancel"));
 		AddEnumeration(ibQuestionMode::ibQuestionMode_OK, wxT("Ok"), _("Ok"));
 		AddEnumeration(ibQuestionMode::ibQuestionMode_OKCancel, wxT("OkCancel"), _("Ok or cancel"));
+		// OES-RU: 1C РежимДиалогаВопрос member names. Byte-escaped UTF-8 (no BOM, no /utf-8).
+		AddEnumAlias(ibQuestionMode::ibQuestionMode_YesNo,       wxString::FromUTF8("\xD0\x94\xD0\xB0\xD0\x9D\xD0\xB5\xD1\x82"));                                                 // ДаНет
+		AddEnumAlias(ibQuestionMode::ibQuestionMode_YesNoCancel, wxString::FromUTF8("\xD0\x94\xD0\xB0\xD0\x9D\xD0\xB5\xD1\x82\xD0\x9E\xD1\x82\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB0")); // ДаНетОтмена
+		AddEnumAlias(ibQuestionMode::ibQuestionMode_OK,          wxString::FromUTF8("\xD0\x9E\xD0\x9A"));                                                                         // ОК
+		AddEnumAlias(ibQuestionMode::ibQuestionMode_OKCancel,    wxString::FromUTF8("\xD0\x9E\xD0\x9A\xD0\x9E\xD1\x82\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB0"));                         // ОКОтмена
 	}
 };
 
