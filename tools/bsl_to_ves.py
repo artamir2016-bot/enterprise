@@ -27,9 +27,14 @@ from collections import Counter
 # lone &-compilation-attribute lines (OES doesn't use them). This resolves compile-time directives
 # only — it does NOT translate identifiers, so binding to verbatim metadata is unaffected.
 _ONEC_COMPILE_TRUE = {
-    "сервер", "насервере", "внешнеесоединение",
+    "сервер", "насервере",
     "толстыйклиентобычноеприложение", "толстыйклиентуправляемоеприложение",
     "мобильноеприложениесервер",
+    # NB: ВнешнееСоединение (COM connection) is DELIBERATELY not here. Import runs as a regular
+    # server call, not a COM external connection, so it is FALSE — which is what makes the very
+    # common server guard `#Если НЕ Клиент И НЕ ВнешнееСоединение Тогда` stay active. Marking it
+    # true dropped every function behind that guard (e.g. ОбщегоНазначения.глЗначениеПеременной),
+    # which then failed to resolve everywhere the module was called.
 }
 
 
