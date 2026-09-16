@@ -106,6 +106,11 @@ class BACKEND_API ibValueEnumSpreadsheetBorder :
 		AddEnumeration(ibSpreadsheetPenStyle::ibPenStyle_ShortDash, wxT("ThinDashed"), _("Thin dashed"));
 		AddEnumeration(ibSpreadsheetPenStyle::ibPenStyle_DotDash, wxT("ThickDashed"), _("Thick dashed"));
 		AddEnumeration(ibSpreadsheetPenStyle::ibPenStyle_LongDash, wxT("LargeDashed"), _("Large dashed"));
+		// OES-RU: 1C ТипЛинииЯчейкиТабличногоДокумента member names. Byte-escaped UTF-8 (no BOM, no /utf-8).
+		AddEnumAlias(ibSpreadsheetPenStyle::ibPenStyle_Transparent, wxString::FromUTF8("\xD0\x9D\xD0\xB5\xD1\x82\xD0\x9B\xD0\xB8\xD0\xBD\xD0\xB8\xD0\xB8"));       // НетЛинии
+		AddEnumAlias(ibSpreadsheetPenStyle::ibPenStyle_Solid,       wxString::FromUTF8("\xD0\xA1\xD0\xBF\xD0\xBB\xD0\xBE\xD1\x88\xD0\xBD\xD0\xB0\xD1\x8F"));       // Сплошная
+		AddEnumAlias(ibSpreadsheetPenStyle::ibPenStyle_Dot,         wxString::FromUTF8("\xD0\xA2\xD0\xBE\xD1\x87\xD0\xBA\xD0\xB8"));                               // Точки
+		AddEnumAlias(ibSpreadsheetPenStyle::ibPenStyle_ShortDash,   wxString::FromUTF8("\xD0\xA8\xD1\x82\xD1\x80\xD0\xB8\xD1\x85\xD0\xB8"));                       // Штрихи
 	}
 
 private:

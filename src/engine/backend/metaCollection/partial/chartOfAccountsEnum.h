@@ -21,6 +21,10 @@ class ibValueEnumAccountType : public ibValueEnumeration<ibAccountType> {
 		AddEnumeration(ibAccountType::eActive, wxT("Active"), _("Active"));
 		AddEnumeration(ibAccountType::ePassive, wxT("Passive"), _("Passive"));
 		AddEnumeration(ibAccountType::eActivePassive, wxT("ActivePassive"), _("Active/Passive"));
+		// OES-RU: 1C ВидСчета member names. Byte-escaped UTF-8 (no BOM, no /utf-8).
+		AddEnumAlias(ibAccountType::eActive,        wxString::FromUTF8("\xD0\x90\xD0\xBA\xD1\x82\xD0\xB8\xD0\xB2\xD0\xBD\xD1\x8B\xD0\xB9"));                                         // Активный
+		AddEnumAlias(ibAccountType::ePassive,       wxString::FromUTF8("\xD0\x9F\xD0\xB0\xD1\x81\xD1\x81\xD0\xB8\xD0\xB2\xD0\xBD\xD1\x8B\xD0\xB9"));                                 // Пассивный
+		AddEnumAlias(ibAccountType::eActivePassive, wxString::FromUTF8("\xD0\x90\xD0\xBA\xD1\x82\xD0\xB8\xD0\xB2\xD0\xBD\xD0\xBE\xD0\x9F\xD0\xB0\xD1\x81\xD1\x81\xD0\xB8\xD0\xB2\xD0\xBD\xD1\x8B\xD0\xB9")); // АктивноПассивный
 	}
 };
 constexpr ibClassID g_enumAccountTypeCLSID = enum_to_clsid("EN_ACTP");

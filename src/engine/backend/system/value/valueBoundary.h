@@ -23,6 +23,9 @@ public:
 	virtual void CreateEnumeration() {
 		AddEnumeration(ibBoundaryKind_Including, wxT("Including"), _("Including"));
 		AddEnumeration(ibBoundaryKind_Excluding, wxT("Excluding"), _("Excluding"));
+		// OES-RU: 1C ВидГраницы member names. Byte-escaped UTF-8 (no BOM, no /utf-8).
+		AddEnumAlias(ibBoundaryKind_Including, wxString::FromUTF8("\xD0\x92\xD0\xBA\xD0\xBB\xD1\x8E\xD1\x87\xD0\xB0\xD1\x8F"));   // Включая
+		AddEnumAlias(ibBoundaryKind_Excluding, wxString::FromUTF8("\xD0\x98\xD1\x81\xD0\xBA\xD0\xBB\xD1\x8E\xD1\x87\xD0\xB0\xD1\x8F")); // Исключая
 	}
 };
 #pragma endregion
