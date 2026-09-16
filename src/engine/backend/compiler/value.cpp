@@ -583,7 +583,19 @@ bool ibValue::SetDate(const wxString& strDate)
 
 	wxDateTime strTime; wxLongLong_t dData = emptyDate;
 	if (!strDate.IsEmpty()) {
-		if (strTime.ParseFormat(strDate, "%d.%m.%Y %H:%M:%S")) {
+		// 1C empty-date literal: an all-zero constant ('00000000', '000000000000',
+		// '00000000000000', or with separators) is the blank date, NOT a calendar
+		// date — wxDateTime::ParseFormat rejects month/day 0, so it must be special-
+		// cased to emptyDate instead of failing the whole compile.
+		bool allZero = true;
+		for (const wxUniChar ch : strDate) {
+			if (ch != wxT('0') && ch != wxT('.') && ch != wxT('-')
+				&& ch != wxT(':') && ch != wxT(' ')) { allZero = false; break; }
+		}
+		if (allZero) {
+			// dData stays emptyDate — the blank 1C date.
+		}
+		else if (strTime.ParseFormat(strDate, "%d.%m.%Y %H:%M:%S")) {
 			const wxLongLong& llData = strTime.GetValue();
 			dData = llData.GetValue();
 		}
@@ -592,6 +604,16 @@ bool ibValue::SetDate(const wxString& strDate)
 			dData = llData.GetValue();
 		}
 		else if (strTime.ParseFormat(strDate, "%Y%m%d")) {
+			const wxLongLong& llData = strTime.GetValue();
+			dData = llData.GetValue();
+		}
+		// ISO forms with separators ('2023-01-01', '2023-01-01 10:20:30') — 1C also
+		// emits these; the %Y%m%d branch above only matches a separator-less digit run.
+		else if (strTime.ParseFormat(strDate, "%Y-%m-%d %H:%M:%S")) {
+			const wxLongLong& llData = strTime.GetValue();
+			dData = llData.GetValue();
+		}
+		else if (strTime.ParseFormat(strDate, "%Y-%m-%d")) {
 			const wxLongLong& llData = strTime.GetValue();
 			dData = llData.GetValue();
 		}
