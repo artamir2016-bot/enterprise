@@ -342,6 +342,7 @@
     <ClInclude Include="system\value\valueFile.h" />
     <ClInclude Include="system\value\valueFont.h" />
     <ClInclude Include="system\value\valueGuid.h" />
+    <ClInclude Include="system\value\valueListOfValues.h" />
     <ClInclude Include="system\value\valueMessageToUser.h" />
     <ClInclude Include="system\value\valueJob.h" />
     <ClInclude Include="system\value\valueMap.h" />
@@ -787,6 +788,7 @@
     <ClCompile Include="system\value\valueFile.cpp" />
     <ClCompile Include="system\value\valueFont.cpp" />
     <ClCompile Include="system\value\valueGuid.cpp" />
+    <ClCompile Include="system\value\valueListOfValues.cpp" />
     <ClCompile Include="system\value\valueMessageToUser.cpp" />
     <ClCompile Include="system\value\valueJob.cpp" />
     <ClCompile Include="system\value\valueMap.cpp" />
