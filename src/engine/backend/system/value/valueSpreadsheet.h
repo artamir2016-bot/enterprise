@@ -49,6 +49,27 @@ class BACKEND_API ibValueEnumSpreadsheetOrient :
 private:
 };
 
+// PAGE orientation of a printed spreadsheet — 1C ОриентацияСтраницы. Distinct from
+// SpreadsheetOrient (Horizontal/Vertical fill direction): this is Portrait / Landscape,
+// the printed sheet's orientation. Backed by a small own enum (no wx page-setup type is
+// wired yet); the value is set on ТабличныйДокумент.ОриентацияСтраницы.
+enum ibPageOrientation { ibPageOrientation_Portrait = 0, ibPageOrientation_Landscape = 1 };
+
+class BACKEND_API ibValueEnumPageOrientation :
+	public ibValueEnumeration<ibPageOrientation> {
+	public:
+
+	ibValueEnumPageOrientation() : ibValueEnumeration() {}
+
+	virtual void CreateEnumeration() {
+		AddEnumeration(ibPageOrientation_Portrait,  wxT("Portrait"),  _("Portrait"));
+		AddEnumeration(ibPageOrientation_Landscape, wxT("Landscape"), _("Landscape"));
+		// OES-RU: 1C ОриентацияСтраницы member names. Byte-escaped UTF-8 (no BOM, no /utf-8).
+		AddEnumAlias(ibPageOrientation_Portrait,  wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD1\x80\xD1\x82\xD1\x80\xD0\xB5\xD1\x82"));                 // Портрет
+		AddEnumAlias(ibPageOrientation_Landscape, wxString::FromUTF8("\xD0\x9B\xD0\xB0\xD0\xBD\xD0\xB4\xD1\x88\xD0\xB0\xD1\x84\xD1\x82"));         // Ландшафт
+	}
+};
+
 class BACKEND_API ibValueEnumSpreadsheetHorizontalAlignment :
 	public ibValueEnumeration<ibSpreadsheetAlignmentHorz> {
 	public:

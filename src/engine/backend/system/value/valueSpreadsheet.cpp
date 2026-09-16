@@ -532,6 +532,7 @@ SYSTEM_TYPE_REGISTER(ibValueSpreadsheetDocumentRange, "SpreadsheetAreaRange", sy
 SYSTEM_TYPE_REGISTER(ibValueSpreadsheetDocumentAreaCollection, "SpreadsheetAreaCollection", system_to_clsid("SY_SPAEA"));
 SYSTEM_TYPE_REGISTER(ibValueSpreadsheetDocumentParameterCollection, "SpreadsheetParameterCollection", system_to_clsid("SY_SPPRM"));
 ENUM_TYPE_REGISTER(ibValueEnumSpreadsheetOrient, "SpreadsheetOrient", enum_to_clsid("EN_SORNT"));
+ENUM_TYPE_REGISTER(ibValueEnumPageOrientation, "PageOrientation", enum_to_clsid("EN_PGORT"));
 ENUM_TYPE_REGISTER(ibValueEnumSpreadsheetHorizontalAlignment, "SpreadsheetHorizontalAlignment", enum_to_clsid("EN_SHOAL"));
 ENUM_TYPE_REGISTER(ibValueEnumSpreadsheetVerticalAlignment, "SpreadsheetVerticalAlignment", enum_to_clsid("EN_SVEAL"));
 ENUM_TYPE_REGISTER(ibValueEnumSpreadsheetBorder, "SpreadsheetBorder", enum_to_clsid("EN_SBORD"));
