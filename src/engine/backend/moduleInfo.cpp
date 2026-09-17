@@ -181,6 +181,19 @@ void ibRuntimeModuleDataObject::BindExportVariable(const wxString& name, ibValue
 		m_binder->SetVar(name, value);
 }
 
+void ibRuntimeModuleDataObject::BindMetadataGlobals(ibValue* metadata, ibValue* data)
+{
+	// Byte-escaped UTF-8 (this TU builds with no /utf-8; a raw Cyrillic literal would be mis-encoded).
+	if (metadata != nullptr) {
+		BindExportVariable(wxT("Metadata"), metadata);
+		BindExportVariable(wxString::FromUTF8("\xD0\x9C\xD0\xB5\xD1\x82\xD0\xB0\xD0\xB4\xD0\xB0\xD0\xBD\xD0\xBD\xD1\x8B\xD0\xB5"), metadata);  // Метаданные
+	}
+	if (data != nullptr) {
+		BindExportVariable(wxT("Data"), data);
+		BindExportVariable(wxString::FromUTF8("\xD0\x94\xD0\xB0\xD0\xBD\xD0\xBD\xD1\x8B\xD0\xB5"), data);                                       // Данные
+	}
+}
+
 // Plain writable LOCAL — name resolves to an ordinary frame local (kind=Local),
 // but the binder seeds its slot with `value` at init. No required/type pre-flight,
 // no member access. E.g. a constant's Value backed by &m_constValue.

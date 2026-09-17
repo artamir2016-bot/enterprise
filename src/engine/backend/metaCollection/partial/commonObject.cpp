@@ -1912,6 +1912,7 @@ bool ibValueRecordDataObjectExt::InitializeObject()
 		BindContextVariable(thisObject, this);
 		BindContextVariable(thisObjectRu, this);
 		BindGlobalCollections(moduleManager->GetObjectManager());
+		BindMetadataGlobals(moduleManager->GetMetaManager(), moduleManager->GetDataManager()); // Metadata / Метаданные
 		BindSystemScopes();
 		InitializeRuntime();
 
@@ -1946,6 +1947,7 @@ bool ibValueRecordDataObjectExt::InitializeObject(ibValueRecordDataObjectExt* so
 		BindContextVariable(thisObject, this);
 		BindContextVariable(thisObjectRu, this);
 		BindGlobalCollections(moduleManager->GetObjectManager());
+		BindMetadataGlobals(moduleManager->GetMetaManager(), moduleManager->GetDataManager()); // Metadata / Метаданные
 		BindSystemScopes();
 		InitializeRuntime();
 
@@ -2024,6 +2026,7 @@ bool ibValueRecordDataObjectRef::InitializeObject(const ibGuid& copyGuid)
 	BindContextVariable(thisObject, this);
 	BindContextVariable(thisObjectRu, this);
 	BindGlobalCollections(moduleManager->GetObjectManager());
+	BindMetadataGlobals(moduleManager->GetMetaManager(), moduleManager->GetDataManager()); // Metadata / Метаданные
 	BindSystemScopes();
 
 	try {
@@ -2082,6 +2085,7 @@ bool ibValueRecordDataObjectRef::InitializeObject(ibValueRecordDataObjectRef* so
 	BindContextVariable(thisObject, this);
 	BindContextVariable(thisObjectRu, this);
 	BindGlobalCollections(moduleManager->GetObjectManager());
+	BindMetadataGlobals(moduleManager->GetMetaManager(), moduleManager->GetDataManager()); // Metadata / Метаданные
 	BindSystemScopes();
 
 	try {
@@ -3300,6 +3304,7 @@ bool ibValueRecordSetObject::InitializeObject(const ibValueRecordSetObject* sour
 	BindContextVariable(thisObject, this);                   // contextual
 	BindContextVariable(thisObjectRu, this);                 // ЭтотОбъект
 	BindGlobalCollections(moduleManager->GetObjectManager()); // Документы / РегистрыСведений / …
+	BindMetadataGlobals(moduleManager->GetMetaManager(), moduleManager->GetDataManager()); // Metadata / Метаданные
 	BindSystemScopes();                                       // EnumManager / SystemManager
 	BindExportVariable(wxT("Filter"), m_recordSetKeyValue);  // exported — register filter/key
 

@@ -35,6 +35,10 @@ ibValueModuleManager::ibValueModuleManager(ibMetaData* metadata, const ibValueMe
 	// namespace shape, leaves vend ibValueQueryable (lazy, inert — reading the value
 	// reads no data). Same ownership / binding pattern as m_metaManager.
 	BindExportVariable(objectDataManager, m_dataManager);
+	// OES-RU: the 1C Russian aliases for the same two globals, so a common module (which compiles in
+	// THIS root context) resolves a bare `Метаданные.…` / `Данные.…`. Byte-escaped UTF-8 (no /utf-8 in TU).
+	BindExportVariable(wxString::FromUTF8("\xD0\x9C\xD0\xB5\xD1\x82\xD0\xB0\xD0\xB4\xD0\xB0\xD0\xBD\xD0\xBD\xD1\x8B\xD0\xB5"), m_metaManager);  // Метаданные
+	BindExportVariable(wxString::FromUTF8("\xD0\x94\xD0\xB0\xD0\xBD\xD0\xBD\xD1\x8B\xD0\xB5"), m_dataManager);                                   // Данные
 }
 
 ibValueModuleManager::~ibValueModuleManager()

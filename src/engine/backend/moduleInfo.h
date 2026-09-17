@@ -100,6 +100,15 @@ public:
 			BindScopeVariable(wxT("Manager"), globalContext);
 	}
 
+	// Bind the named metadata globals — Metadata / Data — into THIS module's own scope,
+	// under BOTH their English names and their 1C Russian aliases (Метаданные / Данные), so an
+	// object / record-set / form module resolves a bare `Метаданные.РегистрыНакопления`. Root binds
+	// the English names as externs, but a child module lives off to the side of the root scope chain
+	// (the same reason `Manager` is bound locally), and imported 1C modules use the Russian name,
+	// which otherwise has no alias — `Var is not found (Метаданные)`. A nullptr side is a safe no-op.
+	// Pass the owning module manager's GetMetaManager() / GetDataManager().
+	void BindMetadataGlobals(class ibValue* metadata, class ibValue* data);
+
 	// Bind the platform's transparent system-scope containers — EnumManager and
 	// SystemManager (the ibCtorObjectType_object_context ctors) — into this module's
 	// compile scope, so bare system-enum type names (ВидСравненияКомпоновкиДанных /

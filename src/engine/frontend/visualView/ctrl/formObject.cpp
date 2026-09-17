@@ -283,9 +283,13 @@ bool ibValueForm::InitializeFormModule()
 		// to compile. Bind the SAME container here so the form resolves them identically. Enterprise
 		// only — the Designer session has no runtime root manager.
 		if (ibSession* s = ibSession::Current())
-			if (ibValueModuleManagerRuntimeConfiguration* mm = s->GetManagerModule())
+			if (ibValueModuleManagerRuntimeConfiguration* mm = s->GetManagerModule()) {
 				if (ibValue* globalContext = mm->GetObjectManager())
 					BindScopeVariable(wxT("Manager"), globalContext);
+				// Named metadata globals — Metadata / Метаданные, Data / Данные — bound locally,
+				// like Manager, so a form module resolves a bare `Метаданные.…`.
+				BindMetadataGlobals(mm->GetMetaManager(), mm->GetDataManager());
+			}
 		// System-scope containers (EnumManager / SystemManager): bare system-enum type names
 		// (ВидСравненияКомпоновкиДанных / …) a form module may reference.
 		BindSystemScopes();
