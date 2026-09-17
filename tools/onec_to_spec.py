@@ -61,6 +61,199 @@ REF_PREFIX = {
 
 report = Counter()
 
+# --- dependency closure -----------------------------------------------------------------------
+# The importer can bound a slice by --limit, but a bounded slice is INCOMPLETE: an included
+# object's attribute is typed CatalogRef.X, or its module code touches Документы.Y, and X / Y are
+# outside the slice — so the reference dangles (a form fails to open, a bare global call reports
+# "Procedure or function not detected"). Closure fixes that: seed with --limit objects, then pull
+# the TRANSITIVE closure of everything they reference (attribute types + names touched in code),
+# so --limit bounds the SEED while the emitted slice is self-contained.
+
+# OES metatype -> dump directory (plural). The object kinds that participate in the ref graph.
+KIND_DIR = {
+    "Catalog": "Catalogs", "Document": "Documents", "Enum": "Enums", "Constant": "Constants",
+    "InformationRegister": "InformationRegisters", "AccumulationRegister": "AccumulationRegisters",
+    "AccountingRegister": "AccountingRegisters", "CalculationRegister": "CalculationRegisters",
+    "ChartOfCharacteristicTypes": "ChartsOfCharacteristicTypes",
+    "ChartOfAccounts": "ChartsOfAccounts", "ChartOfCalculationTypes": "ChartsOfCalculationTypes",
+    "DataProcessor": "DataProcessors", "Report": "Reports", "CommonModule": "CommonModules",
+    "CommonForm": "CommonForms",
+}
+
+# Manager-collection identifier (as written in module code) -> OES metatype. Russian names carry the
+# real weight (modules import verbatim-Russian by default); English aliases cover translated code.
+_MANAGER_KIND = {
+    "Справочники": "Catalog", "Catalogs": "Catalog",
+    "Документы": "Document", "Documents": "Document",
+    "Перечисления": "Enum", "Enums": "Enum",
+    "Константы": "Constant", "Constants": "Constant",
+    "РегистрыСведений": "InformationRegister", "InformationRegisters": "InformationRegister",
+    "РегистрыНакопления": "AccumulationRegister", "AccumulationRegisters": "AccumulationRegister",
+    "РегистрыБухгалтерии": "AccountingRegister", "AccountingRegisters": "AccountingRegister",
+    "РегистрыРасчета": "CalculationRegister", "CalculationRegisters": "CalculationRegister",
+    "ПланыВидовХарактеристик": "ChartOfCharacteristicTypes",
+    "ChartsOfCharacteristicTypes": "ChartOfCharacteristicTypes",
+    "ПланыСчетов": "ChartOfAccounts", "ChartsOfAccounts": "ChartOfAccounts",
+    "ПланыВидовРасчета": "ChartOfCalculationTypes", "ChartsOfCalculationTypes": "ChartOfCalculationTypes",
+    "Обработки": "DataProcessor", "DataProcessors": "DataProcessor",
+    "Отчеты": "Report", "Reports": "Report",
+}
+
+# Type-cast / ref-type prefix (as written in Тип("СправочникСсылка.X") or a type annotation) -> kind.
+# Covers the Ссылка/Объект/… family per metatype plus the English *Ref names.
+_TYPE_CAST_KIND = {
+    "СправочникСсылка": "Catalog", "СправочникОбъект": "Catalog", "СправочникМенеджер": "Catalog",
+    "СправочникСписок": "Catalog", "СправочникВыборка": "Catalog",
+    "ДокументСсылка": "Document", "ДокументОбъект": "Document", "ДокументМенеджер": "Document",
+    "ДокументСписок": "Document", "ДокументВыборка": "Document",
+    "ПеречислениеСсылка": "Enum", "ПеречислениеМенеджер": "Enum",
+    "ПланВидовХарактеристикСсылка": "ChartOfCharacteristicTypes",
+    "ПланВидовХарактеристикОбъект": "ChartOfCharacteristicTypes",
+    "ПланСчетовСсылка": "ChartOfAccounts", "ПланСчетовОбъект": "ChartOfAccounts",
+    "ПланВидовРасчетаСсылка": "ChartOfCalculationTypes", "ПланВидовРасчетаОбъект": "ChartOfCalculationTypes",
+    "CatalogRef": "Catalog", "DocumentRef": "Document", "EnumRef": "Enum",
+    "ChartOfCharacteristicTypesRef": "ChartOfCharacteristicTypes",
+    "ChartOfAccountsRef": "ChartOfAccounts", "ChartOfCalculationTypesRef": "ChartOfCalculationTypes",
+}
+
+# A Cyrillic-aware `Ident.Ident` matcher for scanning module code.
+import re  # noqa: E402
+_CODE_REF_RE = re.compile(r"([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)\.([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)")
+
+
+def _iter_type_refs(root_el):
+    """Yield (kind, name) for every reference-typed <Type> anywhere in an object's XML."""
+    if root_el is None:
+        return
+    for t in root_el.iter(V8 + "Type"):
+        txt = (t.text or "").strip()
+        if not txt:
+            continue
+        name = txt.split(":", 1)[-1]
+        if "." not in name:
+            continue
+        prefix, obj = name.split(".", 1)
+        kind = _TYPE_CAST_KIND.get(prefix)
+        if kind and obj:
+            yield kind, obj
+
+
+def _iter_code_refs(code, common_names):
+    """Yield (kind, name) for manager-collection / type-cast / common-module references in code."""
+    if not code:
+        return
+    for m in _CODE_REF_RE.finditer(code):
+        head, obj = m.group(1), m.group(2)
+        kind = _MANAGER_KIND.get(head) or _TYPE_CAST_KIND.get(head)
+        if kind:
+            yield kind, obj
+        elif head in common_names:
+            # A qualified call into a (non-global) common module — ОбщегоНазначения.X etc.
+            yield "CommonModule", head
+
+
+def _read_all_bsl(obj_dir):
+    """Concatenate every *.bsl under an object's directory (Object/Manager/Form modules)."""
+    if not os.path.isdir(obj_dir):
+        return ""
+    parts = []
+    for dirpath, _dirs, files in os.walk(obj_dir):
+        for fn in files:
+            if fn.endswith(".bsl"):
+                parts.append(read_file(os.path.join(dirpath, fn)))
+    return "\n".join(parts)
+
+
+def _is_global_common(dump_dir, base):
+    """A global, server-visible common module — the provider of bare global calls (inlined into root)."""
+    path = os.path.join(dump_dir, "CommonModules", base + ".xml")
+    r = load_root(path)
+    if r is None:
+        return False
+    obj_el = next(iter(r), None)
+    props = obj_el.find(MD + "Properties") if obj_el is not None else None
+    if props is None:
+        return False
+    if not _bool_prop(props, "Global"):
+        return False
+    return (_bool_prop(props, "Server") or _bool_prop(props, "ServerCall")
+            or _bool_prop(props, "ExternalConnection") or _bool_prop(props, "ClientOrdinaryApplication"))
+
+
+def _refs_of(dump_dir, kind_dir, name, common_names):
+    """All (kind_dir, name) dependencies of one object: attribute-type refs + code refs."""
+    out = set()
+    xml_path = os.path.join(dump_dir, kind_dir, name + ".xml")
+    for kind, obj in _iter_type_refs(load_root(xml_path)) if os.path.exists(xml_path) else ():
+        d = KIND_DIR.get(kind)
+        if d:
+            out.add((d, obj))
+    code = _read_all_bsl(os.path.join(dump_dir, kind_dir, name))
+    for kind, obj in _iter_code_refs(code, common_names):
+        d = KIND_DIR.get(kind)
+        if d:
+            out.add((d, obj))
+    return out
+
+
+# The object dump-dirs the importer actually EMITS — the only kinds worth pulling into the slice.
+# DataProcessors / Reports have no emit loop yet, so a code reference to Обработки.X / Отчеты.X is
+# recognised (its manager name maps) but NOT pulled: adding it would over-expand the closure with
+# objects that never reach the spec. CommonModules is emitted and handled via its own seed pass.
+_EMITTED_DIRS = {KIND_DIR[k] for k in (
+    "Catalog", "Document", "Enum", "Constant", "InformationRegister", "AccumulationRegister",
+    "AccountingRegister", "CalculationRegister", "ChartOfCharacteristicTypes", "ChartOfAccounts",
+    "ChartOfCalculationTypes", "CommonForm", "CommonModule")}
+
+# Seed / ref-source dirs (object kinds, excluding CommonModules which is seeded separately).
+_CLOSURE_DIRS = _EMITTED_DIRS - {"CommonModules"}
+
+
+def compute_closure(dump_dir, only, limit):
+    """Return {dump_dir_kind: set(object_names)} — the --limit seed plus its transitive closure."""
+    from collections import deque
+    selected = {}
+    queue = deque()
+
+    def add(kind_dir, name):
+        if not name or kind_dir not in _EMITTED_DIRS:
+            return  # only pull kinds the importer emits — a ref to a non-emitted kind is dropped
+        s = selected.setdefault(kind_dir, set())
+        if name in s:
+            return
+        if not os.path.exists(os.path.join(dump_dir, kind_dir, name + ".xml")):
+            return  # a reference to something not in this dump (BSP/library object) — cannot pull it
+        s.add(name)
+        queue.append((kind_dir, name))
+
+    # Every common-module name, so a qualified `<Module>.<Func>` in code is recognised as a dep.
+    common_names = set()
+    cm_dir = os.path.join(dump_dir, "CommonModules")
+    if os.path.isdir(cm_dir):
+        common_names = {fn[:-4] for fn in os.listdir(cm_dir) if fn.endswith(".xml")}
+
+    # Seed — the --limit slice of the kinds the caller asked for (or all closure kinds if unfiltered).
+    for kind_dir in _CLOSURE_DIRS:
+        if only and kind_dir not in only:
+            continue
+        for base, _ in iter_object_xml(dump_dir, kind_dir, limit):
+            add(kind_dir, base)
+
+    # Always include global common modules — providers of BARE global calls (ЗначениеНеЗаполнено,
+    # глЗначениеПеременной, …). They are called without a qualifier, so code-ref scanning never
+    # names them; without this they fall out of the slice and every bare call fails to resolve.
+    for base, _ in iter_object_xml(dump_dir, "CommonModules", 0):
+        if _is_global_common(dump_dir, base):
+            add("CommonModules", base)
+
+    # Fixpoint — expand each selected object's references until nothing new appears.
+    while queue:
+        kind_dir, name = queue.popleft()
+        for dep_dir, dep_name in _refs_of(dump_dir, kind_dir, name, common_names):
+            add(dep_dir, dep_name)
+
+    return selected
+
 
 def _txt(el):
     return el.text if el is not None and el.text is not None else ""
@@ -927,6 +1120,10 @@ def main():
                     help="also import common modules visible ONLY in the managed-client "
                          "context (skipped by default — thin-client code that OES's "
                          "single-process runtime cannot resolve)")
+    ap.add_argument("--closure", action="store_true",
+                    help="dependency closure: --limit bounds the SEED, then pull the transitive "
+                         "closure of everything the seed references (attribute types + names touched "
+                         "in module code) plus all global common modules, so the slice is self-contained")
     args = ap.parse_args()
 
     global TRANSLATE_BSL, INCLUDE_CLIENT_MODULES
@@ -935,7 +1132,30 @@ def main():
 
     only = set(x.strip() for x in args.only.split(",") if x.strip())
 
+    # Closure mode: precompute the self-contained set of object names per kind. `objects(kind)` then
+    # feeds the emit loops from that set instead of the flat --limit cap.
+    closure = None
+    if args.closure:
+        closure = compute_closure(args.dump_dir, only, args.limit)
+        total = sum(len(v) for v in closure.values())
+        sys.stderr.write("CLOSURE: %d objects across %d kinds (seed limit=%d)\n"
+                         % (total, len(closure), args.limit))
+        for k in sorted(closure):
+            sys.stderr.write("  %-28s %d\n" % (k, len(closure[k])))
+
+    def objects(kind_dir):
+        """Object (base, path) pairs for a kind — closure set when enabled, else the --limit slice."""
+        if closure is not None:
+            for base in sorted(closure.get(kind_dir, ())):
+                yield base, os.path.join(args.dump_dir, kind_dir, base + ".xml")
+        else:
+            yield from iter_object_xml(args.dump_dir, kind_dir, args.limit)
+
     def want(kind):
+        # In closure mode a referenced kind may be pulled even if not in --only — emit it so the
+        # reference resolves. Non-object kinds (Roles/Subsystems/…) keep the plain --only filter.
+        if closure is not None and closure.get(kind):
+            return True
         return not only or kind in only
 
     spec = {"name": "ImportedConfiguration", "syntax": args.syntax}
@@ -952,7 +1172,7 @@ def main():
 
     if want("Catalogs"):
         spec["catalogs"] = []
-        for base, path in iter_object_xml(args.dump_dir, "Catalogs", args.limit):
+        for base, path in objects("Catalogs"):
             r = load_root(path)
             if r is None:
                 continue
@@ -963,7 +1183,7 @@ def main():
 
     if want("Documents"):
         spec["documents"] = []
-        for base, path in iter_object_xml(args.dump_dir, "Documents", args.limit):
+        for base, path in objects("Documents"):
             r = load_root(path)
             if r is None:
                 continue
@@ -988,7 +1208,7 @@ def main():
 
     if want("Enums"):
         spec["enums"] = []
-        for base, path in iter_object_xml(args.dump_dir, "Enums", args.limit):
+        for base, path in objects("Enums"):
             r = load_root(path)
             if r is None:
                 continue
@@ -999,7 +1219,7 @@ def main():
 
     if want("Constants"):
         spec["constants"] = []
-        for base, path in iter_object_xml(args.dump_dir, "Constants", args.limit):
+        for base, path in objects("Constants"):
             r = load_root(path)
             if r is None:
                 continue
@@ -1010,7 +1230,7 @@ def main():
 
     if want("InformationRegisters"):
         spec["informationRegisters"] = []
-        for base, path in iter_object_xml(args.dump_dir, "InformationRegisters", args.limit):
+        for base, path in objects("InformationRegisters"):
             r = load_root(path)
             if r is None:
                 continue
@@ -1021,7 +1241,7 @@ def main():
 
     if want("AccumulationRegisters"):
         spec["accumulationRegisters"] = []
-        for base, path in iter_object_xml(args.dump_dir, "AccumulationRegisters", args.limit):
+        for base, path in objects("AccumulationRegisters"):
             r = load_root(path)
             if r is None:
                 continue
@@ -1032,7 +1252,7 @@ def main():
 
     if want("ChartsOfCharacteristicTypes"):
         spec["chartsOfCharacteristicTypes"] = []
-        for base, path in iter_object_xml(args.dump_dir, "ChartsOfCharacteristicTypes", args.limit):
+        for base, path in objects("ChartsOfCharacteristicTypes"):
             r = load_root(path)
             if r is None:
                 continue
@@ -1043,7 +1263,7 @@ def main():
 
     if want("ChartsOfAccounts"):
         spec["chartsOfAccounts"] = []
-        for base, path in iter_object_xml(args.dump_dir, "ChartsOfAccounts", args.limit):
+        for base, path in objects("ChartsOfAccounts"):
             r = load_root(path)
             if r is None:
                 continue
@@ -1054,7 +1274,7 @@ def main():
 
     if want("ChartsOfCalculationTypes"):
         spec["chartsOfCalculationTypes"] = []
-        for base, path in iter_object_xml(args.dump_dir, "ChartsOfCalculationTypes", args.limit):
+        for base, path in objects("ChartsOfCalculationTypes"):
             r = load_root(path)
             if r is None:
                 continue
@@ -1081,7 +1301,7 @@ def main():
 
     if want("CalculationRegisters"):
         spec["calculationRegisters"] = []
-        for base, path in iter_object_xml(args.dump_dir, "CalculationRegisters", args.limit):
+        for base, path in objects("CalculationRegisters"):
             r = load_root(path)
             if r is None:
                 continue
@@ -1108,7 +1328,7 @@ def main():
 
     if want("AccountingRegisters"):
         spec["accountingRegisters"] = []
-        for base, path in iter_object_xml(args.dump_dir, "AccountingRegisters", args.limit):
+        for base, path in objects("AccountingRegisters"):
             r = load_root(path)
             if r is None:
                 continue
@@ -1170,7 +1390,7 @@ def main():
 
     if want("CommonForms"):
         spec["commonForms"] = []
-        for base, path in iter_object_xml(args.dump_dir, "CommonForms", args.limit):
+        for base, path in objects("CommonForms"):
             form_xml = os.path.join(args.dump_dir, "CommonForms", base, "Ext", "Form.xml")
             module = read_file(os.path.join(args.dump_dir, "CommonForms", base, "Ext", "Form", "Module.bsl"))
             entry = {"name": base, "module": maybe_translate(module)}
@@ -1209,7 +1429,7 @@ def main():
 
     if want("CommonModules"):
         spec["commonModules"] = []
-        for base, path in iter_object_xml(args.dump_dir, "CommonModules", args.limit):
+        for base, path in objects("CommonModules"):
             r = load_root(path)
             if r is None:
                 continue

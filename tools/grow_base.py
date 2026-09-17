@@ -45,10 +45,14 @@ def kill():
         subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True)
 
 
-def convert(kinds, out_json, limit=0):
+def convert(kinds, out_json, limit=0, closure=False):
     cmd = [PY, os.path.join(HERE, "onec_to_spec.py"), SRC, out_json, "--only", kinds]
     if limit:
         cmd += ["--limit", str(limit)]
+    if closure:
+        # --limit bounds the SEED; pull the transitive closure so the slice is self-contained
+        # (no dangling attribute-type / code references, all global common modules present).
+        cmd += ["--closure"]
     r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     return r.returncode == 0, (r.stdout or "") + (r.stderr or "")
 
@@ -100,7 +104,7 @@ def _safe(s):
 
 
 def cmd_convert(args):
-    ok, log = convert(args.kinds, args.out_json, args.limit)
+    ok, log = convert(args.kinds, args.out_json, args.limit, args.closure)
     print(_safe(log[-2000:]))
     sys.exit(0 if ok else 1)
 
@@ -108,7 +112,7 @@ def cmd_convert(args):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="sub", required=True)
-    c = sub.add_parser("convert"); c.add_argument("kinds"); c.add_argument("out_json"); c.add_argument("--limit", type=int, default=0)
+    c = sub.add_parser("convert"); c.add_argument("kinds"); c.add_argument("out_json"); c.add_argument("--limit", type=int, default=0); c.add_argument("--closure", action="store_true")
     l = sub.add_parser("load"); l.add_argument("in_json")
     args = ap.parse_args()
     if args.sub == "convert": cmd_convert(args)
