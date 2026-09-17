@@ -716,9 +716,15 @@ bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
 				// candidates by GetTypeForm(), so this must precede the assignment.
 				if (ibProperty* ftp = form->GetProperty(wxT("FormType")))
 					ftp->SetValue(wxVariant((long)formTypeId));
-				// First imported form of each kind wins (leave a user-set default alone).
+				// Default-form assignment. The importer marks the form 1C actually declares as default
+				// (mapped to the importable managed one — see mark_default_forms) with `default: true`;
+				// that form ALWAYS wins its slot. Otherwise the first imported form of the kind is a
+				// fallback (leave a user-set default alone). Without the explicit flag a deprecated,
+				// control-less `УдалитьФормаЭлемента` sorted first and won, so GetObjectForm() fell back
+				// to a flat auto-form and the real managed layout (groups / stretch) never showed.
+				const bool isDefault = f.contains("default") && f["default"].is_boolean() && f["default"].get<bool>();
 				if (ibProperty* dfp = owner->GetProperty(defProp))
-					if (dfp->IsEmptyProperty())
+					if (isDefault || dfp->IsEmptyProperty())
 						dfp->SetValue(wxVariant((long)obj->GetMetaID()));
 			}
 		}

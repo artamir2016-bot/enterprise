@@ -726,6 +726,47 @@ def parse_form_attributes(form_xml_path):
     return out
 
 
+def _flatten_controls(nodes):
+    for n in nodes or ():
+        yield n
+        yield from _flatten_controls(n.get("children"))
+
+
+def mark_default_forms(obj_el, forms):
+    """Mark the object's DEFAULT forms (`default: True`), honoring 1C's declaration.
+
+    THE DEFECT this fixes: the spec builder assigned "the first imported form of each kind wins"
+    as the default. 1C dumps often carry a deprecated `УдалитьФормаЭлемента` (prefix Удалить =
+    "delete") that sorts first and has NO managed control tree, so it won the default slot and
+    GetObjectForm() then synthesised a FLAT auto-form — the real ФормаЭлементаУФ (groups, stretch)
+    never showed. Here we pick per kind the form 1C actually declares as default, mapped to the
+    importable one: the declared form if it has controls, else its managed twin `<name>УФ`, else the
+    form of that kind with the most controls. Only forms that imported a control tree are eligible so
+    an empty/ordinary form never wins over a real managed one."""
+    props = obj_el.find(MD + "Properties") if obj_el is not None else None
+
+    def declared_short(tag):
+        e = props.find(MD + tag) if props is not None else None
+        s = _txt(e).strip() if e is not None else ""
+        return s.split(".")[-1] if s else ""
+
+    # 1C default-form property -> the OES form "type" produced by _form_type_from_name.
+    for tag, ftype in (("DefaultObjectForm", "object"), ("DefaultListForm", "list"),
+                       ("DefaultChoiceForm", "select"), ("DefaultFolderForm", "folder")):
+        kind_forms = [f for f in forms if f.get("type") == ftype]
+        if not kind_forms:
+            continue
+        with_ctrls = [f for f in kind_forms if f.get("controls")]
+        if not with_ctrls:
+            continue  # nothing importable of this kind — let the builder auto-generate
+        by_name = {f["name"]: f for f in with_ctrls}
+        declared = declared_short(tag)
+        chosen = by_name.get(declared) or by_name.get(declared + "УФ")  # declared or its УФ twin
+        if chosen is None:
+            chosen = max(with_ctrls, key=lambda f: sum(1 for _ in _flatten_controls(f["controls"])))
+        chosen["default"] = True
+
+
 def parse_forms(dump_dir, kind_dir, base_name, limit=0):
     """Return [{name, type, module}] for an object's Forms/ (managed forms)."""
     forms_dir = os.path.join(dump_dir, kind_dir, base_name, "Forms")
@@ -813,6 +854,7 @@ def parse_record_object(root_el, dump_dir, kind_dir, base_name):
     forms = parse_forms(dump_dir, kind_dir, base_name)
     if forms:
         out["forms"] = forms
+        mark_default_forms(obj_el, forms)
     return out
 
 
@@ -976,6 +1018,7 @@ def parse_register(root_el, dump_dir, kind_dir, base_name):
     forms = parse_forms(dump_dir, kind_dir, base_name)
     if forms:
         out["forms"] = forms
+        mark_default_forms(obj_el, forms)
     # Subordinate Recalculations (Перерасчёт): <kind>/<base>/Recalculations/*.xml. Each recalc's
     # dimension INHERITS its type from the register dimension it maps (the 1C recalc XML carries no
     # own Type), so its type is copied from the register dimension of the same name.
