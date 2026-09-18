@@ -4867,6 +4867,19 @@ ibParamUnit ibCompileCode::FindConst(const ibValue& constData)
 
 ibParamUnit ibCompileCode::GetExpression(ibCompileContext* context, int nPriority)
 {
+	// Recursion-depth guard — see m_exprDepth in compileCode.h. A malformed or
+	// pathologically nested expression must surface as a compile error, not a
+	// native stack overflow that faults the whole process.
+	struct ExprDepthGuard {
+		int& m_depth;
+		explicit ExprDepthGuard(int& d) : m_depth(d) { ++m_depth; }
+		~ExprDepthGuard() { --m_depth; }
+	} exprDepthGuard(m_exprDepth);
+	if (m_exprDepth > kMaxExprDepth) {
+		SetError(ERROR_EXPRESSION_TOO_DEEP);
+		return ibParamUnit();
+	}
+
 	const ibLexem& lex = GETLexem();
 
 	// create variable 

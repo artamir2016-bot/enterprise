@@ -65,6 +65,7 @@ enum { //Error message numbers
 	ERROR_BAD_TYPE_EXPRESSION_S,
 	ERROR_BAD_TYPE_EXPRESSION_D,
 	ERROR_TYPE_OPERATION,
+	ERROR_EXPRESSION_TOO_DEEP,
 
 	// --- runtime (the interpreting loop) -----------------------------------
 	// Everything above is raised by the COMPILER; these are raised by

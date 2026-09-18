@@ -151,6 +151,17 @@ public:
 	int				m_numCurrentCompile = wxNOT_FOUND;	// current position in the token array
 	bool			m_changedCode;
 
+	// Recursion-depth guard for the precedence-climbing expression parser
+	// (GetExpression). A pathological / malformed source — deeply nested
+	// parentheses, a long unary chain, an accidentally self-referential macro
+	// expansion — used to recurse GetExpression until the native stack
+	// overflowed and the PROCESS faulted (an AV inside the runtime, no
+	// diagnostic). The counter is bumped by a RAII guard on entry; past the
+	// ceiling the parser SetError(ERROR_EXPRESSION_TOO_DEEP) and unwinds
+	// normally, so a bad module is a compile error, never a crash.
+	int				m_exprDepth = 0;
+	static constexpr int kMaxExprDepth = 400;
+
 	// Compile-mode predicate. Default false (regular module compile).
 	// ibCompileEval (procUnit.cpp) overrides to return true so the
 	// "no new function declarations / no GOTO" parser gates fire for

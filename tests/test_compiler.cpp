@@ -1757,3 +1757,39 @@ TEST(DateLiteral, Blank1CDateInComparison) {
 		wxT("If a <> '00010101000000' Then b = 1; EndIf;")))
 		<< "comparison against 1C blank date failed to compile";
 }
+
+// ===========================================================================
+// Expression recursion guard — a pathologically nested expression must surface
+// as a compile ERROR (ERROR_EXPRESSION_TOO_DEEP), never a native stack overflow
+// that faults the process. See ibCompileCode::m_exprDepth / kMaxExprDepth.
+// ===========================================================================
+
+TEST(ExpressionDepth, DeeplyNestedParensFailsCleanlyNotCrash) {
+	// ~2000 nested parens — well past kMaxExprDepth (400) — the old parser
+	// recursed until the stack overflowed. TryCompile swallows the thrown
+	// compile diagnostic and returns false; the point is that we REACH the
+	// assertion at all (no crash).
+	wxString src = wxT("a = ");
+	const int depth = 2000;
+	for (int i = 0; i < depth; ++i) src += wxT('(');
+	src += wxT('1');
+	for (int i = 0; i < depth; ++i) src += wxT(')');
+	src += wxT(';');
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	EXPECT_FALSE(TryCompile(cc, src))
+		<< "deeply nested expression should be a compile error, not a crash";
+}
+
+TEST(ExpressionDepth, ModestNestingStillCompiles) {
+	// A depth comfortably under the ceiling must still compile — the guard
+	// must not reject ordinary (even generously parenthesised) expressions.
+	wxString src = wxT("a = ");
+	const int depth = 100;
+	for (int i = 0; i < depth; ++i) src += wxT('(');
+	src += wxT('1');
+	for (int i = 0; i < depth; ++i) src += wxT(')');
+	src += wxT(';');
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	EXPECT_TRUE(TryCompile(cc, src))
+		<< "modest parenthesis nesting must still compile";
+}

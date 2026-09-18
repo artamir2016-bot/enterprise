@@ -175,6 +175,7 @@ static wxString gs_listErrorString[] =
 	_("Date value expected"),//ERROR_BAD_TYPE_EXPRESSION_D
 
 	_("Variable type does not support this operation"),//ERROR_TYPE_OPERATION
+	_("Expression is nested too deeply"),//ERROR_EXPRESSION_TOO_DEEP
 
 	// --- runtime (the interpreting loop) — lock-step with the enum ----------
 	_("Divide by zero"),//ERROR_DIVIDE_BY_ZERO
