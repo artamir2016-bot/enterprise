@@ -211,7 +211,10 @@ def _read_all_bsl(obj_dir):
 
 
 def _is_global_common(dump_dir, base):
-    """A global, server-visible common module — the provider of bare global calls (inlined into root)."""
+    """A common module carrying the 1C Global flag — the provider of BARE global calls (inlined into
+    root). Any Global module is included regardless of its client/server visibility: its exported
+    functions are called unqualified across the configuration (ЭтоНовый / СообщитьОбОшибке /
+    ВернутьОсновнуюРецептуру / …), so a client-only global left out makes every such call dangle."""
     path = os.path.join(dump_dir, "CommonModules", base + ".xml")
     r = load_root(path)
     if r is None:
@@ -220,10 +223,7 @@ def _is_global_common(dump_dir, base):
     props = obj_el.find(MD + "Properties") if obj_el is not None else None
     if props is None:
         return False
-    if not _bool_prop(props, "Global"):
-        return False
-    return (_bool_prop(props, "Server") or _bool_prop(props, "ServerCall")
-            or _bool_prop(props, "ExternalConnection") or _bool_prop(props, "ClientOrdinaryApplication"))
+    return _bool_prop(props, "Global")
 
 
 def _refs_of(dump_dir, kind_dir, name, common_names):
@@ -1168,16 +1168,21 @@ def parse_common_module(root_el, dump_dir, base_name):
     server_visible = (ctx["server"] or ctx["serverCall"]
                       or ctx["externalConnection"] or ctx["clientOrdinary"])
 
-    if not server_visible and not INCLUDE_CLIENT_MODULES:
-        # Pure managed-client module — not runnable in OES's server-like runtime.
+    # A GLOBAL module is imported unconditionally — its exported functions are called bare across the
+    # whole configuration, so leaving one out (even a client-only one) makes every such call dangle
+    # ("Procedure or function not detected"). Only a NON-global client-only module is skippable (its
+    # calls are name-qualified and rarer). A broken global that references APIs OES lacks is caught at
+    # runtime by RecompileIsolatingBrokenGlobals (it is dropped, not fatal), so eager import is safe.
+    if not server_visible and not INCLUDE_CLIENT_MODULES and not ctx["global"]:
+        # Pure managed-client, non-global module — not runnable in OES's server-like runtime.
         report["CommonModulesSkippedClient"] += 1
         sys.stderr.write("SKIP client-only common module: %s\n" % name)
         return None
 
-    is_global = ctx["global"] and server_visible
+    is_global = ctx["global"]   # every Global module is inlined into root, client-only or not
     if ctx["global"] and not server_visible:
-        sys.stderr.write(
-            "NOTE %s: 1C Global but client-only -> imported as non-global\n" % name)
+        report["GlobalClientOnlyImported"] += 1
+        sys.stderr.write("NOTE %s: 1C Global client-only -> imported AS global\n" % name)
 
     code = read_file(os.path.join(dump_dir, "CommonModules", base_name, "Ext", "Module.bsl"))
     return {
