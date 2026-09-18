@@ -1739,3 +1739,21 @@ TEST(ListSettingsLines, SettingsCarrySortAndGroupingToo) {
 	// The UNFOLD KIND travels with it — dropping it would reload every tree as a flat grouping.
 	EXPECT_EQ(ibQueryDimUnfold::Hierarchy, loaded->GetGroup()->GetKind(0));
 }
+
+// ===========================================================================
+// 1C blank-date literal '00010101000000' (01.01.0001 00:00:00) must compile —
+// year 0001 is below wxDateTime's range, so SetDate maps it to the empty date.
+// Regression for the global-module compile crash (task #41 / A).
+// ===========================================================================
+TEST(DateLiteral, Blank1CDateCompiles) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	EXPECT_TRUE(TryCompile(cc, wxT("Var d public; d = '00010101000000';")))
+		<< "1C blank date literal '00010101000000' failed to compile";
+}
+TEST(DateLiteral, Blank1CDateInComparison) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	EXPECT_TRUE(TryCompile(cc,
+		wxT("Var a public; Var b public; a = '20230101';\n")
+		wxT("If a <> '00010101000000' Then b = 1; EndIf;")))
+		<< "comparison against 1C blank date failed to compile";
+}

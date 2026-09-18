@@ -990,9 +990,22 @@ bool ibTranslateCode::GetDate(wxString* strDate) const
 #endif
 		return false;
 	}
-	else if (IsWord()) {
-		SetError(ERROR_TRANSLATE_DATE, error_pos);
-		return false;
+	// A word char IMMEDIATELY touching the closing quote ('20230101'abc) is a malformed literal. Check
+	// the adjacent char DIRECTLY — do NOT use IsWord(), which SkipSpaces()es first: a date legitimately
+	// followed by whitespace and then a keyword / identifier ('00010101000000' Тогда, dt <> '...' И …) is
+	// normal, and the space-skipping check wrongly flagged it "Constant date expected" — which faulted the
+	// whole module compile (task #41 / A).
+	else if (m_currentPos < m_bufferSize) {
+		const wxUniChar nextCh = m_strBuffer[m_currentPos];
+#ifdef wxUSE_UNICODE
+		const bool nextIsWordChar = (nextCh == wxT('_')) || iswalpha(nextCh);
+#else
+		const bool nextIsWordChar = (nextCh == wxT('_')) || isalpha(nextCh);
+#endif
+		if (nextIsWordChar) {
+			SetError(ERROR_TRANSLATE_DATE, error_pos);
+			return false;
+		}
 	}
 	return true;
 }

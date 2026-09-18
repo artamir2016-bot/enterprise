@@ -592,7 +592,19 @@ bool ibValue::SetDate(const wxString& strDate)
 			if (ch != wxT('0') && ch != wxT('.') && ch != wxT('-')
 				&& ch != wxT(':') && ch != wxT(' ')) { allZero = false; break; }
 		}
-		if (allZero) {
+		// The 1C blank date is 01.01.0001 00:00:00 — its literal is '00010101000000' (also the shorter
+		// '000101010000' / '00010101', or ISO '0001-01-01'). It is NOT all-zero, but year 0001 is below
+		// wxDateTime's supported range, so every ParseFormat below rejects it and the whole module fails to
+		// compile with "Constant date expected" (and the tokenizer then faults). It means the same thing as
+		// the all-zero form — the empty date — so map it to emptyDate too. Compare on a digits-only copy so
+		// every separator variant collapses to one check.
+		wxString digitsOnly;
+		for (const wxUniChar ch : strDate)
+			if (ch >= wxT('0') && ch <= wxT('9')) digitsOnly += ch;
+		const bool isBlank1C = (digitsOnly == wxT("00010101")
+			|| digitsOnly == wxT("000101010000")
+			|| digitsOnly == wxT("00010101000000"));
+		if (allZero || isBlank1C) {
 			// dData stays emptyDate — the blank 1C date.
 		}
 		else if (strTime.ParseFormat(strDate, "%d.%m.%Y %H:%M:%S")) {
