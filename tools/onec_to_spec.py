@@ -49,6 +49,16 @@ _STUB_OBMEN = re.compile(
     r"\bОбменДанными\.([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)", re.IGNORECASE)
 _OBMEN_BOOL_MEMBERS = {"загрузка", "отправка"}
 
+# BARE standard OBJECT properties OES does not model yet (task #39) -> inert literal. Matched as a whole
+# identifier NOT preceded by a dot (so `Ссылка.Предопределенный`, a ref member, is left alone) — only the
+# implicit-`ЭтотОбъект` bare read is neutralised. `Предопределенный` reads false for a freshly-created
+# object, so Ложь preserves the common branch (`НЕ Предопределенный` stays true).
+_STUB_BARE = {
+    "Предопределенный": "Ложь",
+}
+_STUB_BARE_RE = re.compile(
+    r"(?<![\w.А-Яа-яЁё])(" + "|".join(_STUB_BARE) + r")(?![\w.А-Яа-яЁё(])", re.IGNORECASE)
+
 
 def _stub_unsupported_members(code):
     """Rewrite references to not-yet-supported standard object members into inert literals (task #39)."""
@@ -58,7 +68,17 @@ def _stub_unsupported_members(code):
         member = m.group(1)
         report["stub:ОбменДанными"] += 1
         return "Ложь" if member.lower() in _OBMEN_BOOL_MEMBERS else "Неопределено"
-    return _STUB_OBMEN.sub(repl, code)
+    code = _STUB_OBMEN.sub(repl, code)
+
+    def repl_bare(m):
+        report["stub:" + m.group(1)] += 1
+        # Case-insensitive match, but the deny-map key is canonical-cased; look it up loosely.
+        for k, v in _STUB_BARE.items():
+            if k.lower() == m.group(1).lower():
+                return v
+        return m.group(0)
+    code = _STUB_BARE_RE.sub(repl_bare, code)
+    return code
 
 
 def maybe_translate(code):
@@ -399,15 +419,22 @@ _CTRL_KIND = {
     "InputField":      "field",
     "LabelField":      "field",
     "CheckBoxField":   "checkbox",
+    "RadioButtonField": "radio",     # 1C switch group -> OES Radiobutton (CT_RDBT)
+    "HTMLDocumentField": "html",     # 1C HTML view    -> OES Htmlbox     (CT_HTML)
     "LabelDecoration": "label",
     "UsualGroup":      "group",
     "ColumnGroup":     "group",
     "ButtonGroup":     "group",
+    "Popup":           "group",      # a "More"/dropdown menu container — keep it as a box so its
+                                     # buttons survive (rendered inline) instead of being dropped whole.
     "Pages":           "pages",
     "Page":            "page",
     "Table":           "table",
     "Button":          "button",
 }
+
+# Data-bound leaf controls — they carry a DataPath and bind to an attribute exactly like a plain field.
+_ATTR_BOUND_KINDS = ("field", "checkbox", "radio", "html")
 
 
 # --- form-element event handlers (1C <Events>/<Event name=..> -> OES control events) ----------
@@ -555,7 +582,17 @@ def _map_form_children(child_items, in_table):
     so the tablebox holds columns directly (its only legal child kind)."""
     out = []
     for el in child_items:
-        kind = _CTRL_KIND.get(_local(el.tag))
+        tag = _local(el.tag)
+        # Picture controls (PictureField / PictureDecoration) — OES has no image widget yet (task #40).
+        # Emit a placeholder Statictext so the layout SLOT is preserved (the surrounding column/row keeps
+        # its shape) instead of silently dropping the element and collapsing the layout. Replaced by a real
+        # picture control when task #40 lands.
+        if tag in ("PictureField", "PictureDecoration") and not in_table:
+            report["stub:Picture"] += 1
+            out.append({"kind": "label", "name": el.get("name") or "",
+                        "title": _title_loc(el) or "ru = '[картинка]';"})
+            continue
+        kind = _CTRL_KIND.get(tag)
         if kind is None:
             continue
         name = el.get("name") or ""
@@ -573,7 +610,7 @@ def _map_form_children(child_items, in_table):
                     out.extend(_map_form_children(sub, True))   # flatten into columns
             continue
         node = {"kind": kind, "name": name}
-        if kind in ("field", "checkbox"):
+        if kind in _ATTR_BOUND_KINDS:
             node["attr"] = _last_seg(_data_path(el))
             # An explicit field Title overrides the bound attribute's synonym as the
             # caption ("Род:", "один:", "два:"). 1C sets it on form-attribute fields

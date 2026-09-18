@@ -196,6 +196,8 @@ void ApplyObjectModules(ibValueMetaObject* obj, const json& node) {
 // notebook.h / boxsizer.cpp), computed the same way (control_to_clsid).
 constexpr ibClassID kCtrlText     = control_to_clsid("CT_TXTC");  // Textctrl
 constexpr ibClassID kCtrlCheckbox = control_to_clsid("CT_CHKB");  // Checkbox
+constexpr ibClassID kCtrlRadio    = control_to_clsid("CT_RDBT");  // Radiobutton (1C RadioButtonField)
+constexpr ibClassID kCtrlHtml     = control_to_clsid("CT_HTML");  // Htmlbox     (1C HTMLDocumentField)
 constexpr ibClassID kCtrlStatic   = control_to_clsid("CT_STTX");  // Statictext
 constexpr ibClassID kCtrlTable    = control_to_clsid("CT_TABL");  // Tablebox
 constexpr ibClassID kCtrlColumn   = control_to_clsid("CT_TBLC");  // TableboxColumn
@@ -421,6 +423,8 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	Host      childHost = Host::Sizerable;
 	if      (kind == wxT("field"))                                { clsid = kCtrlText; }
 	else if (kind == wxT("checkbox"))                            { clsid = kCtrlCheckbox; }
+	else if (kind == wxT("radio"))                              { clsid = kCtrlRadio; }
+	else if (kind == wxT("html"))                               { clsid = kCtrlHtml;   layout = Layout::Container; childHost = Host::Sizerable; }
 	else if (kind == wxT("button"))                             { clsid = kCtrlButton; }
 	else if (kind == wxT("label") || kind == wxT("statictext")) { clsid = kCtrlStatic; }
 	else if (kind == wxT("table"))                              { clsid = kCtrlTable;    layout = Layout::Container; childHost = Host::Table; }
@@ -454,7 +458,8 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 	// Data binding. Field/checkbox/statictext bind to an object attribute; a
 	// table binds to its tabular section; a column adds the leaf column hop.
 	ibMetaID childTableId = tableId;
-	if (kind == wxT("field") || kind == wxT("checkbox") || kind == wxT("label") || kind == wxT("statictext")) {
+	if (kind == wxT("field") || kind == wxT("checkbox") || kind == wxT("label") || kind == wxT("statictext")
+		|| kind == wxT("radio") || kind == wxT("html")) {
 		const wxString attr = JStr(c, "attr");
 		auto it = maps.attrs.find(attr);
 		if (!attr.IsEmpty() && it != maps.attrs.end()) {
