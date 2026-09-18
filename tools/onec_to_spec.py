@@ -19,6 +19,7 @@ per-file so peak memory tracks the configuration size, not one giant document.
 """
 import argparse
 import os
+import re
 import sys
 import json
 import xml.etree.ElementTree as ET
@@ -36,12 +37,38 @@ import bsl_to_ves  # noqa: E402
 TRANSLATE_BSL = False
 
 
+# Standard 1C OBJECT members OES does not model yet — DEFERRED, see tracker task #39. A module that
+# touches one fails to compile ("Var is not found (ОбменДанными)") and its object form never opens, so
+# for now the importer neutralises the reference. We can't just line-comment it: `ОбменДанными` is used
+# in a block guard `Если ОбменДанными.Загрузка Тогда … КонецЕсли`, and commenting only the `Если` line
+# would leave a dangling `КонецЕсли`. Instead the MEMBER EXPRESSION is rewritten to an inert literal
+# (a syntactic no-op): the boolean flags → Ложь (so the guard's body is simply never taken), anything
+# else → Неопределено. When the real property lands (task #39) this whole step is deleted.
+# Match `ОбменДанными.<member>` (Cyrillic-aware), longest-member-first is irrelevant — single hop.
+_STUB_OBMEN = re.compile(
+    r"\bОбменДанными\.([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)", re.IGNORECASE)
+_OBMEN_BOOL_MEMBERS = {"загрузка", "отправка"}
+
+
+def _stub_unsupported_members(code):
+    """Rewrite references to not-yet-supported standard object members into inert literals (task #39)."""
+    if not code:
+        return code
+    def repl(m):
+        member = m.group(1)
+        report["stub:ОбменДанными"] += 1
+        return "Ложь" if member.lower() in _OBMEN_BOOL_MEMBERS else "Неопределено"
+    return _STUB_OBMEN.sub(repl, code)
+
+
 def maybe_translate(code):
     if not code:
         return code
     # Always resolve 1C conditional compilation / region markers (OES has no client/server split);
     # this touches directives only, never identifiers, so verbatim binding is preserved.
     code = bsl_to_ves.preprocess_onec_module(code)
+    # TODO(OES-import, task #39): neutralise unsupported standard object members (ОбменДанными …).
+    code = _stub_unsupported_members(code)
     if TRANSLATE_BSL:
         return bsl_to_ves.translate(code)
     return code
@@ -117,7 +144,6 @@ _TYPE_CAST_KIND = {
 }
 
 # A Cyrillic-aware `Ident.Ident` matcher for scanning module code.
-import re  # noqa: E402
 _CODE_REF_RE = re.compile(r"([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)\.([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)")
 
 
