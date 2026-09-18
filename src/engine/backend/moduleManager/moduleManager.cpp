@@ -235,25 +235,40 @@ void ibValueModuleRuntimeManager::RecompileIsolatingBrokenGlobals()
 		return;
 	}
 
-	// Re-add each global on its own and keep only the ones that compile. A broken global is removed and
-	// its inlined names simply resolve nowhere — failing at call, not at every form open.
-	for (ibValueRuntimeModuleUnit* g : globals) {
-		cm->AppendModule(g->GetCompileModule());
-		try {
-			Compile();
+	// Re-add the globals, keeping those that compile — but to a FIXPOINT, not a single left-to-right pass.
+	// Global modules INTER-DEPEND: one global's exported function calls another global's. A single pass in
+	// collection order would drop a global that references one not yet re-added (it fails "not detected",
+	// gets removed) even though the two compile fine TOGETHER — so in a real configuration whole webs of
+	// interdependent globals were lost, and every bare call to their functions (ВернутьОсновнуюРецептуру,
+	// СообщитьОбОшибке, …) failed at form open. Instead: repeat passes over the not-yet-accepted globals;
+	// any that now compiles (because a dependency was accepted in an earlier pass) is kept. Stop when a
+	// pass accepts nothing new. What still remains is GENUINELY broken (references a name no global
+	// provides / an unimplemented builtin) — those, and only those, are left out.
+	std::vector<ibValueRuntimeModuleUnit*> pending(globals.begin(), globals.end());
+	bool progress = true;
+	while (progress && !pending.empty()) {
+		progress = false;
+		std::vector<ibValueRuntimeModuleUnit*> stillPending;
+		for (ibValueRuntimeModuleUnit* g : pending) {
+			cm->AppendModule(g->GetCompileModule());
+			bool ok = true;
+			try { Compile(); }
+			catch (...) { ok = false; }
+			if (ok) {
+				progress = true;                          // accepted — its exports are now available too
+			} else {
+				cm->RemoveModule(g->GetCompileModule());
+				stillPending.push_back(g);                // retry next pass (a dependency may be accepted)
+			}
 		}
-		catch (const ibBackendException& err) {
-			cm->RemoveModule(g->GetCompileModule());
-			wxLogError(_("Global common module '%s' skipped (does not compile): %s"),
-				g->GetModuleName(), err.GetErrorDescription());
-			try { Compile(); } catch (...) {}     // restore the last-known-good compile state
-		}
-		catch (...) {
-			cm->RemoveModule(g->GetCompileModule());
-			wxLogError(_("Global common module '%s' skipped (does not compile, unknown error)"), g->GetModuleName());
-			try { Compile(); } catch (...) {}
-		}
+		pending.swap(stillPending);
 	}
+	// Recompile the final accepted set (the last attempt may have been a failed-and-removed one, leaving
+	// the bytecode from that failure) so root reflects exactly the kept globals.
+	try { Compile(); } catch (...) {}
+	// Whatever is still pending is genuinely broken — its names resolve nowhere and fail at call.
+	for (ibValueRuntimeModuleUnit* g : pending)
+		wxLogError(_("Global common module '%s' skipped (does not compile)"), g->GetModuleName());
 }
 
 //**********************************************************************
