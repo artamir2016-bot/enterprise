@@ -536,6 +536,22 @@ TEST(Diagnostics, CompileFailurePublishesTheRecord) {
 	EXPECT_EQ(wxT("memory"), diagnostic.m_docPath);
 }
 
+TEST(Diagnostics, FindErrorCodeLineNeverIndexesOutOfBounds) {
+	// The error-excerpt helper takes a source buffer and an error position. In
+	// the spliced runtime root (global common modules inlined via AppendModule)
+	// the buffer can be EMPTY while the position points into an appended module —
+	// reading strBuffer[currPos] then faulted inside wxString::operator[] and
+	// crashed the process WHILE REPORTING an error. All of these must return a
+	// string, not crash.
+	EXPECT_NO_THROW({ (void)ibBackendException::FindErrorCodeLine(wxString(), 0); });
+	EXPECT_NO_THROW({ (void)ibBackendException::FindErrorCodeLine(wxString(), 5000); });
+	EXPECT_NO_THROW({ (void)ibBackendException::FindErrorCodeLine(wxT("a = 1;"), 999); });
+	EXPECT_NO_THROW({ (void)ibBackendException::FindErrorCodeLine(wxT("x"), 1); });
+	// A valid position still produces a marked excerpt of the offending line.
+	const wxString ex = ibBackendException::FindErrorCodeLine(wxT("line one\nbad = ;\nline three"), 14);
+	EXPECT_NE(wxNOT_FOUND, ex.Find(wxT("<<?>>")));
+}
+
 TEST(Diagnostics, TheMessageCarriesNoDecoration) {
 	// "{memory(1)}: " belongs to the DISPLAY string. Putting it in the record
 	// too would mean every consumer strips it back off — and would make the

@@ -297,6 +297,13 @@ public:
 	void AppendModule(ibTranslateCode* module);
 	void RemoveModule(ibTranslateCode* module);
 
+	// True when other modules have been spliced into this one (global common
+	// modules inlined into the runtime root). The splice happens during
+	// PrepareLexem/Compile and is NOT captured by the AOT bytecode path, so a
+	// module that has appended sub-modules must always compile from source —
+	// see ibRuntimeModuleDataObject::Compile (moduleInfo.cpp).
+	bool HasAppendedModules() const { return !m_listTranslateCode.empty(); }
+
 	virtual void OnSetParent(ibTranslateCode* setParent);
 
 	virtual void Clear();

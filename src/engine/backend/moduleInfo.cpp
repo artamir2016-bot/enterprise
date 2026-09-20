@@ -258,8 +258,18 @@ bool ibRuntimeModuleDataObject::Compile()
 	const ibMetaData* const owner = meta != nullptr ? meta->GetMetaData() : nullptr;
 	const wxString configMd5 = owner != nullptr ? owner->GetConfigMD5() : wxString();
 
+	// AOT is bypassed for modules that inline other modules (the runtime root
+	// splices every GLOBAL common module into itself via AppendModule). That
+	// splice is a lex-time step — it happens inside PrepareLexem/Compile, not
+	// in the serialized bytecode — so a cache hit would restore a root whose
+	// m_listFunc holds only the system builtins and NONE of the inlined global
+	// functions, and every reference to a global raised "Var is not found" at
+	// runtime. Force these modules to always compile from source (and never
+	// persist a misleading row) so the splice runs. See task #41.
+	const bool hasAppended = m_compileModule->HasAppendedModules();
+
 	bool ready = false;
-	if (meta != nullptr && ibByteCodeCache::Load(bc, meta->GetGuid(), configMd5)) {
+	if (!hasAppended && meta != nullptr && ibByteCodeCache::Load(bc, meta->GetGuid(), configMd5)) {
 		if (bc.ResolveAndVerifyDependencies()) {
 			// Restore live pointers AOT skipped on serialize. m_parent
 			// points at the parent compile module's bytecode —
@@ -306,7 +316,7 @@ bool ibRuntimeModuleDataObject::Compile()
 		// returns false on serialization rejection (e.g. non-primitive
 		// constants) or DB error; the runtime keeps the live bc and
 		// the next session pays the recompile cost again.
-		if (meta != nullptr)
+		if (meta != nullptr && !hasAppended)
 			ibByteCodeCache::Save(bc, configMd5);
 	}
 

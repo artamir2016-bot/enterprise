@@ -486,6 +486,19 @@ wxString ibBackendException::FindErrorCodeLine(const wxString& strBuffer, unsign
 {
 	const unsigned int sizeText = strBuffer.length();
 
+	// NO SOURCE TEXT — NO EXCERPT, and above all no indexing. The position is
+	// DATA from the parser and this buffer may be empty or shorter than it: the
+	// spliced runtime root (global common modules inlined via AppendModule)
+	// reports an error at a lexeme whose text lives in an APPENDED module, while
+	// the root's own m_strBuffer is empty. Reading strBuffer[currPos] then
+	// dereferenced past the end and faulted the process inside wxString::operator[]
+	// — an error excerpt must never crash the thing reporting the error. Clamp
+	// the position into the buffer; every index below is now in [0, sizeText).
+	if (sizeText == 0)
+		return wxString(wxT("<<?>>"));
+	if (currPos > sizeText)
+		currPos = sizeText;
+
 	unsigned int startPos = 0;
 	unsigned int endPos = sizeText;
 
