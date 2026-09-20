@@ -267,8 +267,24 @@ void ibValueModuleRuntimeManager::RecompileIsolatingBrokenGlobals()
 	// the bytecode from that failure) so root reflects exactly the kept globals.
 	try { Compile(); } catch (...) {}
 	// Whatever is still pending is genuinely broken — its names resolve nowhere and fail at call.
-	for (ibValueRuntimeModuleUnit* g : pending)
-		wxLogError(_("Global common module '%s' skipped (does not compile)"), g->GetModuleName());
+	// Capture the ACTUAL compile error for each so the missing name (an unimplemented builtin, or a
+	// global/function absent from this configuration) is visible, not just "does not compile". Without
+	// the message a dropped global is a silent hole: every bare call to its exports fails at form open
+	// with only "Procedure or function not detected" at the CALL site, never naming the real cause.
+	for (ibValueRuntimeModuleUnit* g : pending) {
+		wxString why;
+		cm->AppendModule(g->GetCompileModule());
+		try { Compile(); }
+		catch (const ibBackendException& err) { why = err.GetErrorDescription(); }
+		catch (...) { why = _("unknown error"); }
+		cm->RemoveModule(g->GetCompileModule());
+		if (why.IsEmpty())
+			wxLogError(_("Global common module '%s' skipped (does not compile)"), g->GetModuleName());
+		else
+			wxLogError(_("Global common module '%s' skipped: %s"), g->GetModuleName(), why);
+	}
+	// Restore the accepted-set bytecode (the probe above left the last failed global's state).
+	try { Compile(); } catch (...) {}
 }
 
 //**********************************************************************
