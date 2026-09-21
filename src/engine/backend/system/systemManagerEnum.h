@@ -3,6 +3,7 @@
 
 #include "systemEnum.h"
 #include "backend/compiler/enumUnit.h"
+#include "backend/typeDescription.h"   // ibAllowedLength (Variable / Fixed)
 
 class ibValueEnumStatusMessage : public ibValueEnumeration<ibStatusMessage> {
 	public:
@@ -83,6 +84,19 @@ class ibValueChars : public ibValueEnumeration<ibChars> {
 
 	virtual wxString GetDescription(ibChars val) const {
 		return (char)val;
+	}
+};
+
+class ibValueEnumAllowedLength : public ibValueEnumeration<ibAllowedLength> {
+	public:
+	ibValueEnumAllowedLength() : ibValueEnumeration() {}
+
+	virtual void CreateEnumeration() {
+		AddEnumeration(ibAllowedLength::ibAllowedLength_Variable, wxT("Variable"), _("Variable"));
+		AddEnumeration(ibAllowedLength::ibAllowedLength_Fixed, wxT("Fixed"), _("Fixed"));
+		// OES-RU: 1C ДопустимаяДлина member names. Byte-escaped UTF-8 (no BOM, no /utf-8).
+		AddEnumAlias(ibAllowedLength::ibAllowedLength_Variable, wxString::FromUTF8("\xD0\x9F\xD0\xB5\xD1\x80\xD0\xB5\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xBD\xD0\xB0\xD1\x8F"));         // Переменная
+		AddEnumAlias(ibAllowedLength::ibAllowedLength_Fixed,    wxString::FromUTF8("\xD0\xA4\xD0\xB8\xD0\xBA\xD1\x81\xD0\xB8\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xBD\xD0\xB0\xD1\x8F")); // Фиксированная
 	}
 };
 

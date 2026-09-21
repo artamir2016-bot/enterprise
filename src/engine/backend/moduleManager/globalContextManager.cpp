@@ -121,7 +121,14 @@ enum
 	enSysRoundMode,
 	enSysComparisonKind,
 	enSysChars,
-	enSysEventLogLevel
+	enSysEventLogLevel,
+	// Calculation-subsystem collection namespaces (metatypes exist, were just not
+	// exposed as bare globals). Appended LAST so existing positions do not shift.
+	enChartsOfCalculationTypes,
+	enCalculationRegisters,
+	enRuChartsOfCalculationTypes,
+	enRuCalculationRegisters,
+	enSysAllowedLength   // ДопустимаяДлина — system enum used to build string qualifiers
 };
 
 void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
@@ -165,6 +172,13 @@ void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
 	helper.AppendProp(wxString::FromUTF8("\xD0\x92\xD0\xB8\xD0\xB4\xD0\xA1\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"));                                                                 // ВидСравнения
 	helper.AppendProp(wxString::FromUTF8("\xD0\xA1\xD0\xB8\xD0\xBC\xD0\xB2\xD0\xBE\xD0\xBB\xD1\x8B"));                                                                                                         // Символы
 	helper.AppendProp(wxString::FromUTF8("\xD0\xA3\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD0\xBD\xD1\x8C\xD0\x96\xD1\x83\xD1\x80\xD0\xBD\xD0\xB0\xD0\xBB\xD0\xB0\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD0\xB0\xD1\x86\xD0\xB8\xD0\xB8")); // УровеньЖурналаРегистрации
+
+	// Calculation-subsystem collection namespaces (order matches the enum tail).
+	helper.AppendProp(wxT("ChartsOfCalculationTypes"));
+	helper.AppendProp(wxT("CalculationRegisters"));
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD1\x8B\xD0\x92\xD0\xB8\xD0\xB4\xD0\xBE\xD0\xB2\xD0\xA0\xD0\xB0\xD1\x81\xD1\x87\xD0\xB5\xD1\x82\xD0\xB0")); // ПланыВидовРасчета
+	helper.AppendProp(wxString::FromUTF8("\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD1\x8B\xD0\xA0\xD0\xB0\xD1\x81\xD1\x87\xD0\xB5\xD1\x82\xD0\xB0")); // РегистрыРасчета
+	helper.AppendProp(wxString::FromUTF8("\xD0\x94\xD0\xBE\xD0\xBF\xD1\x83\xD1\x81\xD1\x82\xD0\xB8\xD0\xBC\xD0\xB0\xD1\x8F\xD0\x94\xD0\xBB\xD0\xB8\xD0\xBD\xD0\xB0")); // ДопустимаяДлина
 }
 
 #include "backend/metaCollection/metaSessionParameterObject.h"   // the metatype AND the value it yields
@@ -271,6 +285,19 @@ bool ibValueGlobalContextManager::GetPropVal(const long lPropNum, ibValue& pvarP
 		return true;
 	case enSysEventLogLevel:
 		pvarPropVal = ibValue::CreateObject(wxT("EventLogLevel"));
+		return true;
+
+	// Calculation-subsystem collection namespaces (English + Russian → same manager).
+	case enChartsOfCalculationTypes:
+	case enRuChartsOfCalculationTypes:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaChartOfCalculationTypesCLSID, m_metaData);
+		return true;
+	case enCalculationRegisters:
+	case enRuCalculationRegisters:
+		pvarPropVal = new ibValueGlobalContextStructureManager(g_metaCalculationRegisterCLSID, m_metaData);
+		return true;
+	case enSysAllowedLength:
+		pvarPropVal = ibValue::CreateObject(wxT("AllowedLength"));
 		return true;
 	}
 
