@@ -1486,7 +1486,12 @@ bool ibCompileCode::ParseFunctionSignature(ibCompileContext* context,
 		strFuncRealName = wxT("__lambda_") + wxNewUniqueGuid.str();
 	}
 	else {
-		strFuncRealName = GETIdentifier(true);
+		// acceptKeyword: OES reserves a few operator words 1C does NOT — `Mod`/`Мод`
+		// (1C's modulo is `%`), `Div`, etc. Real 1C configuration names functions with
+		// them (ОбщепитОбщегоНазначения has `Функция Мод(...)`), so a keyword is a valid
+		// name HERE, in the declaration's name slot. It stays the operator everywhere an
+		// operator is expected — this only widens what may name a function/procedure.
+		strFuncRealName = GETIdentifier(true, /*acceptKeyword*/true);
 	}
 	// Original-cased name through both the ibFunction storage and the
 	// m_listFunction map key — lookups use stringUtils::CompareString

@@ -253,6 +253,29 @@ TEST(CompilerTest, FunctionDeclarationRegistersInListFunc) {
 	EXPECT_TRUE(foundAdd) << "function 'Add' missing from m_listFunc";
 }
 
+TEST(CompilerTest, KeywordNamedFunctionCompiles) {
+	// OES reserves `Mod` (and `Мод`) as the modulo operator, which 1C does not — 1C
+	// configuration code names functions with them. A keyword is accepted in the
+	// declaration's NAME slot (it stays the operator everywhere else).
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ASSERT_TRUE(TryCompile(cc,
+		wxT("Function Mod(x)\n")
+		wxT("  Return x;\n")
+		wxT("EndFunction\n")))
+		<< "a function named with the reserved operator word 'Mod' must compile";
+	bool found = false;
+	for (const auto& fn : cc.m_cByteCode.m_listFunc)
+		if (fn.m_strRealName.IsSameAs(wxT("Mod"), false)) { found = true; break; }
+	EXPECT_TRUE(found) << "function 'Mod' missing from m_listFunc";
+}
+
+TEST(CompilerTest, ModStillWorksAsOperator) {
+	// The name-slot leniency must NOT disturb `Mod` as the modulo operator.
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ASSERT_TRUE(TryCompile(cc, wxT("var a public; a = 17 Mod 5;")))
+		<< "Mod must still parse as the modulo operator";
+}
+
 TEST(CompilerTest, ExportFunctionFlagged) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	const wxString src =
