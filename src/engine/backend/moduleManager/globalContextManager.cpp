@@ -114,7 +114,14 @@ enum
 	enRuChartsOfCharacteristicTypes,
 	enRuChartsOfAccounts,
 	enRuAccountingRegisters,
-	enRuSessionParameters
+	enRuSessionParameters,
+	// OES-RU: 1C SYSTEM ENUMS reached as BARE globals (not under Перечисления) — e.g.
+	// `РежимОкругления.Округлять15Как20`, `ВидСравнения.Равно`, `Символы.ПС`. Each resolves
+	// to the matching registered enum value object. Order must match the FillMembers tail.
+	enSysRoundMode,
+	enSysComparisonKind,
+	enSysChars,
+	enSysEventLogLevel
 };
 
 void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
@@ -152,6 +159,12 @@ void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
 	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD1\x8B\xD0\xA1\xD1\x87\xD0\xB5\xD1\x82\xD0\xBE\xD0\xB2"));                         // ПланыСчетов
 	helper.AppendProp(wxString::FromUTF8("\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD1\x8B\xD0\x91\xD1\x83\xD1\x85\xD0\xB3\xD0\xB0\xD0\xBB\xD1\x82\xD0\xB5\xD1\x80\xD0\xB8\xD0\xB8")); // РегистрыБухгалтерии
 	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xB0\xD1\x80\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x82\xD1\x80\xD1\x8B\xD0\xA1\xD0\xB5\xD0\xB0\xD0\xBD\xD1\x81\xD0\xB0")); // ПараметрыСеанса
+
+	// System enums as bare globals (order matches the enSys* enum block).
+	helper.AppendProp(wxString::FromUTF8("\xD0\xA0\xD0\xB5\xD0\xB6\xD0\xB8\xD0\xBC\xD0\x9E\xD0\xBA\xD1\x80\xD1\x83\xD0\xB3\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"));                                         // РежимОкругления
+	helper.AppendProp(wxString::FromUTF8("\xD0\x92\xD0\xB8\xD0\xB4\xD0\xA1\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"));                                                                 // ВидСравнения
+	helper.AppendProp(wxString::FromUTF8("\xD0\xA1\xD0\xB8\xD0\xBC\xD0\xB2\xD0\xBE\xD0\xBB\xD1\x8B"));                                                                                                         // Символы
+	helper.AppendProp(wxString::FromUTF8("\xD0\xA3\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD0\xBD\xD1\x8C\xD0\x96\xD1\x83\xD1\x80\xD0\xBD\xD0\xB0\xD0\xBB\xD0\xB0\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD0\xB0\xD1\x86\xD0\xB8\xD0\xB8")); // УровеньЖурналаРегистрации
 }
 
 #include "backend/metaCollection/metaSessionParameterObject.h"   // the metatype AND the value it yields
@@ -244,6 +257,20 @@ bool ibValueGlobalContextManager::GetPropVal(const long lPropNum, ibValue& pvarP
 		return true;
 	case enRuSessionParameters:
 		pvarPropVal = new ibValueSessionParameters(m_metaData);
+		return true;
+
+	// System enums as bare globals — resolve to the registered enum value object.
+	case enSysRoundMode:
+		pvarPropVal = ibValue::CreateObject(wxT("RoundMode"));
+		return true;
+	case enSysComparisonKind:
+		pvarPropVal = ibValue::CreateObject(wxT("ComparisonKind"));
+		return true;
+	case enSysChars:
+		pvarPropVal = ibValue::CreateObject(wxT("Chars"));
+		return true;
+	case enSysEventLogLevel:
+		pvarPropVal = ibValue::CreateObject(wxT("EventLogLevel"));
 		return true;
 	}
 

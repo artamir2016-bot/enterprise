@@ -13,3 +13,4 @@ ENUM_TYPE_REGISTER(ibValueEnumQuestionReturnCode, "QuestionReturnCode", enum_to_
 ENUM_TYPE_REGISTER(ibValueEnumRoundMode, "RoundMode", enum_to_clsid("EN_ROMO"));
 
 ENUM_TYPE_REGISTER(ibValueChars, "Chars", enum_to_clsid("EN_CHAR"));
+ENUM_TYPE_REGISTER(ibValueEnumEventLogLevel, "EventLogLevel", enum_to_clsid("EN_ELLV"));

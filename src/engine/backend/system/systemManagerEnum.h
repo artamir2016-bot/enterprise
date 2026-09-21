@@ -86,4 +86,21 @@ class ibValueChars : public ibValueEnumeration<ibChars> {
 	}
 };
 
+class ibValueEnumEventLogLevel : public ibValueEnumeration<ibEventLogLevel> {
+	public:
+	ibValueEnumEventLogLevel() : ibValueEnumeration() {}
+
+	virtual void CreateEnumeration() {
+		AddEnumeration(ibEventLogLevel::ibEventLogLevel_Information, wxT("Information"), _("Information"));
+		AddEnumeration(ibEventLogLevel::ibEventLogLevel_Error, wxT("Error"), _("Error"));
+		AddEnumeration(ibEventLogLevel::ibEventLogLevel_Warning, wxT("Warning"), _("Warning"));
+		AddEnumeration(ibEventLogLevel::ibEventLogLevel_Note, wxT("Note"), _("Note"));
+		// OES-RU: 1C УровеньЖурналаРегистрации member names. Byte-escaped UTF-8 (no BOM, no /utf-8).
+		AddEnumAlias(ibEventLogLevel::ibEventLogLevel_Information, wxString::FromUTF8("\xD0\x98\xD0\xBD\xD1\x84\xD0\xBE\xD1\x80\xD0\xBC\xD0\xB0\xD1\x86\xD0\xB8\xD1\x8F"));                                 // Информация
+		AddEnumAlias(ibEventLogLevel::ibEventLogLevel_Error,       wxString::FromUTF8("\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB0"));                                                                 // Ошибка
+		AddEnumAlias(ibEventLogLevel::ibEventLogLevel_Warning,     wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD1\x83\xD0\xBF\xD1\x80\xD0\xB5\xD0\xB6\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5")); // Предупреждение
+		AddEnumAlias(ibEventLogLevel::ibEventLogLevel_Note,        wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB8\xD0\xBC\xD0\xB5\xD1\x87\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5"));                                 // Примечание
+	}
+};
+
 #endif

@@ -39,4 +39,13 @@ enum ibChars {
 	eVTab = 11,
 };
 
+// УровеньЖурналаРегистрации — the severity a script writes to the event log with.
+enum ibEventLogLevel
+{
+	ibEventLogLevel_Information = 1,
+	ibEventLogLevel_Error,
+	ibEventLogLevel_Warning,
+	ibEventLogLevel_Note
+};
+
 #endif
