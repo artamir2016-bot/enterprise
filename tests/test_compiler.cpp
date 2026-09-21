@@ -276,6 +276,45 @@ TEST(CompilerTest, ModStillWorksAsOperator) {
 		<< "Mod must still parse as the modulo operator";
 }
 
+TEST(CompilerTest, ForwardCallTwoArgsCompiles) {
+	// A call to a 2-param function placed BEFORE its definition (forward reference)
+	// must NOT report "Too many parameters" — the deferred second pass resolves the
+	// real arity. Reproduces the ОбщегоНазначения:235 failure (call to a 2-arg
+	// ЕстьРеквизитДокумента defined 50 lines later).
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ASSERT_TRUE(TryCompile(cc,
+		wxT("Function Caller()\n")
+		wxT("  Return Callee(1, 2);\n")
+		wxT("EndFunction\n")
+		wxT("Function Callee(a, b)\n")
+		wxT("  Return a + b;\n")
+		wxT("EndFunction\n")))
+		<< "a forward call to a 2-arg function must compile";
+}
+
+TEST(CompilerTest, TwoForwardCallsSameFunctionCompile) {
+	// The SECOND forward call to the same not-yet-defined 2-arg function must also
+	// compile — ОбщегоНазначения calls ЕстьРеквизитДокумента(a,b) at line 228 AND 235
+	// (definition at 285); the first was accepted but the second reported "Too many
+	// parameters". Guards against a forward call leaving a 0-arity placeholder that
+	// later calls arity-check against.
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ASSERT_TRUE(TryCompile(cc,
+		wxT("Function Caller(m)\n")
+		wxT("  If Callee(\"a\", m) Then\n")
+		wxT("    Return 1;\n")
+		wxT("  EndIf;\n")
+		wxT("  If Callee(\"b\", m) Then\n")
+		wxT("    Return 2;\n")
+		wxT("  EndIf;\n")
+		wxT("  Return 0;\n")
+		wxT("EndFunction\n")
+		wxT("Function Callee(name, meta)\n")
+		wxT("  Return name = meta;\n")
+		wxT("EndFunction\n")))
+		<< "the second forward call to a 2-arg function must compile too";
+}
+
 TEST(CompilerTest, ExportFunctionFlagged) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	const wxString src =
