@@ -315,6 +315,39 @@ TEST(CompilerTest, TwoForwardCallsSameFunctionCompile) {
 		<< "the second forward call to a 2-arg function must compile too";
 }
 
+// DISABLED: a bare ibCompileCode + AppendModule + Compile("") does NOT model the runtime
+// global-inline path — the runtime uses ibCompileModule with IsGlobalModule() special-casing,
+// parent bytecode/context links, and PrepareModuleData exports. This simplified harness
+// misparses even a trivial spliced module ("Symbol expected '='"), so it cannot isolate the
+// real ОбщегоНазначения:235 arity bug. Kept as a marker: a faithful repro needs the
+// ibCompileModule / runtime-module-manager infrastructure (or live instrumentation).
+TEST(CompilerSplice, DISABLED_ForwardCallsInAppendedModule) {
+	// Reproduces ОбщегоНазначения:235 — a global common module is SPLICED into the
+	// runtime root via AppendModule, and inside it a 2-arg function is forward-called
+	// twice before its definition. Standalone this compiles (see the tests above); the
+	// bug only shows once the module is appended into a root compile unit.
+	const short styleSaved = ibCompileCode::GetCodeStyle();
+	ibCompileCode::SetCodeStyle(CODE_VES);
+	ibCompileCode global(wxT("global"), wxT("mem"), false);
+	global.Load(
+		wxT("Function Caller(m) Export\n")
+		wxT("  If Callee(\"a\", m) Then Return 1; EndIf;\n")
+		wxT("  If Callee(\"b\", m) Then Return 2; EndIf;\n")
+		wxT("  Return 0;\n")
+		wxT("EndFunction\n")
+		wxT("Function Callee(name, meta) Export\n")
+		wxT("  Return name = meta;\n")
+		wxT("EndFunction\n"));
+	ibCompileCode root(wxT("root"), wxT("mem"), false);
+	root.AppendModule(&global);
+	wxString err;
+	bool ok = false;
+	try { ok = root.Compile(wxT("")); }
+	catch (const ibBackendException& e) { err = e.GetErrorDescription(); }
+	ibCompileCode::SetCodeStyle(styleSaved);
+	EXPECT_TRUE(ok) << "spliced forward calls failed: " << err.ToUTF8().data();
+}
+
 TEST(CompilerTest, ExportFunctionFlagged) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	const wxString src =
