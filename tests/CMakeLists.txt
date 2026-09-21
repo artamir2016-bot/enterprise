@@ -102,6 +102,7 @@ add_executable(oes_tests
     test_accountingTotals.cpp
     test_uniqueKey.cpp
     test_valueArray.cpp
+    test_valueTree.cpp
     test_valueContainer.cpp
     test_valueStructure.cpp
     test_valueGeometry.cpp
