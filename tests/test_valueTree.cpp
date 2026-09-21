@@ -10,6 +10,9 @@
 
 #include <gtest/gtest.h>
 #include "backend/system/value/valueTree.h"
+#include "backend/compiler/compileCode.h"
+#include "backend/compiler/procUnit.h"
+#include "backend/backend_exception.h"
 
 TEST(ValueTree, EmptyByDefault) {
     ibValueTree t;
@@ -97,4 +100,49 @@ TEST(ValueTree, ClearRowsAndColumns) {
     EXPECT_EQ(t.GetRows()->Count(), 0u);
     t.GetColumns()->Clear();
     EXPECT_EQ(t.GetColumns()->Count(), 0u);
+}
+
+// ===========================================================================
+// Runtime through the real compiler + interpreter (headless). Reproduces the
+// GUI path: 1C-name translation, ctor, chained collection calls, member access.
+// ===========================================================================
+namespace {
+::testing::AssertionResult RunProg(const wxString& src, ibProcUnit& pu) {
+    ibCompileCode cc(wxT("t"), wxT("mem"), false);
+    try {
+        if (!cc.Compile(src))
+            return ::testing::AssertionFailure() << "Compile returned false";
+    } catch (const ibBackendException& e) {
+        return ::testing::AssertionFailure() << "compile: " << e.GetErrorDescription().ToUTF8().data();
+    }
+    try {
+        pu.Execute(cc.m_cByteCode);
+    } catch (const ibBackendException& e) {
+        return ::testing::AssertionFailure() << "run: " << e.GetErrorDescription().ToUTF8().data();
+    }
+    return ::testing::AssertionSuccess();
+}
+}
+
+// t = Новый ДеревоЗначений;\n  — construction always via the (parsing) Russian keyword,
+// so the variants below differ ONLY in the prop/method name language.
+#define TREE_NEW "var n public;\nvar t public;\nt = \xD0\x9D\xD0\xBE\xD0\xB2\xD1\x8B\xD0\xB9 \xD0\x94\xD0\xB5\xD1\x80\xD0\xB5\xD0\xB2\xD0\xBE\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB9;\n"
+#define RU_COL  "\xD0\x9A\xD0\xBE\xD0\xBB\xD0\xBE\xD0\xBD\xD0\xBA\xD0\xB8"          // Колонки
+#define RU_ADD  "\xD0\x94\xD0\xBE\xD0\xB1\xD0\xB0\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C" // Добавить
+
+TEST(ValueTreeRuntime, EnglishPropEnglishMethod) {
+    ibProcUnit pu;
+    EXPECT_TRUE(RunProg(wxString::FromUTF8(TREE_NEW "t.Columns.Add(\"Item\");\n"), pu));
+}
+TEST(ValueTreeRuntime, RussianPropEnglishMethod) {
+    ibProcUnit pu;
+    EXPECT_TRUE(RunProg(wxString::FromUTF8(TREE_NEW "t." RU_COL ".Add(\"Item\");\n"), pu));
+}
+TEST(ValueTreeRuntime, EnglishPropRussianMethod) {
+    ibProcUnit pu;
+    EXPECT_TRUE(RunProg(wxString::FromUTF8(TREE_NEW "t.Columns." RU_ADD "(\"Item\");\n"), pu));
+}
+TEST(ValueTreeRuntime, RussianPropRussianMethod) {
+    ibProcUnit pu;
+    EXPECT_TRUE(RunProg(wxString::FromUTF8(TREE_NEW "t." RU_COL "." RU_ADD "(\"Item\");\n"), pu));
 }

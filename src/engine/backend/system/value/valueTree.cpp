@@ -29,17 +29,25 @@ static const char* const kRu_Width       = "\xD0\xA8\xD0\xB8\xD1\x80\xD0\xB8\xD0
 //======================================================================
 //  Column
 //======================================================================
+// FindProp returns the APPEND-POSITION index, and GetPropVal/SetPropVal receive that
+// position (NOT any explicit number passed to AppendProp). So English names are appended
+// first (positions 0..3) and their Russian aliases next (positions 4..7) in the SAME order,
+// and dispatch is `position % 4`.
 void ibValueTreeColumn_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
 {
-	helper.AppendProp(wxT("Name"), 0);        helper.AppendProp(RU(kRu_Name), 0);
-	helper.AppendProp(wxT("Title"), 1);       helper.AppendProp(RU(kRu_Title), 1);
-	helper.AppendProp(wxT("ValueType"), 2);   helper.AppendProp(RU(kRu_ValueType), 2);
-	helper.AppendProp(wxT("Width"), 3);       helper.AppendProp(RU(kRu_Width), 3);
+	helper.AppendProp(wxT("Name"));       // 0
+	helper.AppendProp(wxT("Title"));      // 1
+	helper.AppendProp(wxT("ValueType"));  // 2
+	helper.AppendProp(wxT("Width"));      // 3
+	helper.AppendProp(RU(kRu_Name));      // 4
+	helper.AppendProp(RU(kRu_Title));     // 5
+	helper.AppendProp(RU(kRu_ValueType)); // 6
+	helper.AppendProp(RU(kRu_Width));     // 7
 }
 
 bool ibValueTreeColumn::GetPropVal(const long lPropNum, ibValue& pvarPropVal)
 {
-	switch (lPropNum) {
+	switch (lPropNum % 4) {
 	case enName:      pvarPropVal = m_name;      return true;
 	case enTitle:     pvarPropVal = m_title;     return true;
 	case enValueType: pvarPropVal = m_valueType; return true;
@@ -50,7 +58,7 @@ bool ibValueTreeColumn::GetPropVal(const long lPropNum, ibValue& pvarPropVal)
 
 bool ibValueTreeColumn::SetPropVal(const long lPropNum, const ibValue& varPropVal)
 {
-	switch (lPropNum) {
+	switch (lPropNum % 4) {
 	case enName:      m_name = varPropVal.GetString();  return true;
 	case enTitle:     m_title = varPropVal.GetString(); return true;
 	case enValueType: m_valueType = varPropVal;         return true;
@@ -216,39 +224,41 @@ unsigned int ibValueTreeRow::GetLevel() const
 
 void ibValueTreeRow::FillMembers(ibMemberTable& helper) const
 {
-	// One property per column (row.ColumnName). Number = column index.
+	// One property per column (row.ColumnName), positions 0..colCount-1 == column index.
 	if (m_tree != nullptr) {
 		ibValueTreeColumnCollection* cols = m_tree->GetColumns();
 		for (unsigned int i = 0; i < cols->Count(); ++i)
-			helper.AppendProp(cols->Get(i)->GetColumnName(), (long)i);
+			helper.AppendProp(cols->Get(i)->GetColumnName());
 	}
-	// Fixed members, numbered high so they never collide with a column index.
-	helper.AppendProp(wxT("Rows"), kRows);         helper.AppendProp(RU(kRu_Rows), kRows);
-	helper.AppendProp(wxT("Parent"), true, false, (long)kParent); helper.AppendProp(RU(kRu_Parent), true, false, (long)kParent);
-	helper.AppendProp(wxT("Owner"), true, false, (long)kOwner);   helper.AppendProp(RU(kRu_Owner), true, false, (long)kOwner);
-	helper.AppendFunc(wxT("Level"), wxT("Level()"), (long)enLevel, wxNOT_FOUND);
+	// Fixed members follow (positions colCount+0..+5), grouped English/Russian.
+	helper.AppendProp(wxT("Rows"));      helper.AppendProp(RU(kRu_Rows));      // +0 / +1  → children
+	helper.AppendProp(wxT("Parent"));    helper.AppendProp(RU(kRu_Parent));    // +2 / +3  → parent
+	helper.AppendProp(wxT("Owner"));     helper.AppendProp(RU(kRu_Owner));     // +4 / +5  → owner
+	helper.AppendFunc(wxT("Level"), wxT("Level()"));
 	helper.AliasMethod(RU(kRu_Level), wxT("Level"));
 }
 
 bool ibValueTreeRow::GetPropVal(const long lPropNum, ibValue& pvarPropVal)
 {
-	if (lPropNum == kRows) { pvarPropVal = m_children; return true; }
-	if (lPropNum == kParent) {
-		if (m_parent != nullptr) pvarPropVal = ibValuePtr<ibValueTreeRow>(m_parent);
-		else if (m_tree != nullptr) pvarPropVal = ibValuePtr<ibValueTree>(m_tree);
-		else pvarPropVal = ibValue();
-		return true;
-	}
-	if (lPropNum == kOwner) {
-		if (m_tree != nullptr) pvarPropVal = ibValuePtr<ibValueTree>(m_tree);
-		else pvarPropVal = ibValue();
-		return true;
-	}
-	// Column value by index.
-	if (m_tree != nullptr && lPropNum >= 0 && lPropNum < (long)m_tree->GetColumns()->Count()) {
+	const long colCount = (m_tree != nullptr) ? (long)m_tree->GetColumns()->Count() : 0;
+	if (lPropNum >= 0 && lPropNum < colCount) {   // column value by index
 		const wxString key = m_tree->GetColumns()->Get(lPropNum)->GetColumnName().Lower();
 		auto it = m_values.find(key);
 		pvarPropVal = (it != m_values.end()) ? it->second : ibValue();
+		return true;
+	}
+	switch ((lPropNum - colCount) / 2) {   // fixed members: Rows(0), Parent(1), Owner(2)
+	case 0:
+		pvarPropVal = m_children;
+		return true;
+	case 1:
+		if (m_parent != nullptr)    pvarPropVal = ibValuePtr<ibValueTreeRow>(m_parent);
+		else if (m_tree != nullptr) pvarPropVal = ibValuePtr<ibValueTree>(m_tree);
+		else                        pvarPropVal = ibValue();
+		return true;
+	case 2:
+		if (m_tree != nullptr) pvarPropVal = ibValuePtr<ibValueTree>(m_tree);
+		else                   pvarPropVal = ibValue();
 		return true;
 	}
 	return false;
@@ -256,7 +266,8 @@ bool ibValueTreeRow::GetPropVal(const long lPropNum, ibValue& pvarPropVal)
 
 bool ibValueTreeRow::SetPropVal(const long lPropNum, const ibValue& varPropVal)
 {
-	if (m_tree != nullptr && lPropNum >= 0 && lPropNum < (long)m_tree->GetColumns()->Count()) {
+	const long colCount = (m_tree != nullptr) ? (long)m_tree->GetColumns()->Count() : 0;
+	if (lPropNum >= 0 && lPropNum < colCount) {
 		const wxString key = m_tree->GetColumns()->Get(lPropNum)->GetColumnName().Lower();
 		m_values[key] = varPropVal;
 		return true;
@@ -414,8 +425,11 @@ bool ibValueTree::IsEmpty() const
 
 void ibValueTree::FillMembers(ibMemberTable& helper) const
 {
-	helper.AppendProp(wxT("Columns"), true, false, (long)kColumns); helper.AppendProp(RU(kRu_Columns), true, false, (long)kColumns);
-	helper.AppendProp(wxT("Rows"), true, false, (long)kRows);       helper.AppendProp(RU(kRu_Rows), true, false, (long)kRows);
+	// English first, then Russian aliases in the same order (dispatch by position % 2).
+	helper.AppendProp(wxT("Columns"), true, false, 0L);   // 0
+	helper.AppendProp(wxT("Rows"),    true, false, 0L);   // 1
+	helper.AppendProp(RU(kRu_Columns), true, false, 0L);  // 2
+	helper.AppendProp(RU(kRu_Rows),    true, false, 0L);  // 3
 }
 
 void ibValueTree::OnColumnsChanged()
@@ -426,7 +440,7 @@ void ibValueTree::OnColumnsChanged()
 
 bool ibValueTree::GetPropVal(const long lPropNum, ibValue& pvarPropVal)
 {
-	switch (lPropNum) {
+	switch (lPropNum % 2) {
 	case kColumns: pvarPropVal = m_columns; return true;
 	case kRows:    pvarPropVal = m_rows;    return true;
 	}

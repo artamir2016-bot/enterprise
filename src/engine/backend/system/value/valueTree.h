@@ -78,8 +78,10 @@ private:
 
 // --- one row (holds a value per column + its own child rows) -----------------
 class BACKEND_API ibValueTreeRow : public ibValueDynamicMembers {
-	// Fixed members numbered high so they never collide with column props (0..n-1).
-	enum { kRows = 1000000, kParent, kOwner };
+	// Column value props occupy positions 0..colCount-1 (== column index); the fixed
+	// members follow, grouped English/Russian (Rows/Строки, Parent/Родитель, Owner/Владелец),
+	// and are dispatched by (position - colCount). FindProp returns the APPEND POSITION, so
+	// GetPropVal/SetPropVal work off positions, not any explicit number.
 	enum Func { enLevel = 0 };
 public:
 	ibValueTreeRow(ibValueTree* tree, ibValueTreeRow* parent);
