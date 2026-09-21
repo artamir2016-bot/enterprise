@@ -14,9 +14,15 @@ BACKEND_API wxString ibTranslateRuTypeName(const wxString& name)
 		{ "\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD0\x92\xD0\xB8\xD0\xB4\xD0\xBE\xD0\xB2\xD0\xA5\xD0\xB0\xD1\x80\xD0\xB0\xD0\xBA\xD1\x82\xD0\xB5\xD1\x80\xD0\xB8\xD1\x81\xD1\x82\xD0\xB8\xD0\xBA\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "ChartOfCharacteristicTypesRef." }, // ПланВидовХарактеристикСсылка.
 		{ "\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD0\xA1\xD1\x87\xD0\xB5\xD1\x82\xD0\xBE\xD0\xB2\xD0\xA1\xD1\x81\xD1\x8B\xD0\xBB\xD0\xBA\xD0\xB0.", "ChartOfAccountsRef." },                                       // ПланСчетовСсылка.
 	};
+	// 1C type names are CASE-INSENSITIVE — `Новый массив` is as valid as `Новый Массив`.
+	// The table match must be too, or a lowercased spelling in real configuration code
+	// (ОбщепитЗащита: `Новый массив`) reaches the ctor lookup untranslated and fails with
+	// "Constructor not found (массив)". Compare without case; the object name AFTER a
+	// reference prefix is preserved verbatim (only its length is used).
+	const wxString nameLower = name.Lower();
 	for (const Pair& p : kPrefix) {
 		const wxString ru = wxString::FromUTF8(p.ru);
-		if (name.StartsWith(ru))
+		if (nameLower.StartsWith(ru.Lower()))
 			return wxString::FromAscii(p.oes) + name.Mid(ru.length());
 	}
 	// Built-in creatable types: whole-name match.
@@ -39,7 +45,7 @@ BACKEND_API wxString ibTranslateRuTypeName(const wxString& name)
 		{ "\xD0\xA1\xD0\xBF\xD0\xB8\xD1\x81\xD0\xBE\xD0\xBA\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB9", "ListOfValues" }, // СписокЗначений
 	};
 	for (const Pair& p : kType) {
-		if (name == wxString::FromUTF8(p.ru))
+		if (name.CmpNoCase(wxString::FromUTF8(p.ru)) == 0)
 			return wxString::FromAscii(p.oes);
 	}
 	return name;
