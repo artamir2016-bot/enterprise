@@ -6,6 +6,8 @@
 #include "moduleManager.h"
 #include "globalContextManager.h"
 
+#include <algorithm>   // std::remove — global-isolation ejection
+
 #include "backend/appData.h"
 #include "backend/session/session.h"
 #include "backend/session/sessionRegistry.h"
@@ -235,55 +237,55 @@ void ibValueModuleRuntimeManager::RecompileIsolatingBrokenGlobals()
 		return;
 	}
 
-	// Re-add the globals, keeping those that compile — but to a FIXPOINT, not a single left-to-right pass.
-	// Global modules INTER-DEPEND: one global's exported function calls another global's. A single pass in
-	// collection order would drop a global that references one not yet re-added (it fails "not detected",
-	// gets removed) even though the two compile fine TOGETHER — so in a real configuration whole webs of
-	// interdependent globals were lost, and every bare call to their functions (ВернутьОсновнуюРецептуру,
-	// СообщитьОбОшибке, …) failed at form open. Instead: repeat passes over the not-yet-accepted globals;
-	// any that now compiles (because a dependency was accepted in an earlier pass) is kept. Stop when a
-	// pass accepts nothing new. What still remains is GENUINELY broken (references a name no global
-	// provides / an unimplemented builtin) — those, and only those, are left out.
-	std::vector<ibValueRuntimeModuleUnit*> pending(globals.begin(), globals.end());
-	bool progress = true;
-	while (progress && !pending.empty()) {
-		progress = false;
-		std::vector<ibValueRuntimeModuleUnit*> stillPending;
-		for (ibValueRuntimeModuleUnit* g : pending) {
-			cm->AppendModule(g->GetCompileModule());
-			bool ok = true;
-			try { Compile(); }
-			catch (...) { ok = false; }
-			if (ok) {
-				progress = true;                          // accepted — its exports are now available too
-			} else {
-				cm->RemoveModule(g->GetCompileModule());
-				stillPending.push_back(g);                // retry next pass (a dependency may be accepted)
-			}
-		}
-		pending.swap(stillPending);
-	}
-	// Recompile the final accepted set (the last attempt may have been a failed-and-removed one, leaving
-	// the bytecode from that failure) so root reflects exactly the kept globals.
-	try { Compile(); } catch (...) {}
-	// Whatever is still pending is genuinely broken — its names resolve nowhere and fail at call.
-	// Capture the ACTUAL compile error for each so the missing name (an unimplemented builtin, or a
-	// global/function absent from this configuration) is visible, not just "does not compile". Without
-	// the message a dropped global is a silent hole: every bare call to its exports fails at form open
-	// with only "Procedure or function not detected" at the CALL site, never naming the real cause.
-	for (ibValueRuntimeModuleUnit* g : pending) {
-		wxString why;
+	// Re-add ALL globals at once, then eject only the modules that GENUINELY cannot compile —
+	// identified by the module named in each compile error — one at a time until root compiles.
+	//
+	// Global modules share ONE namespace and INTER-DEPEND, INCLUDING CYCLES: module A's exported
+	// function calls B's, and B's calls A's. The old incremental "add one, keep it only if it
+	// compiles alone against the accepted set" fixpoint could never accept a circular pair —
+	// neither compiles without the other, so BOTH were dropped (and, by cascade, every module that
+	// used their exports). The whole ОбщегоНазначения ⇄ ОбщепитОбщегоНазначения web was lost this way.
+	//
+	// With every global present, a cyclic pair resolves (each finds the other's exports) and raises
+	// NOTHING — so it is kept. An error is raised only for a name NO global provides; the error names
+	// the CALLING module (backend_exception.cpp: "{<fullName>(line)}: …"). That module genuinely
+	// cannot work here, so eject it and recompile; any module that depended on ITS exports then
+	// surfaces as the next error and is ejected in turn. This keeps every internally-consistent
+	// cluster (cycles included) and drops exactly the genuinely-broken modules.
+	for (ibValueRuntimeModuleUnit* g : globals)
 		cm->AppendModule(g->GetCompileModule());
+
+	std::vector<ibValueRuntimeModuleUnit*> present(globals.begin(), globals.end());
+	for (size_t guard = 0; guard <= globals.size(); ++guard) {
+		wxString why;
 		try { Compile(); }
 		catch (const ibBackendException& err) { why = err.GetErrorDescription(); }
 		catch (...) { why = _("unknown error"); }
-		cm->RemoveModule(g->GetCompileModule());
 		if (why.IsEmpty())
-			wxLogError(_("Global common module '%s' skipped (does not compile)"), g->GetModuleName());
-		else
-			wxLogError(_("Global common module '%s' skipped: %s"), g->GetModuleName(), why);
+			break;                                        // the present set compiles — done
+
+		// Attribute the error to the module it names ("{<fullName>(line)}: …") and eject it.
+		ibValueRuntimeModuleUnit* offender = nullptr;
+		for (ibValueRuntimeModuleUnit* g : present) {
+			if (why.Find(wxT("{") + g->GetModuleFullName() + wxT("(")) != wxNOT_FOUND) {
+				offender = g;
+				break;
+			}
+		}
+		if (offender == nullptr) {
+			// Unattributable — cannot isolate further without risking a good module. Remove the
+			// remaining candidates wholesale so root still compiles, and report.
+			wxLogError(_("Runtime global isolation: unattributable compile error: %s"), why);
+			for (ibValueRuntimeModuleUnit* g : present)
+				cm->RemoveModule(g->GetCompileModule());
+			present.clear();
+			break;
+		}
+		cm->RemoveModule(offender->GetCompileModule());
+		present.erase(std::remove(present.begin(), present.end(), offender), present.end());
+		wxLogError(_("Global common module '%s' skipped: %s"), offender->GetModuleName(), why);
 	}
-	// Restore the accepted-set bytecode (the probe above left the last failed global's state).
+	// Recompile the final accepted set so root reflects exactly the kept globals.
 	try { Compile(); } catch (...) {}
 }
 
