@@ -144,7 +144,15 @@ enum
 	enGetOperativeTimestamp,
 	enShowUserNotification,
 	enExecuteNotifyProcessing,
-	enGetInfoBaseSessions
+	enGetInfoBaseSessions,
+	// Client interactive dialogs — interim no-ops (they show UI and take an async
+	// notify callback; imported form modules must compile, and at form-open they are
+	// only referenced from event handlers, not executed).
+	enChooseFromList,
+	enShowQueryBox,
+	enShowMessageBox,
+	enShowValue,
+	enOpenValue
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -287,6 +295,13 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendProc(wxT("ShowUserNotification"), -1, wxT("ShowUserNotification(...)"));
 	helper.AppendProc(wxT("ExecuteNotifyProcessing"), -1, wxT("ExecuteNotifyProcessing(...)"));
 	helper.AppendFunc(wxT("GetInfoBaseSessions"), wxT("GetInfoBaseSessions()"));
+	// Registered as FUNCTIONS: the synchronous forms return a value (selected item /
+	// answer); a value can also be called as a statement, so this covers both uses.
+	helper.AppendFunc(wxT("ChooseFromList"), -1, wxT("ChooseFromList(...)"));
+	helper.AppendFunc(wxT("ShowQueryBox"), -1, wxT("ShowQueryBox(...)"));
+	helper.AppendFunc(wxT("ShowMessageBox"), -1, wxT("ShowMessageBox(...)"));
+	helper.AppendFunc(wxT("ShowValue"), -1, wxT("ShowValue(...)"));
+	helper.AppendFunc(wxT("OpenValue"), -1, wxT("OpenValue(...)"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -351,6 +366,11 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBA\xD0\xB0\xD0\xB7\xD0\xB0\xD1\x82\xD1\x8C\xD0\x9E\xD0\xBF\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x89\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xB7\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8F"), wxT("ShowUserNotification"));  // ПоказатьОповещениеПользователя
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x92\xD1\x8B\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C\xD0\x9E\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD0\xBA\xD1\x83\xD0\x9E\xD0\xBF\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x89\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"), wxT("ExecuteNotifyProcessing"));  // ВыполнитьОбработкуОповещения
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\xA1\xD0\xB5\xD0\xB0\xD0\xBD\xD1\x81\xD1\x8B\xD0\x98\xD0\xBD\xD1\x84\xD0\xBE\xD1\x80\xD0\xBC\xD0\xB0\xD1\x86\xD0\xB8\xD0\xBE\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB9\xD0\x91\xD0\xB0\xD0\xB7\xD1\x8B"), wxT("GetInfoBaseSessions"));  // ПолучитьСеансыИнформационнойБазы
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x92\xD1\x8B\xD0\xB1\xD1\x80\xD0\xB0\xD1\x82\xD1\x8C\xD0\x98\xD0\xB7\xD0\xA1\xD0\xBF\xD0\xB8\xD1\x81\xD0\xBA\xD0\xB0"), wxT("ChooseFromList"));  // ВыбратьИзСписка
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBA\xD0\xB0\xD0\xB7\xD0\xB0\xD1\x82\xD1\x8C\xD0\x92\xD0\xBE\xD0\xBF\xD1\x80\xD0\xBE\xD1\x81"), wxT("ShowQueryBox"));  // ПоказатьВопрос
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBA\xD0\xB0\xD0\xB7\xD0\xB0\xD1\x82\xD1\x8C\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD1\x83\xD0\xBF\xD1\x80\xD0\xB5\xD0\xB6\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("ShowMessageBox"));  // ПоказатьПредупреждение
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBA\xD0\xB0\xD0\xB7\xD0\xB0\xD1\x82\xD1\x8C\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("ShowValue"));  // ПоказатьЗначение
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD1\x82\xD0\xBA\xD1\x80\xD1\x8B\xD1\x82\xD1\x8C\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("OpenValue"));  // ОткрытьЗначение
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBE\xD0\xBA\xD1\x80"), wxT("Round"));  // окр
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x86\xD0\xB5\xD0\xBB"), wxT("Int"));  // цел
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBC\xD0\xB0\xD0\xBA\xD1\x81"), wxT("Max"));  // макс
@@ -520,6 +540,14 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		case enErrorInfo: pvarRetValue = ibValue(); return true;
 		case enGetOperativeTimestamp: pvarRetValue = CurrentDate(); return true;
 		case enGetInfoBaseSessions: pvarRetValue = ibValue::CreateObject(wxT("Array")); return true;
+		// Client dialogs — interim: no UI, return Undefined (sync callers get nothing selected).
+		case enChooseFromList:
+		case enShowQueryBox:
+		case enShowMessageBox:
+		case enShowValue:
+		case enOpenValue:
+			pvarRetValue = ibValue();
+			return true;
 		case enDetailErrorDescription:
 		case enBriefErrorDescription:
 			pvarRetValue = ibValue(lSizeArray > 0 ? paParams[0]->GetString() : wxEmptyString);
