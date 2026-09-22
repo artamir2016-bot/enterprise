@@ -1908,22 +1908,32 @@ TEST(ExpressionDepth, ModestNestingStillCompiles) {
 // ===========================================================================
 // Dynamic New — New(typeExpr) / New("TypeName") (1C's Новый(Тип)/Новый("Имя"))
 // ===========================================================================
+// SetCodeStyle is PROCESS-GLOBAL; restore it so these plain TESTs don't leak CES
+// into later VES-syntax tests (e.g. RuntimeTest.ContainerStore_*).
+namespace {
+struct CodeStyleGuard {
+	short prev = ibCompileCode::GetCodeStyle();
+	explicit CodeStyleGuard(short s) { ibCompileCode::SetCodeStyle(s); }
+	~CodeStyleGuard() { ibCompileCode::SetCodeStyle(prev); }
+};
+} // namespace
+
 TEST(CompilerTest, DynamicNewFromStringLiteralCompiles) {
-	ibCompileCode::SetCodeStyle(CODE_CES);
+	CodeStyleGuard guard(CODE_CES);
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	EXPECT_TRUE(TryCompile(cc, wxT("a = New(\"Array\");")))
 		<< "New(\"TypeName\") — dynamic constructor by type-name string";
 }
 
 TEST(CompilerTest, DynamicNewFromRuntimeTypeExprCompiles) {
-	ibCompileCode::SetCodeStyle(CODE_CES);
+	CodeStyleGuard guard(CODE_CES);
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	EXPECT_TRUE(TryCompile(cc, wxT("t = \"Array\"; a = New(t);")))
 		<< "New(expr) — dynamic constructor from a runtime slot (type resolved at execution)";
 }
 
 TEST(CompilerTest, StaticNewStillCompiles) {
-	ibCompileCode::SetCodeStyle(CODE_CES);
+	CodeStyleGuard guard(CODE_CES);
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	EXPECT_TRUE(TryCompile(cc, wxT("a = New Array;")))
 		<< "static New TypeName must still compile after the dynamic-form addition";
