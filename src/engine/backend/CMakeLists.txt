@@ -17,6 +17,7 @@ file(GLOB_RECURSE BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
 )
+# NOTE: re-glob trigger — new TU system/value/valueSystemInfo.cpp (СистемнаяИнформация)
 
 # ---------------------------------------------------------------------------
 # Remove platform-specific / optional sources that must be gated

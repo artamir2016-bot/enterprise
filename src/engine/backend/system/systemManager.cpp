@@ -272,6 +272,7 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBD\xD1\x80\xD0\xB5\xD0\xB3"), wxT("Lower"));  // нрег
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x81\xD0\xB8\xD0\xBC\xD0\xB2\xD0\xBE\xD0\xBB"), wxT("Chr"));  // символ
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBA\xD0\xBE\xD0\xB4\xD1\x81\xD0\xB8\xD0\xBC\xD0\xB2\xD0\xBE\xD0\xBB\xD0\xB0"), wxT("Asc"));  // кодсимвола
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD1\x82\xD1\x80\xD0\xA7\xD0\xB8\xD1\x81\xD0\xBB\xD0\xBE\xD0\x92\xD1\x85\xD0\xBE\xD0\xB6\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB9"), wxT("StrCountOccur"));  // СтрЧислоВхождений
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBE\xD0\xBA\xD1\x80"), wxT("Round"));  // окр
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x86\xD0\xB5\xD0\xBB"), wxT("Int"));  // цел
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBC\xD0\xB0\xD0\xBA\xD1\x81"), wxT("Max"));  // макс
