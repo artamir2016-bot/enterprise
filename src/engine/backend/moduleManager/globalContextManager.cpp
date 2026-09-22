@@ -128,7 +128,21 @@ enum
 	enCalculationRegisters,
 	enRuChartsOfCalculationTypes,
 	enRuCalculationRegisters,
-	enSysAllowedLength   // ДопустимаяДлина — system enum used to build string qualifiers
+	enSysAllowedLength,   // ДопустимаяДлина — system enum used to build string qualifiers
+	// Metatypes OES does not model (BusinessProcess / Task). Registered as EMPTY
+	// namespaces so imported common modules that reference БизнесПроцессы / Задачи
+	// as bare globals compile and run (the namespace simply enumerates nothing).
+	enBusinessProcesses,
+	enTasks,
+	enExchangePlans,
+	enSequences,
+	// More bare globals imported modules expect. ВнешниеОбработки is a real manager
+	// (OES has ExternalDataProcessors) exposed under its Russian name; the rest are
+	// interim stubs so the modules compile/run (empty namespace, or empty string).
+	enRuExternalDataProcessors,   // ВнешниеОбработки
+	enPictureLib,                 // БиблиотекаКартинок — empty namespace
+	enStartupParameter,           // ПараметрЗапуска — empty string
+	enInfoBaseUsers               // ПользователиИнформационнойБазы — empty namespace
 };
 
 void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
@@ -179,6 +193,15 @@ void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
 	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD1\x8B\xD0\x92\xD0\xB8\xD0\xB4\xD0\xBE\xD0\xB2\xD0\xA0\xD0\xB0\xD1\x81\xD1\x87\xD0\xB5\xD1\x82\xD0\xB0")); // ПланыВидовРасчета
 	helper.AppendProp(wxString::FromUTF8("\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD1\x8B\xD0\xA0\xD0\xB0\xD1\x81\xD1\x87\xD0\xB5\xD1\x82\xD0\xB0")); // РегистрыРасчета
 	helper.AppendProp(wxString::FromUTF8("\xD0\x94\xD0\xBE\xD0\xBF\xD1\x83\xD1\x81\xD1\x82\xD0\xB8\xD0\xBC\xD0\xB0\xD1\x8F\xD0\x94\xD0\xBB\xD0\xB8\xD0\xBD\xD0\xB0")); // ДопустимаяДлина
+	// Empty namespaces for metatypes OES does not model (order matches the enum tail).
+	helper.AppendProp(wxString::FromUTF8("\xD0\x91\xD0\xB8\xD0\xB7\xD0\xBD\xD0\xB5\xD1\x81\xD0\x9F\xD1\x80\xD0\xBE\xD1\x86\xD0\xB5\xD1\x81\xD1\x81\xD1\x8B")); // БизнесПроцессы
+	helper.AppendProp(wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xB4\xD0\xB0\xD1\x87\xD0\xB8")); // Задачи
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xBB\xD0\xB0\xD0\xBD\xD1\x8B\xD0\x9E\xD0\xB1\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB0")); // ПланыОбмена
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD1\x81\xD0\xBB\xD0\xB5\xD0\xB4\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8")); // Последовательности
+	helper.AppendProp(wxString::FromUTF8("\xD0\x92\xD0\xBD\xD0\xB5\xD1\x88\xD0\xBD\xD0\xB8\xD0\xB5\xD0\x9E\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD0\xBA\xD0\xB8")); // ВнешниеОбработки
+	helper.AppendProp(wxString::FromUTF8("\xD0\x91\xD0\xB8\xD0\xB1\xD0\xBB\xD0\xB8\xD0\xBE\xD1\x82\xD0\xB5\xD0\xBA\xD0\xB0\xD0\x9A\xD0\xB0\xD1\x80\xD1\x82\xD0\xB8\xD0\xBD\xD0\xBE\xD0\xBA")); // БиблиотекаКартинок
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xB0\xD1\x80\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x82\xD1\x80\xD0\x97\xD0\xB0\xD0\xBF\xD1\x83\xD1\x81\xD0\xBA\xD0\xB0")); // ПараметрЗапуска
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xB7\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x82\xD0\xB5\xD0\xBB\xD0\xB8\xD0\x98\xD0\xBD\xD1\x84\xD0\xBE\xD1\x80\xD0\xBC\xD0\xB0\xD1\x86\xD0\xB8\xD0\xBE\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB9\xD0\x91\xD0\xB0\xD0\xB7\xD1\x8B")); // ПользователиИнформационнойБазы
 }
 
 #include "backend/metaCollection/metaSessionParameterObject.h"   // the metatype AND the value it yields
@@ -298,6 +321,21 @@ bool ibValueGlobalContextManager::GetPropVal(const long lPropNum, ibValue& pvarP
 		return true;
 	case enSysAllowedLength:
 		pvarPropVal = ibValue::CreateObject(wxT("AllowedLength"));
+		return true;
+	// Empty namespaces (clsid 0 → enumerates no metaobjects) for unmodelled metatypes.
+	case enBusinessProcesses:
+	case enTasks:
+	case enExchangePlans:
+	case enSequences:
+	case enPictureLib:
+	case enInfoBaseUsers:
+		pvarPropVal = new ibValueGlobalContextStructureManager();
+		return true;
+	case enRuExternalDataProcessors:
+		pvarPropVal = new ibValueManagerDataObjectExternalDataProcessor();
+		return true;
+	case enStartupParameter:
+		pvarPropVal = ibValue(wxEmptyString);
 		return true;
 	}
 
