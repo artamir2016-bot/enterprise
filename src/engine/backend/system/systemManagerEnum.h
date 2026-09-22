@@ -54,6 +54,20 @@ class ibValueEnumQuestionReturnCode : public ibValueEnumeration<ibQuestionReturn
 		AddEnumeration(ibQuestionReturnCode::ibQuestionReturnCode_No, wxT("No"), _("Yes"));
 		AddEnumeration(ibQuestionReturnCode::ibQuestionReturnCode_OK, wxT("Ok"), _("Ok"));
 		AddEnumeration(ibQuestionReturnCode::ibQuestionReturnCode_Cancel, wxT("Cancel"), _("Cancel"));
+		AddEnumeration(ibQuestionReturnCode::ibQuestionReturnCode_Abort, wxT("Abort"), _("Abort"));
+		AddEnumeration(ibQuestionReturnCode::ibQuestionReturnCode_Retry, wxT("Retry"), _("Retry"));
+		AddEnumeration(ibQuestionReturnCode::ibQuestionReturnCode_Ignore, wxT("Ignore"), _("Ignore"));
+		AddEnumeration(ibQuestionReturnCode::ibQuestionReturnCode_Skip, wxT("Skip"), _("Skip"));
+
+		// OES-RU: 1C КодВозвратаДиалога value names.
+		AddEnumAlias(ibQuestionReturnCode::ibQuestionReturnCode_Yes,    wxString::FromUTF8("\xD0\x94\xD0\xB0"));                                             // Да
+		AddEnumAlias(ibQuestionReturnCode::ibQuestionReturnCode_No,     wxString::FromUTF8("\xD0\x9D\xD0\xB5\xD1\x82"));                                     // Нет
+		AddEnumAlias(ibQuestionReturnCode::ibQuestionReturnCode_OK,     wxString::FromUTF8("\xD0\x9E\xD0\x9A"));                                             // ОК
+		AddEnumAlias(ibQuestionReturnCode::ibQuestionReturnCode_Cancel, wxString::FromUTF8("\xD0\x9E\xD1\x82\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB0"));             // Отмена
+		AddEnumAlias(ibQuestionReturnCode::ibQuestionReturnCode_Abort,  wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB5\xD1\x80\xD0\xB2\xD0\xB0\xD1\x82\xD1\x8C")); // Прервать
+		AddEnumAlias(ibQuestionReturnCode::ibQuestionReturnCode_Retry,  wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xB2\xD1\x82\xD0\xBE\xD1\x80\xD0\xB8\xD1\x82\xD1\x8C")); // Повторить
+		AddEnumAlias(ibQuestionReturnCode::ibQuestionReturnCode_Ignore, wxString::FromUTF8("\xD0\x98\xD0\xB3\xD0\xBD\xD0\xBE\xD1\x80\xD0\xB8\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x82\xD1\x8C")); // Игнорировать
+		AddEnumAlias(ibQuestionReturnCode::ibQuestionReturnCode_Skip,   wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xBE\xD0\xBF\xD1\x83\xD1\x81\xD1\x82\xD0\xB8\xD1\x82\xD1\x8C")); // Пропустить
 	}
 };
 

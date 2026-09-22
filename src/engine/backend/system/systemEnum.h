@@ -21,7 +21,12 @@ enum ibQuestionReturnCode
 	ibQuestionReturnCode_Yes = 1,
 	ibQuestionReturnCode_No,
 	ibQuestionReturnCode_OK,
-	ibQuestionReturnCode_Cancel
+	ibQuestionReturnCode_Cancel,
+	// 1C DialogReturnCode also carries the message-box buttons (Abort/Retry/Ignore/Skip).
+	ibQuestionReturnCode_Abort,
+	ibQuestionReturnCode_Retry,
+	ibQuestionReturnCode_Ignore,
+	ibQuestionReturnCode_Skip
 };
 
 enum ibRoundMode

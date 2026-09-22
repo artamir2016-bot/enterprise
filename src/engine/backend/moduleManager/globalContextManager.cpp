@@ -142,7 +142,8 @@ enum
 	enRuExternalDataProcessors,   // ВнешниеОбработки
 	enPictureLib,                 // БиблиотекаКартинок — empty namespace
 	enStartupParameter,           // ПараметрЗапуска — empty string
-	enInfoBaseUsers               // ПользователиИнформационнойБазы — empty namespace
+	enInfoBaseUsers,              // ПользователиИнформационнойБазы — empty namespace
+	enDialogReturnCode            // КодВозвратаДиалога — system enum (Да/Нет/ОК/Отмена/…)
 };
 
 void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
@@ -202,6 +203,7 @@ void ibValueGlobalContextManager::FillMembers(ibMemberTable& helper) const
 	helper.AppendProp(wxString::FromUTF8("\xD0\x91\xD0\xB8\xD0\xB1\xD0\xBB\xD0\xB8\xD0\xBE\xD1\x82\xD0\xB5\xD0\xBA\xD0\xB0\xD0\x9A\xD0\xB0\xD1\x80\xD1\x82\xD0\xB8\xD0\xBD\xD0\xBE\xD0\xBA")); // БиблиотекаКартинок
 	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xB0\xD1\x80\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x82\xD1\x80\xD0\x97\xD0\xB0\xD0\xBF\xD1\x83\xD1\x81\xD0\xBA\xD0\xB0")); // ПараметрЗапуска
 	helper.AppendProp(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xB7\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x82\xD0\xB5\xD0\xBB\xD0\xB8\xD0\x98\xD0\xBD\xD1\x84\xD0\xBE\xD1\x80\xD0\xBC\xD0\xB0\xD1\x86\xD0\xB8\xD0\xBE\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB9\xD0\x91\xD0\xB0\xD0\xB7\xD1\x8B")); // ПользователиИнформационнойБазы
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9A\xD0\xBE\xD0\xB4\xD0\x92\xD0\xBE\xD0\xB7\xD0\xB2\xD1\x80\xD0\xB0\xD1\x82\xD0\xB0\xD0\x94\xD0\xB8\xD0\xB0\xD0\xBB\xD0\xBE\xD0\xB3\xD0\xB0")); // КодВозвратаДиалога
 }
 
 #include "backend/metaCollection/metaSessionParameterObject.h"   // the metatype AND the value it yields
@@ -336,6 +338,9 @@ bool ibValueGlobalContextManager::GetPropVal(const long lPropNum, ibValue& pvarP
 		return true;
 	case enStartupParameter:
 		pvarPropVal = ibValue(wxEmptyString);
+		return true;
+	case enDialogReturnCode:
+		pvarPropVal = ibValue::CreateObject(wxT("QuestionReturnCode"));
 		return true;
 	}
 

@@ -38,6 +38,9 @@ class ibValueEnumDocumentPostingMode : public ibValueEnumeration<ibDocumentPosti
 	virtual void CreateEnumeration() {
 		AddEnumeration(ibDocumentPostingMode::ibDocumentPostingMode_RealTime, wxT("RealTime"), _("Real time"));
 		AddEnumeration(ibDocumentPostingMode::ibDocumentPostingMode_Regular, wxT("Regular"), _("Regular"));
+		// OES-RU: 1C РежимПроведенияДокумента value names.
+		AddEnumAlias(ibDocumentPostingMode::ibDocumentPostingMode_RealTime, wxString::FromUTF8("\xD0\x9E\xD0\xBF\xD0\xB5\xD1\x80\xD0\xB0\xD1\x82\xD0\xB8\xD0\xB2\xD0\xBD\xD1\x8B\xD0\xB9"));   // Оперативный
+		AddEnumAlias(ibDocumentPostingMode::ibDocumentPostingMode_Regular,  wxString::FromUTF8("\xD0\x9D\xD0\xB5\xD0\xBE\xD0\xBF\xD0\xB5\xD1\x80\xD0\xB0\xD1\x82\xD0\xB8\xD0\xB2\xD0\xBD\xD1\x8B\xD0\xB9")); // Неоперативный
 	}
 };
 #pragma endregion 
