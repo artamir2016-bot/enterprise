@@ -820,8 +820,13 @@ bool ibTranslateCode::GetString(wxString* strString) const
 			// quote is nearly always followed by `;` or `)`, and query text was only ever tested on
 			// ONE line. The renderer prints a clause per line, so `WHERE\n\tCode = "A"\nGROUP BY …`
 			// — an entirely ordinary query — could not be read back.
-			if (count_char >= 2)
-				break;
+			if (count_char >= 2) {
+				// String already closed: this newline sits BETWEEN segments. 1C implicit
+				// string concatenation joins an adjacent quoted segment on a later line, so
+				// keep scanning (a non-blank, non-quote char in the else-branch below ends it).
+				m_currentLine++;
+				continue;
+			}
 			if (strString != nullptr) strString->Append(wxT('\n'));
 			next_pos = m_currentPos + 1;
 #ifdef UTF8_LEXEM_TRANSLATE
@@ -866,7 +871,15 @@ bool ibTranslateCode::GetString(wxString* strString) const
 				continue;
 			}
 		}
-		else break;
+		else {
+			// count_char >= 2: the string has closed. 1C implicit concatenation — skip blanks
+			// and REOPEN on the next quote (join the adjacent segment); any other char ends it.
+			// (An immediately-adjacent "" with no separator is handled above as an escaped quote.)
+			if (c == wxT(' ') || c == wxT('\t') || c == wxT('\r'))
+				continue;
+			if (c == wxT('\"')) { count_char = 1; continue; }
+			break;
+		}
 		if (strString != nullptr) strString->Append(c);
 	}
 

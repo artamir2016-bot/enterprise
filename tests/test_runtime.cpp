@@ -587,6 +587,41 @@ TEST(RuntimeTest, ArrayInsert_AtEnd_Appends) {
 
 // A Container round-trips its keys and values (the redesigned vector + hash
 // store), preserves insertion order, and overwrites on `[key] = v`.
+// 1C implicit string concatenation: adjacent string literals (separated only by
+// blanks / newlines) join into one string — used for long multi-line messages.
+TEST(RuntimeTest, AdjacentStringLiteralsConcatenate) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("Function C() Public\n")
+		wxT("  Return \"ab\"\n\"cd\" \"ef\";\n")
+		wxT("EndFunction\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+
+	ibProcUnit pu;
+	ASSERT_TRUE(TryExecute(pu, cc.m_cByteCode));
+
+	ibValue ret;
+	pu.CallAsFunc(wxT("C"), ret);
+	EXPECT_EQ(ret.GetString(), wxT("abcdef"));
+}
+
+// Adjacent quotes with NO separator remain an escaped quote (not concatenation).
+TEST(RuntimeTest, EscapedQuoteStillLiteralQuote) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("Function C() Public\n")
+		wxT("  Return \"a\"\"b\";\n")
+		wxT("EndFunction\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+
+	ibProcUnit pu;
+	ASSERT_TRUE(TryExecute(pu, cc.m_cByteCode));
+
+	ibValue ret;
+	pu.CallAsFunc(wxT("C"), ret);
+	EXPECT_EQ(ret.GetString(), wxT("a\"b"));
+}
+
 TEST(RuntimeTest, ContainerStore_InsertGetOverwriteOrder) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	const wxString src =
