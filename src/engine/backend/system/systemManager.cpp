@@ -120,7 +120,16 @@ enum
 	// and number-to-words, all common in imported BSP common modules.
 	enStrTemplate,
 	enFillPropertyValues,
-	enNumberInWords
+	enNumberInWords,
+	// Interim stubs for platform globals OES does not (yet) model: privileged-mode /
+	// idle-handler / terminate are no-ops; the queries return empty. They let imported
+	// BSP modules that call these as bare globals compile and run.
+	enSetPrivilegedMode,
+	enPrivilegedMode,
+	enAttachIdleHandler,
+	enDetachIdleHandler,
+	enTerminateSystem,
+	enInfobaseConnectionString
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -246,6 +255,13 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("StrTemplate"), -1, wxT("StrTemplate(template : string, ...)"));
 	helper.AppendProc(wxT("FillPropertyValues"), 4, wxT("FillPropertyValues(dst, src [, props : string [, excluded : string]])"));
 	helper.AppendFunc(wxT("NumberInWords"), -1, wxT("NumberInWords(num : number, ...)"));
+	// Interim stubs (no-op / empty) for unmodelled platform globals.
+	helper.AppendProc(wxT("SetPrivilegedMode"), 1, wxT("SetPrivilegedMode(on : boolean)"));
+	helper.AppendFunc(wxT("PrivilegedMode"), wxT("PrivilegedMode()"));
+	helper.AppendProc(wxT("AttachIdleHandler"), -1, wxT("AttachIdleHandler(...)"));
+	helper.AppendProc(wxT("DetachIdleHandler"), -1, wxT("DetachIdleHandler(...)"));
+	helper.AppendProc(wxT("TerminateSystem"), -1, wxT("TerminateSystem(...)"));
+	helper.AppendFunc(wxT("InfobaseConnectionString"), wxT("InfobaseConnectionString()"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -290,6 +306,13 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xA0\xD0\xBE\xD0\xBB\xD1\x8C\xD0\x94\xD0\xBE\xD1\x81\xD1\x82\xD1\x83\xD0\xBF\xD0\xBD\xD0\xB0"), wxT("IsInRole"));  // РольДоступна
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD1\x82\xD1\x80\xD0\x9D\xD0\xB0\xD0\xB9\xD1\x82\xD0\xB8"), wxT("Find"));  // СтрНайти
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD1\x82\xD1\x80\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C"), wxT("StrReplace"));  // СтрЗаменить
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA3\xD1\x81\xD1\x82\xD0\xB0\xD0\xBD\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB8\xD0\xBB\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xBD\xD1\x8B\xD0\xB9\xD0\xA0\xD0\xB5\xD0\xB6\xD0\xB8\xD0\xBC"), wxT("SetPrivilegedMode"));  // УстановитьПривилегированныйРежим
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB8\xD0\xBB\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xBD\xD1\x8B\xD0\xB9\xD0\xA0\xD0\xB5\xD0\xB6\xD0\xB8\xD0\xBC"), wxT("PrivilegedMode"));  // ПривилегированныйРежим
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xB4\xD0\xBA\xD0\xBB\xD1\x8E\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\x9E\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD1\x87\xD0\xB8\xD0\xBA\xD0\x9E\xD0\xB6\xD0\xB8\xD0\xB4\xD0\xB0\xD0\xBD\xD0\xB8\xD1\x8F"), wxT("AttachIdleHandler"));  // ПодключитьОбработчикОжидания
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD1\x82\xD0\xBA\xD0\xBB\xD1\x8E\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\x9E\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD1\x87\xD0\xB8\xD0\xBA\xD0\x9E\xD0\xB6\xD0\xB8\xD0\xB4\xD0\xB0\xD0\xBD\xD0\xB8\xD1\x8F"), wxT("DetachIdleHandler"));  // ОтключитьОбработчикОжидания
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB5\xD0\xBA\xD1\x80\xD0\xB0\xD1\x82\xD0\xB8\xD1\x82\xD1\x8C\xD0\xA0\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD1\x83\xD0\xA1\xD0\xB8\xD1\x81\xD1\x82\xD0\xB5\xD0\xBC\xD1\x8B"), wxT("TerminateSystem"));  // ПрекратитьРаботуСистемы
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xB2\xD0\xB5\xD1\x80\xD1\x88\xD0\xB8\xD1\x82\xD1\x8C\xD0\xA0\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD1\x83\xD0\xA1\xD0\xB8\xD1\x81\xD1\x82\xD0\xB5\xD0\xBC\xD1\x8B"), wxT("TerminateSystem"));  // ЗавершитьРаботуСистемы
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD1\x82\xD1\x80\xD0\xBE\xD0\xBA\xD0\xB0\xD0\xA1\xD0\xBE\xD0\xB5\xD0\xB4\xD0\xB8\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F\xD0\x98\xD0\xBD\xD1\x84\xD0\xBE\xD1\x80\xD0\xBC\xD0\xB0\xD1\x86\xD0\xB8\xD0\xBE\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB9\xD0\x91\xD0\xB0\xD0\xB7\xD1\x8B"), wxT("InfobaseConnectionString"));  // СтрокаСоединенияИнформационнойБазы
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBE\xD0\xBA\xD1\x80"), wxT("Round"));  // окр
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x86\xD0\xB5\xD0\xBB"), wxT("Int"));  // цел
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBC\xD0\xB0\xD0\xBA\xD1\x81"), wxT("Max"));  // макс
@@ -451,6 +474,14 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		case enFillPropertyValues:
 			FillPropertyValues(paParams, lSizeArray);
 			return true;
+		// Interim stubs for unmodelled platform globals.
+		case enPrivilegedMode: pvarRetValue = ibValue(false); return true;
+		case enInfobaseConnectionString: pvarRetValue = ibValue(wxEmptyString); return true;
+		case enSetPrivilegedMode:
+		case enAttachIdleHandler:
+		case enDetachIdleHandler:
+		case enTerminateSystem:
+			return true;   // no-op
 		case enEvaluate: pvarRetValue = Evaluate(paParams[0]->GetString()); return true;
 		case enExecute: Execute(paParams[0]->GetString()); return true;
 		case enFormat: pvarRetValue = Format(*paParams[0], paParams[1]->GetString()); return true;
@@ -534,6 +565,11 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 				lSizeArray > 1 ? paParams[1]->ConvertToEnumValue<ibStatusMessage>() : ibStatusMessage::ibStatusMessage_Information);
 			return true;
 		case enFillPropertyValues: FillPropertyValues(paParams, lSizeArray); return true;
+		case enSetPrivilegedMode:
+		case enAttachIdleHandler:
+		case enDetachIdleHandler:
+		case enTerminateSystem:
+			return true;   // interim no-op
 		case enAlert: Alert(paParams[0]->GetString()); return true;
 		case enSetStatus: SetStatus(paParams[0]->GetString()); return true;
 		case enClearMessage: ClearMessage(); return true;
