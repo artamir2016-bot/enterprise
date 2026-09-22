@@ -26,6 +26,7 @@ private:
 	enum Func  {
 		enCount = 0,
 		enProperty,
+		enGet,
 		enClear,
 		enDelete,
 		enInsert

@@ -230,6 +230,12 @@ void ibValueContainer::BindContainerNames(ibMemberTable& helper, const ibValue* 
 
 	helper.AppendFunc(wxT("Count"), wxT("Count()"));
 	helper.AppendFunc(wxT("Property"), 2, wxT("Property(key : any, valueFound : any)"));
+	// Get(key [, default]) — 1C's Соответствие.Получить: returns the value for a key,
+	// or the default (Undefined if omitted) when the key is absent. A READ, so it is
+	// available on read-only maps too. Kept next to Property so its append position (2)
+	// matches enGet before the mutating methods shift.
+	helper.AppendFunc(wxT("Get"), -1, wxT("Get(key : any [, default : any])"));
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Get"));  // Получить
 
 	if (!self->m_bReadOnly) {
 		helper.AppendFunc(wxT("Clear"), wxT("Clear()"));
@@ -301,6 +307,17 @@ bool ibValueContainer::CallAsFunc(const long lMethodNum, ibValue& pvarRetValue, 
 		pvarRetValue = Property(*paParams[0], lSizeArray > 1 ? *paParams[1] : defaultVal);
 	}
 		return true;
+	case enGet:
+	{
+		const long idx = IndexOf(*paParams[0]);
+		if (idx >= 0)
+			pvarRetValue = m_entries[idx].second;
+		else if (lSizeArray > 1)
+			pvarRetValue = *paParams[1];
+		else
+			pvarRetValue = ibValue();   // Undefined
+	}
+		return true;
 	}
 
 	return false;
@@ -328,9 +345,11 @@ void ibValueContainer::Insert(const ibValue& varKeyValue, const ibValue& cValue)
 	// share of an insert. Computed here, then handed to both the duplicate check
 	// and the index.
 	const size_t hash = HashOf(varKeyValue);
-	if (FindWithHash(varKeyValue, hash) >= 0) {
-		if (!appData->DesignerMode())
-			ibBackendCoreException::Error(_("Key '%s' is already using!"), varKeyValue.GetString());
+	const long existing = FindWithHash(varKeyValue, hash);
+	if (existing >= 0) {
+		// 1C semantics: Вставить/Insert OVERWRITES an existing key (Structure and Map
+		// alike) rather than raising — imported modules rely on re-inserting a field.
+		m_entries[existing].second = cValue;
 		return;
 	}
 	m_index.emplace(hash, m_entries.size());
