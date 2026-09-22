@@ -115,7 +115,12 @@ enum
 	// silently re-point every later method at the wrong case.
 	enRunScheduledJobs,
 	enRunJob,
-	enRunBackground
+	enRunBackground,
+	// Appended at the END (ordinal == bind-table index) — string template, property copy,
+	// and number-to-words, all common in imported BSP common modules.
+	enStrTemplate,
+	enFillPropertyValues,
+	enNumberInWords
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -237,6 +242,10 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("RunScheduledJobs"), wxT("RunScheduledJobs()"));
 	helper.AppendFunc(wxT("RunJob"), 1, wxT("RunJob(name : string)"));
 	helper.AppendFunc(wxT("RunBackground"), 2, wxT("RunBackground(procedure : string, args : array)"));
+	// String template (substitutes %1..%N), property copy, number-to-words.
+	helper.AppendFunc(wxT("StrTemplate"), -1, wxT("StrTemplate(template : string, ...)"));
+	helper.AppendProc(wxT("FillPropertyValues"), 4, wxT("FillPropertyValues(dst, src [, props : string [, excluded : string]])"));
+	helper.AppendFunc(wxT("NumberInWords"), -1, wxT("NumberInWords(num : number, ...)"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -273,6 +282,14 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x81\xD0\xB8\xD0\xBC\xD0\xB2\xD0\xBE\xD0\xBB"), wxT("Chr"));  // символ
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBA\xD0\xBE\xD0\xB4\xD1\x81\xD0\xB8\xD0\xBC\xD0\xB2\xD0\xBE\xD0\xBB\xD0\xB0"), wxT("Asc"));  // кодсимвола
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD1\x82\xD1\x80\xD0\xA7\xD0\xB8\xD1\x81\xD0\xBB\xD0\xBE\xD0\x92\xD1\x85\xD0\xBE\xD0\xB6\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB9"), wxT("StrCountOccur"));  // СтрЧислоВхождений
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD1\x82\xD1\x80\xD0\xA8\xD0\xB0\xD0\xB1\xD0\xBB\xD0\xBE\xD0\xBD"), wxT("StrTemplate"));  // СтрШаблон
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F\xD0\xA1\xD0\xB2\xD0\xBE\xD0\xB9\xD1\x81\xD1\x82\xD0\xB2"), wxT("FillPropertyValues"));  // ЗаполнитьЗначенияСвойств
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA7\xD0\xB8\xD1\x81\xD0\xBB\xD0\xBE\xD0\x9F\xD1\x80\xD0\xBE\xD0\xBF\xD0\xB8\xD1\x81\xD1\x8C\xD1\x8E"), wxT("NumberInWords"));  // ЧислоПрописью
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\x9E\xD0\xB1\xD1\x89\xD1\x83\xD1\x8E\xD0\xA4\xD0\xBE\xD1\x80\xD0\xBC\xD1\x83"), wxT("GetCommonForm"));  // ПолучитьОбщуюФорму
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBE\xD0\x94\xD0\xBE\xD1\x81\xD1\x82\xD1\x83\xD0\xBF\xD0\xB0"), wxT("AccessRight"));  // ПравоДоступа
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA0\xD0\xBE\xD0\xBB\xD1\x8C\xD0\x94\xD0\xBE\xD1\x81\xD1\x82\xD1\x83\xD0\xBF\xD0\xBD\xD0\xB0"), wxT("IsInRole"));  // РольДоступна
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD1\x82\xD1\x80\xD0\x9D\xD0\xB0\xD0\xB9\xD1\x82\xD0\xB8"), wxT("Find"));  // СтрНайти
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD1\x82\xD1\x80\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C"), wxT("StrReplace"));  // СтрЗаменить
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBE\xD0\xBA\xD1\x80"), wxT("Round"));  // окр
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x86\xD0\xB5\xD0\xBB"), wxT("Int"));  // цел
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBC\xD0\xB0\xD0\xBA\xD1\x81"), wxT("Max"));  // макс
@@ -429,6 +446,11 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 			pvarRetValue = RunBackground(paParams[0]->GetString(),
 				lSizeArray > 1 ? paParams[1] : nullptr);
 			return true;
+		case enStrTemplate: pvarRetValue = StrTemplate(paParams, lSizeArray); return true;
+		case enNumberInWords: pvarRetValue = NumberInWords(paParams, lSizeArray); return true;
+		case enFillPropertyValues:
+			FillPropertyValues(paParams, lSizeArray);
+			return true;
 		case enEvaluate: pvarRetValue = Evaluate(paParams[0]->GetString()); return true;
 		case enExecute: Execute(paParams[0]->GetString()); return true;
 		case enFormat: pvarRetValue = Format(*paParams[0], paParams[1]->GetString()); return true;
@@ -511,6 +533,7 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 			Message(paParams[0]->GetString(),
 				lSizeArray > 1 ? paParams[1]->ConvertToEnumValue<ibStatusMessage>() : ibStatusMessage::ibStatusMessage_Information);
 			return true;
+		case enFillPropertyValues: FillPropertyValues(paParams, lSizeArray); return true;
 		case enAlert: Alert(paParams[0]->GetString()); return true;
 		case enSetStatus: SetStatus(paParams[0]->GetString()); return true;
 		case enClearMessage: ClearMessage(); return true;

@@ -107,6 +107,74 @@ ibValue ibValueSystemFunction::Min(ibValue** paParams, const long lSizeArray)
 	return minValue;
 }
 
+// StrTemplate("%1 of %2", a, b) — substitute %1..%N (1-based into the trailing
+// arguments); %% is a literal percent. Unknown/out-of-range placeholders expand
+// to empty. Mirrors 1C's СтрШаблон.
+ibValue ibValueSystemFunction::StrTemplate(ibValue** paParams, const long lSizeArray)
+{
+	if (lSizeArray < 1) return ibValue(wxEmptyString);
+	const wxString tmpl = paParams[0]->GetString();
+	wxString out;
+	out.reserve(tmpl.length());
+	for (size_t i = 0; i < tmpl.length(); ++i) {
+		const wxChar c = tmpl[i];
+		if (c == wxT('%') && i + 1 < tmpl.length()) {
+			const wxChar d = tmpl[i + 1];
+			if (d == wxT('%')) { out += wxT('%'); ++i; continue; }
+			if (d >= wxT('0') && d <= wxT('9')) {
+				size_t j = i + 1; long num = 0;
+				while (j < tmpl.length() && tmpl[j] >= wxT('0') && tmpl[j] <= wxT('9')) {
+					num = num * 10 + (tmpl[j] - wxT('0')); ++j;
+				}
+				if (num >= 1 && num < lSizeArray) out += paParams[num]->GetString();
+				i = j - 1; continue;
+			}
+		}
+		out += c;
+	}
+	return ibValue(out);
+}
+
+// NumberInWords — interim: return the number as a plain string. Full localized
+// spelling (Russian rubles/kopecks, gender/case agreement) is a later feature.
+ibValue ibValueSystemFunction::NumberInWords(ibValue** paParams, const long lSizeArray)
+{
+	if (lSizeArray < 1) return ibValue(wxEmptyString);
+	return ibValue(paParams[0]->GetString());
+}
+
+// FillPropertyValues(dst, src [, propsList [, excludedProps]]) — copy each property
+// the destination has (optionally filtered by the include/exclude comma-lists) from
+// the source when the source exposes a readable property of the same name. 1C's
+// ЗаполнитьЗначенияСвойств.
+void ibValueSystemFunction::FillPropertyValues(ibValue** paParams, const long lSizeArray)
+{
+	if (lSizeArray < 2) return;
+	ibValue& dst = *paParams[0];
+	ibValue& src = *paParams[1];
+	const wxString include = lSizeArray > 2 ? paParams[2]->GetString() : wxString();
+	const wxString exclude = lSizeArray > 3 ? paParams[3]->GetString() : wxString();
+	auto inCsv = [](const wxString& csv, const wxString& name) -> bool {
+		if (csv.IsEmpty()) return false;
+		wxString clean = csv.Lower();
+		clean.Replace(wxT(" "), wxT(""));
+		const wxString hay = wxT(",") + clean + wxT(",");
+		return hay.Find(wxT(",") + name.Lower() + wxT(",")) != wxNOT_FOUND;
+	};
+	const long n = dst.GetNProps();
+	for (long i = 0; i < n; ++i) {
+		const wxString name = dst.GetPropName(i);
+		if (name.IsEmpty()) continue;
+		if (!include.IsEmpty() && !inCsv(include, name)) continue;
+		if (inCsv(exclude, name)) continue;
+		if (!dst.IsPropWritable(i)) continue;
+		const long sp = src.FindProp(name);
+		if (sp < 0 || !src.IsPropReadable(sp)) continue;
+		ibValue v;
+		if (src.GetPropVal(sp, v)) dst.SetPropVal(i, v);
+	}
+}
+
 ibValue ibValueSystemFunction::Sqrt(const ibValue& cValue)
 {
 	// Was broken after the ttmath removal: ttmath's Sqrt() returned a status

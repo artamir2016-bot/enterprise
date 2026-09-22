@@ -33,6 +33,9 @@ public:
 	static ibNumber Ln(const ibValue& cValue);
 	static ibValue Max(ibValue** paParams, const long lSizeArray);
 	static ibValue Min(ibValue** paParams, const long lSizeArray);
+	static ibValue StrTemplate(ibValue** paParams, const long lSizeArray);
+	static ibValue NumberInWords(ibValue** paParams, const long lSizeArray);
+	static void    FillPropertyValues(ibValue** paParams, const long lSizeArray);
 	static ibValue Sqrt(const ibValue& cValue);
 
 	//--- Strings:
