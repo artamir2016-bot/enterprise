@@ -124,7 +124,9 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	//--- Basic:
 	helper.AppendFunc(wxT("Boolean"), 1, wxT("Boolean(value : any)"));
 	helper.AppendFunc(wxT("Number"), 1, wxT("Number(value: any)"));
-	helper.AppendFunc(wxT("Date"), 1, wxT("Date(value: any)"));
+	// Date accepts 1C's overloads: Date(value) | Date(year,month,day) | Date(year,month,day,hour,min,sec).
+	// Max arity 6; runtime dispatches on the actual count.
+	helper.AppendFunc(wxT("Date"), 6, wxT("Date(value) | Date(year, month, day [, hour, min, sec])"));
 	helper.AppendFunc(wxT("String"), 1, wxT("String(value: any)"));
 	//--- Math:
 	helper.AppendFunc(wxT("Round"), 3, wxT("Round(num : number, number, roundMode)"));
@@ -151,7 +153,8 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("Upper"), 1, wxT("Upper(str : string)"));
 	helper.AppendFunc(wxT("Lower"), 1, wxT("Lower(str : string)"));
 	helper.AppendFunc(wxT("Chr"), 1, wxT("Chr(num : number)"));
-	helper.AppendFunc(wxT("Asc"), 1, wxT("Asc(str : string)"));
+	// Asc / КодСимвола: code of the char at position (1-based, default 1) — 1C's КодСимвола(str, pos).
+	helper.AppendFunc(wxT("Asc"), 2, wxT("Asc(str : string [, pos : number])"));
 	helper.AppendFunc(wxT("Tstr"), 2, wxT("Tstr(text : string, langCode : string)"));
 	//--- Date and time:
 	helper.AppendFunc(wxT("CurrentDate"), wxT("CurrentDate()"));
@@ -188,8 +191,10 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	//--- Window operations: 
 	helper.AppendFunc(wxT("ActiveWindow"), wxT("ActiveWindow()"));
 	//--- Special:
-	helper.AppendProc(wxT("Message"), 2, wxT("Message(message : string, statusMessage : statusMessage)"));
-	helper.AppendFunc(wxT("Alert"), 1, wxT("Alert(message : string)"));
+	// Message max 4: 1C's Оповестить(text, ref, explanation, picture) aliases here; extra args are ignored.
+	helper.AppendProc(wxT("Message"), 4, wxT("Message(message : string, statusMessage : statusMessage)"));
+	// Alert max 3: 1C's Предупреждение(text, timeout, title) / ПредупреждениеАсинх; extra args are ignored.
+	helper.AppendFunc(wxT("Alert"), 3, wxT("Alert(message : string [, timeout, title])"));
 	helper.AppendFunc(wxT("Question"), 2, wxT("Question(message : string, questionMode)"));
 	helper.AppendFunc(wxT("SetStatus"), 1, wxT("SetStatus(text : string)"));
 	helper.AppendFunc(wxT("ClearMessages"), wxT("ClearMessages()"));
@@ -219,7 +224,9 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("AccessRight"), 2, wxT("AccessRight(strRole : string, metadata)"));
 	helper.AppendFunc(wxT("IsInRole"), 1, wxT("IsInRole(strRole : string)"));
 	helper.AppendFunc(wxT("GetCommonForm"), 3, wxT("GetCommonForm(name : string, owner : any, id : guid)"));
-	helper.AppendProc(wxT("ShowCommonForm"), 3, wxT("ShowCommonForm(name : string, owner : any, id : guid)"));
+	// ShowCommonForm max 7: 1C's ОткрытьФорму(name, params, owner, uniq, window, navref, winKey) aliases here;
+	// only name/owner/id are used, extra args are ignored.
+	helper.AppendProc(wxT("ShowCommonForm"), 7, wxT("ShowCommonForm(name : string, owner : any, id : guid)"));
 	helper.AppendFunc(wxT("GetCommonTemplate"), 1, wxT("GetCommonTemplate(name : string)"));
 	helper.AppendProc(wxT("BeginTransaction"), wxT("BeginTransaction()"));
 	helper.AppendProc(wxT("CommitTransaction"), wxT("CommitTransaction()"));
@@ -325,7 +332,16 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 			//--- Basic:
 		case enBoolean: pvarRetValue = Boolean(*paParams[0]); return true;
 		case enNumber: pvarRetValue = Number(*paParams[0]); return true;
-		case enDate: pvarRetValue = Date(*paParams[0]); return true;
+		case enDate:
+			if (lSizeArray >= 3)
+				pvarRetValue = ibValue(
+					paParams[0]->GetInteger(), paParams[1]->GetInteger(), paParams[2]->GetInteger(),
+					(unsigned short)(lSizeArray > 3 ? paParams[3]->GetInteger() : 0),
+					(unsigned short)(lSizeArray > 4 ? paParams[4]->GetInteger() : 0),
+					(unsigned short)(lSizeArray > 5 ? paParams[5]->GetInteger() : 0));
+			else
+				pvarRetValue = Date(*paParams[0]);
+			return true;
 		case enString: pvarRetValue = String(*paParams[0]); return true;
 			//--- Math:
 		case enRound: pvarRetValue = Round(*paParams[0],
@@ -356,7 +372,7 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		case enUpper: pvarRetValue = Upper(*paParams[0]); return true;
 		case enLower: pvarRetValue = Lower(*paParams[0]); return true;
 		case enChr: pvarRetValue = Chr(paParams[0]->GetInteger()); return true;
-		case enAsc: pvarRetValue = Asc(*paParams[0]); return true;
+		case enAsc: pvarRetValue = Asc(*paParams[0], lSizeArray > 1 ? paParams[1]->GetInteger() : 1); return true;
 		case enTStr: pvarRetValue = TStr(*paParams[0], lSizeArray > 1 ? paParams[1]->GetString() : wxT("")); return true;
 			//--- Date and time:
 		case enCurrentDate: pvarRetValue = CurrentDate(); return true;

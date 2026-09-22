@@ -52,7 +52,7 @@ public:
 	static ibString Upper(const ibValue& cSource);
 	static ibString Lower(const ibValue& cSource);
 	static wxString Chr(short nCode);
-	static short Asc(const ibValue& cSource);
+	static short Asc(const ibValue& cSource, int nPos = 1);
 	static wxString TStr(const ibValue& cSource, const ibValue& cLanguage);
 
 	//--- Date and time:

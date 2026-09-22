@@ -263,12 +263,13 @@ wxString ibValueSystemFunction::Chr(short nCode)
 	return wxString(static_cast<wchar_t>(nCode));
 }
 
-short ibValueSystemFunction::Asc(const ibValue& cSource)
+short ibValueSystemFunction::Asc(const ibValue& cSource, int nPos)
 {
 	ibString scratch;
 	const ibString& s = cSource.GetString(scratch);
-	if (s.IsEmpty()) return 0;
-	return static_cast<short>(s[0]);
+	if (nPos < 1) nPos = 1;
+	if (s.IsEmpty() || (size_t)nPos > s.Length()) return 0;
+	return static_cast<short>(s[nPos - 1]);
 }
 
 wxString ibValueSystemFunction::TStr(const ibValue& cSource, const ibValue& cLanguage)
