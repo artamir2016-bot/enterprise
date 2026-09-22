@@ -129,7 +129,17 @@ enum
 	enAttachIdleHandler,
 	enDetachIdleHandler,
 	enTerminateSystem,
-	enInfobaseConnectionString
+	enInfobaseConnectionString,
+	// Internal value serialization (ЗначениеВСтрокуВнутр / ЗначениеИзСтрокиВнутр) — interim
+	// pass-through: to-string returns the value's string form, from-string returns the string.
+	enValueToInternalString,
+	enValueFromInternalString,
+	// Error-info / event-log globals — interim: error-info empty, error representations
+	// return the argument's string form, write-to-log is a no-op.
+	enErrorInfo,
+	enDetailErrorDescription,
+	enBriefErrorDescription,
+	enWriteLogEvent
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -262,6 +272,12 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendProc(wxT("DetachIdleHandler"), -1, wxT("DetachIdleHandler(...)"));
 	helper.AppendProc(wxT("TerminateSystem"), -1, wxT("TerminateSystem(...)"));
 	helper.AppendFunc(wxT("InfobaseConnectionString"), wxT("InfobaseConnectionString()"));
+	helper.AppendFunc(wxT("ValueToInternalString"), 1, wxT("ValueToInternalString(value : any)"));
+	helper.AppendFunc(wxT("ValueFromInternalString"), 1, wxT("ValueFromInternalString(str : string)"));
+	helper.AppendFunc(wxT("ErrorInfo"), wxT("ErrorInfo()"));
+	helper.AppendFunc(wxT("DetailErrorDescription"), 1, wxT("DetailErrorDescription(errorInfo : any)"));
+	helper.AppendFunc(wxT("BriefErrorDescription"), 1, wxT("BriefErrorDescription(errorInfo : any)"));
+	helper.AppendProc(wxT("WriteLogEvent"), -1, wxT("WriteLogEvent(...)"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -313,6 +329,12 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB5\xD0\xBA\xD1\x80\xD0\xB0\xD1\x82\xD0\xB8\xD1\x82\xD1\x8C\xD0\xA0\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD1\x83\xD0\xA1\xD0\xB8\xD1\x81\xD1\x82\xD0\xB5\xD0\xBC\xD1\x8B"), wxT("TerminateSystem"));  // ПрекратитьРаботуСистемы
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xB2\xD0\xB5\xD1\x80\xD1\x88\xD0\xB8\xD1\x82\xD1\x8C\xD0\xA0\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD1\x83\xD0\xA1\xD0\xB8\xD1\x81\xD1\x82\xD0\xB5\xD0\xBC\xD1\x8B"), wxT("TerminateSystem"));  // ЗавершитьРаботуСистемы
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD1\x82\xD1\x80\xD0\xBE\xD0\xBA\xD0\xB0\xD0\xA1\xD0\xBE\xD0\xB5\xD0\xB4\xD0\xB8\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F\xD0\x98\xD0\xBD\xD1\x84\xD0\xBE\xD1\x80\xD0\xBC\xD0\xB0\xD1\x86\xD0\xB8\xD0\xBE\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB9\xD0\x91\xD0\xB0\xD0\xB7\xD1\x8B"), wxT("InfobaseConnectionString"));  // СтрокаСоединенияИнформационнойБазы
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\x92\xD0\xA1\xD1\x82\xD1\x80\xD0\xBE\xD0\xBA\xD1\x83\xD0\x92\xD0\xBD\xD1\x83\xD1\x82\xD1\x80"), wxT("ValueToInternalString"));  // ЗначениеВСтрокуВнутр
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\x98\xD0\xB7\xD0\xA1\xD1\x82\xD1\x80\xD0\xBE\xD0\xBA\xD0\xB8\xD0\x92\xD0\xBD\xD1\x83\xD1\x82\xD1\x80"), wxT("ValueFromInternalString"));  // ЗначениеИзСтрокиВнутр
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x98\xD0\xBD\xD1\x84\xD0\xBE\xD1\x80\xD0\xBC\xD0\xB0\xD1\x86\xD0\xB8\xD1\x8F\xD0\x9E\xD0\xB1\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB5"), wxT("ErrorInfo"));  // ИнформацияОбОшибке
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xB4\xD1\x80\xD0\xBE\xD0\xB1\xD0\xBD\xD0\xBE\xD0\xB5\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD1\x81\xD1\x82\xD0\xB0\xD0\xB2\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB8"), wxT("DetailErrorDescription"));  // ПодробноеПредставлениеОшибки
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9A\xD1\x80\xD0\xB0\xD1\x82\xD0\xBA\xD0\xBE\xD0\xB5\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD1\x81\xD1\x82\xD0\xB0\xD0\xB2\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB8"), wxT("BriefErrorDescription"));  // КраткоеПредставлениеОшибки
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xBF\xD0\xB8\xD1\x81\xD1\x8C\xD0\x96\xD1\x83\xD1\x80\xD0\xBD\xD0\xB0\xD0\xBB\xD0\xB0\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD0\xB0\xD1\x86\xD0\xB8\xD0\xB8"), wxT("WriteLogEvent"));  // ЗаписьЖурналаРегистрации
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBE\xD0\xBA\xD1\x80"), wxT("Round"));  // окр
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x86\xD0\xB5\xD0\xBB"), wxT("Int"));  // цел
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBC\xD0\xB0\xD0\xBA\xD1\x81"), wxT("Max"));  // макс
@@ -477,6 +499,13 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		// Interim stubs for unmodelled platform globals.
 		case enPrivilegedMode: pvarRetValue = ibValue(false); return true;
 		case enInfobaseConnectionString: pvarRetValue = ibValue(wxEmptyString); return true;
+		case enValueToInternalString: pvarRetValue = ibValue(paParams[0]->GetString()); return true;
+		case enValueFromInternalString: pvarRetValue = *paParams[0]; return true;
+		case enErrorInfo: pvarRetValue = ibValue(); return true;
+		case enDetailErrorDescription:
+		case enBriefErrorDescription:
+			pvarRetValue = ibValue(lSizeArray > 0 ? paParams[0]->GetString() : wxEmptyString);
+			return true;
 		case enSetPrivilegedMode:
 		case enAttachIdleHandler:
 		case enDetachIdleHandler:
@@ -569,6 +598,7 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 		case enAttachIdleHandler:
 		case enDetachIdleHandler:
 		case enTerminateSystem:
+		case enWriteLogEvent:
 			return true;   // interim no-op
 		case enAlert: Alert(paParams[0]->GetString()); return true;
 		case enSetStatus: SetStatus(paParams[0]->GetString()); return true;
