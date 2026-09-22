@@ -139,7 +139,12 @@ enum
 	enErrorInfo,
 	enDetailErrorDescription,
 	enBriefErrorDescription,
-	enWriteLogEvent
+	enWriteLogEvent,
+	// Operative timestamp (interim: current date) + client-notification / session stubs.
+	enGetOperativeTimestamp,
+	enShowUserNotification,
+	enExecuteNotifyProcessing,
+	enGetInfoBaseSessions
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -278,6 +283,10 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("DetailErrorDescription"), 1, wxT("DetailErrorDescription(errorInfo : any)"));
 	helper.AppendFunc(wxT("BriefErrorDescription"), 1, wxT("BriefErrorDescription(errorInfo : any)"));
 	helper.AppendProc(wxT("WriteLogEvent"), -1, wxT("WriteLogEvent(...)"));
+	helper.AppendFunc(wxT("GetOperativeTimestamp"), wxT("GetOperativeTimestamp()"));
+	helper.AppendProc(wxT("ShowUserNotification"), -1, wxT("ShowUserNotification(...)"));
+	helper.AppendProc(wxT("ExecuteNotifyProcessing"), -1, wxT("ExecuteNotifyProcessing(...)"));
+	helper.AppendFunc(wxT("GetInfoBaseSessions"), wxT("GetInfoBaseSessions()"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -335,6 +344,10 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xB4\xD1\x80\xD0\xBE\xD0\xB1\xD0\xBD\xD0\xBE\xD0\xB5\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD1\x81\xD1\x82\xD0\xB0\xD0\xB2\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB8"), wxT("DetailErrorDescription"));  // ПодробноеПредставлениеОшибки
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9A\xD1\x80\xD0\xB0\xD1\x82\xD0\xBA\xD0\xBE\xD0\xB5\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD1\x81\xD1\x82\xD0\xB0\xD0\xB2\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB8"), wxT("BriefErrorDescription"));  // КраткоеПредставлениеОшибки
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xBF\xD0\xB8\xD1\x81\xD1\x8C\xD0\x96\xD1\x83\xD1\x80\xD0\xBD\xD0\xB0\xD0\xBB\xD0\xB0\xD0\xA0\xD0\xB5\xD0\xB3\xD0\xB8\xD1\x81\xD1\x82\xD1\x80\xD0\xB0\xD1\x86\xD0\xB8\xD0\xB8"), wxT("WriteLogEvent"));  // ЗаписьЖурналаРегистрации
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\x9E\xD0\xBF\xD0\xB5\xD1\x80\xD0\xB0\xD1\x82\xD0\xB8\xD0\xB2\xD0\xBD\xD1\x83\xD1\x8E\xD0\x9E\xD1\x82\xD0\xBC\xD0\xB5\xD1\x82\xD0\xBA\xD1\x83\xD0\x92\xD1\x80\xD0\xB5\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xB8"), wxT("GetOperativeTimestamp"));  // ПолучитьОперативнуюОтметкуВремени
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBA\xD0\xB0\xD0\xB7\xD0\xB0\xD1\x82\xD1\x8C\xD0\x9E\xD0\xBF\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x89\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xB7\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8F"), wxT("ShowUserNotification"));  // ПоказатьОповещениеПользователя
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x92\xD1\x8B\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C\xD0\x9E\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD0\xBA\xD1\x83\xD0\x9E\xD0\xBF\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x89\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F"), wxT("ExecuteNotifyProcessing"));  // ВыполнитьОбработкуОповещения
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\xA1\xD0\xB5\xD0\xB0\xD0\xBD\xD1\x81\xD1\x8B\xD0\x98\xD0\xBD\xD1\x84\xD0\xBE\xD1\x80\xD0\xBC\xD0\xB0\xD1\x86\xD0\xB8\xD0\xBE\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB9\xD0\x91\xD0\xB0\xD0\xB7\xD1\x8B"), wxT("GetInfoBaseSessions"));  // ПолучитьСеансыИнформационнойБазы
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBE\xD0\xBA\xD1\x80"), wxT("Round"));  // окр
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x86\xD0\xB5\xD0\xBB"), wxT("Int"));  // цел
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBC\xD0\xB0\xD0\xBA\xD1\x81"), wxT("Max"));  // макс
@@ -502,6 +515,8 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		case enValueToInternalString: pvarRetValue = ibValue(paParams[0]->GetString()); return true;
 		case enValueFromInternalString: pvarRetValue = *paParams[0]; return true;
 		case enErrorInfo: pvarRetValue = ibValue(); return true;
+		case enGetOperativeTimestamp: pvarRetValue = CurrentDate(); return true;
+		case enGetInfoBaseSessions: pvarRetValue = ibValue::CreateObject(wxT("Array")); return true;
 		case enDetailErrorDescription:
 		case enBriefErrorDescription:
 			pvarRetValue = ibValue(lSizeArray > 0 ? paParams[0]->GetString() : wxEmptyString);
@@ -599,6 +614,8 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 		case enDetachIdleHandler:
 		case enTerminateSystem:
 		case enWriteLogEvent:
+		case enShowUserNotification:
+		case enExecuteNotifyProcessing:
 			return true;   // interim no-op
 		case enAlert: Alert(paParams[0]->GetString()); return true;
 		case enSetStatus: SetStatus(paParams[0]->GetString()); return true;
