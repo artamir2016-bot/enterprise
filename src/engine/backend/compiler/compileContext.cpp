@@ -370,6 +370,13 @@ void ibCompileContext::PushFunction(const wxString& strFuncName, const wxString&
 
 	contextFunction->m_strContext = strContextVar; //variable for which the attribute is called
 
+	// A negative declared arity means VARIADIC (AppendFunc(name, -1, ...) — Min / Max /
+	// Format / …). It cannot be represented in m_listParam (which holds a non-negative
+	// count of slots), so record it as a flag; the "too many parameters" arity check
+	// skips a variadic function. Without this a variadic builtin got 0 param slots and
+	// every call with arguments raised ERROR_MANY_PARAMS.
+	contextFunction->m_variadic = (argCount < 0);
+
 	if (argCount > 0) contextFunction->m_listParam.reserve(argCount);
 
 	for (long arg = 0; arg < argCount; arg++) {

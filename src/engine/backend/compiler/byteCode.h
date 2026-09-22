@@ -286,6 +286,10 @@ struct ibByteCode {
 		// shared_ptr to it; until Phase B lands, the field is a no-op
 		// marker (Phase A is compile-only).
 		bool      m_needsHeapFrame = false;
+		// VARIADIC builtin (declared arity -1, e.g. Min/Max) — mirror of the compile
+		// side's ibFunction::m_variadic. NOT serialised into AOT: arity is checked only
+		// at COMPILE, and an AOT hit skips compilation, so a restored entry never needs it.
+		bool      m_variadic       = false;
 
 		// Convenience predicates — preferred over inline `m_kind == X`
 		// at callsites. Symmetric with ibByteCodeVarInfo's helpers.
@@ -361,6 +365,7 @@ struct ibByteCode {
 			  m_returnClsid(src.m_clsid),
 			  m_kind(src.m_kind),
 			  m_needsHeapFrame(src.m_needsHeapFrame),
+			  m_variadic(src.m_variadic),
 			  m_strRealName(src.m_strRealName),
 			  m_strContext(src.m_strContext)
 		{

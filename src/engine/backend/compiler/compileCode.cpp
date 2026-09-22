@@ -1270,7 +1270,7 @@ bool ibCompileCode::PushCallFunction(const std::shared_ptr<ibCallFunction>& call
 	unsigned int numRealCount = callFunction->m_listParam.size();
 	unsigned int numDefCount = foundedFunc->m_listParam.size();
 
-	if (numRealCount > numDefCount) {
+	if (!foundedFunc->m_variadic && numRealCount > numDefCount) {
 		m_numCurrentCompile = callFunction->m_numError;
 		SetError(ERROR_MANY_PARAMS);// too many parameters
 		return false;
@@ -4073,7 +4073,7 @@ ibParamUnit ibCompileCode::GetCurrentIdentifier(ibCompileContext* context, int& 
 				SetError(ERROR_USE_PROCEDURE_AS_FUNCTION, foundedFunc->m_strRealName);
 				return ibParamUnit();
 			}
-			if (listParam.size() > foundedFunc->m_listParam.size()) {
+			if (!foundedFunc->m_variadic && listParam.size() > foundedFunc->m_listParam.size()) {
 				SetError(ERROR_MANY_PARAMS); // too many parameters
 				return ibParamUnit();
 			}

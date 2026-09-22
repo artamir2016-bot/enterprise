@@ -1142,11 +1142,13 @@ start_label:
 				// and free at run time.
 
 				// too many parameters — per-class methods have a meaningful
-				// compile-time GetNParams.
+				// compile-time GetNParams. A NEGATIVE declared count means VARIADIC
+				// (AppendFunc(name, -1, ...) — Min / Max / Format / …): it accepts any
+				// number of arguments, so the too-many check is skipped. Previously
+				// GetNParams()==-1 tripped `-1 < callerCount` and rejected every call
+				// with args (frame sizing above already treats -1 as "cover the caller").
 				{
-					if (paramCount < cRunContext.m_lParamCount)
-						Raise(ERROR_MANY_PARAMS, funcName, funcName);
-					else if (paramCount == wxNOT_FOUND && cRunContext.m_lParamCount == 0)
+					if (paramCount >= 0 && paramCount < cRunContext.m_lParamCount)
 						Raise(ERROR_MANY_PARAMS, funcName, funcName);
 				}
 

@@ -261,6 +261,30 @@ TEST(RuntimeTest, ArithmeticAllOps) {
 	EXPECT_NEAR(v.GetDouble(), 2.5, 1e-9);
 }
 
+TEST_F(BuiltInRuntime, VariadicBuiltinTakesMoreArgumentsThanZero) {
+	// Min / Max are declared VARIADIC (AppendFunc(name, -1, ...)). The -1 declared
+	// arity was seen as 0 params, so `Max(3, 7)` raised "Too many parameters" at
+	// compile (and the runtime check `-1 < callerCount` would too). Both must now
+	// accept the args and return the right extremum. Guards the variadic fix.
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ibValueSystemFunction valueSystem;
+	cc.AddContextVariable(wxT("System"), &valueSystem, true);
+
+	ASSERT_TRUE(TryCompile(cc,
+		wxT("var mx public; var mn public;\n")
+		wxT("mx = Max(3, 7);\n")
+		wxT("mn = Min(3, 7);\n")))
+		<< "a variadic builtin called with arguments must compile";
+
+	ibProcUnit pu;
+	wxString strError;
+	ASSERT_TRUE(RunBound(cc, pu, strError)) << strError.ToStdString();
+
+	ibValue v;
+	ASSERT_TRUE(pu.GetPropVal(wxT("mx"), v)); EXPECT_EQ(v.GetInteger(), 7);
+	ASSERT_TRUE(pu.GetPropVal(wxT("mn"), v)); EXPECT_EQ(v.GetInteger(), 3);
+}
+
 TEST(RuntimeTest, StringConcatenation) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	ASSERT_TRUE(TryCompile(cc, wxT("var s public; s = \"hello, \" + \"world\";")));

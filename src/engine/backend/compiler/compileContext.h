@@ -213,6 +213,7 @@ struct ibCompileContext {
 			  // dropping this here would emit a plain OPER_CALL and dangle
 			  // the capture (compileCode.cpp:1165 reads m_needsHeapFrame).
 			  m_needsHeapFrame(fn.m_needsHeapFrame),
+			  m_variadic(fn.m_variadic),
 			  m_strRealName(fn.m_strRealName.IsEmpty() ? strFuncName : fn.m_strRealName),
 			  m_strContext(fn.m_strContext),
 			  m_lVarCount(fn.m_lVarCount),
@@ -263,6 +264,13 @@ struct ibCompileContext {
 		// decide heap-promotion for a dynamically-called lambda
 		// whose body has its own inner-lambda capture chain.
 		bool m_needsHeapFrame = false;
+
+		// VARIADIC — the function accepts any number of trailing arguments (a builtin
+		// declared with AppendFunc(name, -1, ...), e.g. Min / Max / Format). The
+		// declared param count (-1) can't live in m_listParam (which sizes to a
+		// non-negative count), so it is carried here. The arity "too many parameters"
+		// check is skipped when set. Mirrored to/from ibByteFunction::m_variadic.
+		bool m_variadic = false;
 
 		wxString m_strRealName; //Function name (canonical)
 		ibClassID m_clsid = 0;   // declared return type; 0 = untyped
