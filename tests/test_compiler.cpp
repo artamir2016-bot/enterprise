@@ -1904,3 +1904,27 @@ TEST(ExpressionDepth, ModestNestingStillCompiles) {
 	EXPECT_TRUE(TryCompile(cc, src))
 		<< "modest parenthesis nesting must still compile";
 }
+
+// ===========================================================================
+// Dynamic New — New(typeExpr) / New("TypeName") (1C's Новый(Тип)/Новый("Имя"))
+// ===========================================================================
+TEST(CompilerTest, DynamicNewFromStringLiteralCompiles) {
+	ibCompileCode::SetCodeStyle(CODE_CES);
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	EXPECT_TRUE(TryCompile(cc, wxT("a = New(\"Array\");")))
+		<< "New(\"TypeName\") — dynamic constructor by type-name string";
+}
+
+TEST(CompilerTest, DynamicNewFromRuntimeTypeExprCompiles) {
+	ibCompileCode::SetCodeStyle(CODE_CES);
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	EXPECT_TRUE(TryCompile(cc, wxT("t = \"Array\"; a = New(t);")))
+		<< "New(expr) — dynamic constructor from a runtime slot (type resolved at execution)";
+}
+
+TEST(CompilerTest, StaticNewStillCompiles) {
+	ibCompileCode::SetCodeStyle(CODE_CES);
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	EXPECT_TRUE(TryCompile(cc, wxT("a = New Array;")))
+		<< "static New TypeName must still compile after the dynamic-form addition";
+}

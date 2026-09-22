@@ -10,6 +10,8 @@
 
 #include "debugger/debugServer.h"
 #include "system/systemManager.h"
+#include "system/value/valueType.h"   // ibValueType — dynamic New(typeValue)
+#include "backend_type.h"             // ibTranslateRuTypeName — ru type-name → class name
 #include "session/session.h"   // ibSession::GetPUState() / GetLambdaRuntime()
 
 #include "appData.h"
@@ -982,6 +984,20 @@ start_label:
 			case OPER_NEW:
 			{
 				ibValue* pRetValue = &variable1;
+				// Dynamic form (index2 < 0): the type is a RUNTIME value in m_param4 —
+				// a Type value (create by its class id) or a type-name string.
+				if (index2 < 0) {
+					const ibValue& typeVal = cvariable4;
+					const ibValueType* pType = CastValue<ibValueType>(typeVal);
+					if (pType) {
+						CopyValue(*pRetValue, ibValue::CreateObject(pType->GetOwnerTypeClass(), nullptr, 0));
+					}
+					else {
+						const wxString name = ibTranslateRuTypeName(typeVal.GetString());
+						CopyValue(*pRetValue, ibValue::CreateObject(name, nullptr, 0));
+					}
+					break;
+				}
 				ibRunContextSmall cRunContext(array2);
 				cRunContext.m_lParamCount = array2;
 				const wxString className = m_pByteCode->m_listConst[index2].GetString();

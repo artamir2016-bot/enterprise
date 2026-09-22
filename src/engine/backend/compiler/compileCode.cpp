@@ -3949,6 +3949,27 @@ bool ibCompileCode::CompileNewObject(ibCompileContext* context)
 {
 	GETKeyWord(KEY_NEW);
 
+	// Dynamic form: New(typeExpr) / Новый(ЗначениеТипа) / Новый("ИмяТипа") — the type
+	// is a RUNTIME value (a Type value or a type-name string), not a static identifier.
+	// (1C's dynamic constructor.) An optional second argument — an array of ctor
+	// parameters — is parsed but not yet threaded through to the constructor.
+	if (IsNextDelimeter('(')) {
+		GETDelimeter('(');
+		ibParamUnit typeParam = GetExpression(context);
+		while (IsNextDelimeter(',')) { GETDelimeter(','); GetExpression(context); } // ctor params: interim ignore
+		GETDelimeter(')');
+
+		ibByteUnit dynCode;
+		AddLineInfo(dynCode);
+		dynCode.m_numOper = OPER_NEW;
+		dynCode.m_param2.m_numIndex = -1;   // sentinel: type comes from m_param4 at runtime
+		dynCode.m_param2.m_numArray = 0;    // no statically-threaded ctor params
+		dynCode.m_param4 = typeParam;       // slot holding the type value
+		dynCode.m_param1 = context->CreateVariable();
+		m_cByteCode.m_listCode.emplace_back(std::move(dynCode));
+		return true;
+	}
+
 	wxString strClassName = GETIdentifier(true);
 	const int numConst = GetConstString(strClassName);
 
@@ -4913,7 +4934,27 @@ ibParamUnit ibCompileCode::GetExpression(ibCompileContext* context, int nPriorit
 
 		m_cByteCode.m_listCode.emplace_back(std::move(code));
 	}
-	else if ((lex.m_lexType == KEYWORD && lex.m_numData == KEY_NEW)) {
+	else if ((lex.m_lexType == KEYWORD && lex.m_numData == KEY_NEW) && IsNextDelimeter('(')) {
+			// Dynamic form: New(typeExpr) / New("TypeName") — type is a RUNTIME value
+			// (a Type value or a type-name string), resolved at execution (OPER_NEW,
+			// m_param2.m_numIndex == -1 sentinel, type in m_param4). Optional 2nd arg
+			// (ctor-params array) is parsed but not yet threaded through.
+			GETDelimeter('(');
+			ibParamUnit typeParamDyn = GetExpression(context);
+			while (IsNextDelimeter(',')) { GETDelimeter(','); GetExpression(context); }
+			GETDelimeter(')');
+
+			ibByteUnit codeDyn;
+			AddLineInfo(codeDyn);
+			codeDyn.m_numOper = OPER_NEW;
+			codeDyn.m_param2.m_numIndex = -1;
+			codeDyn.m_param2.m_numArray = 0;
+			codeDyn.m_param4 = typeParamDyn;
+			variable = context->CreateVariable();
+			codeDyn.m_param1 = variable;
+			m_cByteCode.m_listCode.emplace_back(std::move(codeDyn));
+		}
+		else if ((lex.m_lexType == KEYWORD && lex.m_numData == KEY_NEW)) {
 
 		// OES-RU: accept 1C type names for `Новый` — Массив→Array, ДокументСсылка.X→DocumentRef.X, …
 		const wxString strObjectName = ibTranslateRuTypeName(GETIdentifier(true));
