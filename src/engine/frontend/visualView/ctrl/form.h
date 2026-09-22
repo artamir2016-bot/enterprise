@@ -18,6 +18,7 @@
 
 class BACKEND_API ibValueType;
 class BACKEND_API ibUniqueKey;
+class BACKEND_API ibValueGuid;
 
 class FRONTEND_API ibFormVisualEditView;
 
@@ -550,6 +551,11 @@ private:
 	// module so imported modules that read open parameters resolve the name. A real open-parameters
 	// pipeline can later fill it; for now it exists and is empty.
 	ibValuePtr<ibValueStructure> m_formParameters;
+
+	// Form UUID (1C `УникальныйИдентификатор`) — the form key's guid, bound into the form
+	// module so imported modules that pass it (e.g. GetURL(..., УникальныйИдентификатор))
+	// resolve the name.
+	ibValuePtr<ibValueGuid> m_formUuid;
 
 	ibPropertyCategory* m_categoryFrame = ibPropertyObject::CreatePropertyCategory(wxT("Frame"), _("Frame"));
 	ibPropertyTString* m_propertyTitle = ibPropertyObject::CreateProperty<ibPropertyTString>(m_categoryFrame, wxT("Title"), _("Title"), wxT(""));

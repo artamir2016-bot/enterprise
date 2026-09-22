@@ -7,6 +7,7 @@
 #include "formAttribute.h"
 #include "backend/appData.h"
 #include "backend/system/value/valueJob.h"   // g_valueScheduleCLSID — a schedule requisite builds as static text
+#include "backend/system/value/valueGuid.h"   // ibValueGuid — form УникальныйИдентификатор binding
 #include "backend/metaData.h"
 #include "frontend/docView/docView.h"
 #include "backend/srcDataObject.h"
@@ -274,6 +275,10 @@ bool ibValueForm::InitializeFormModule()
 		// flows through the parent chain (descriptor → root → session).
 		BindContextVariable(thisForm, this);                                          // contextual
 		BindContextVariable(wxT("ЭтаФорма"), this);                                   // 1C alias of ThisForm
+		// Form UUID — 1C `УникальныйИдентификатор`. The form key's guid, exported so imported
+		// form modules that pass it (navigation links, GetURL, …) resolve the bare name.
+		m_formUuid = ibValuePtr<ibValueGuid>(new ibValueGuid(GetFormKey().GetGuid()));
+		BindExportVariable(wxString::FromUTF8("\xD0\xA3\xD0\xBD\xD0\xB8\xD0\xBA\xD0\xB0\xD0\xBB\xD1\x8C\xD0\xBD\xD1\x8B\xD0\xB9\xD0\x98\xD0\xB4\xD0\xB5\xD0\xBD\xD1\x82\xD0\xB8\xD1\x84\xD0\xB8\xD0\xBA\xD0\xB0\xD1\x82\xD0\xBE\xD1\x80"), m_formUuid);  // УникальныйИдентификатор
 		BindExportVariable(wxT("Controls"), m_formCollectionControl);                 // exported
 		BindExportVariable(wxT("Элементы"), m_formCollectionControl);                 // 1C alias of Controls
 		// GLOBAL CONTEXT into the form module's scope: the runtime manager binds it as a transparent
