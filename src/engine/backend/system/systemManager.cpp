@@ -152,7 +152,10 @@ enum
 	enShowQueryBox,
 	enShowMessageBox,
 	enShowValue,
-	enOpenValue
+	enOpenValue,
+	// PredefinedValue("Enum.X.Y" / "Catalog.X.EmptyRef") — interim: returns Undefined
+	// (full path→predefined resolution is a later feature).
+	enPredefinedValue
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -302,6 +305,7 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("ShowMessageBox"), -1, wxT("ShowMessageBox(...)"));
 	helper.AppendFunc(wxT("ShowValue"), -1, wxT("ShowValue(...)"));
 	helper.AppendFunc(wxT("OpenValue"), -1, wxT("OpenValue(...)"));
+	helper.AppendFunc(wxT("PredefinedValue"), 1, wxT("PredefinedValue(path : string)"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -371,6 +375,7 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBA\xD0\xB0\xD0\xB7\xD0\xB0\xD1\x82\xD1\x8C\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD1\x83\xD0\xBF\xD1\x80\xD0\xB5\xD0\xB6\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("ShowMessageBox"));  // ПоказатьПредупреждение
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBA\xD0\xB0\xD0\xB7\xD0\xB0\xD1\x82\xD1\x8C\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("ShowValue"));  // ПоказатьЗначение
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD1\x82\xD0\xBA\xD1\x80\xD1\x8B\xD1\x82\xD1\x8C\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("OpenValue"));  // ОткрытьЗначение
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD0\xBE\xD0\xBF\xD1\x80\xD0\xB5\xD0\xB4\xD0\xB5\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB5\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("PredefinedValue"));  // ПредопределенноеЗначение
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBE\xD0\xBA\xD1\x80"), wxT("Round"));  // окр
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x86\xD0\xB5\xD0\xBB"), wxT("Int"));  // цел
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBC\xD0\xB0\xD0\xBA\xD1\x81"), wxT("Max"));  // макс
@@ -546,6 +551,7 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		case enShowMessageBox:
 		case enShowValue:
 		case enOpenValue:
+		case enPredefinedValue:
 			pvarRetValue = ibValue();
 			return true;
 		case enDetailErrorDescription:
