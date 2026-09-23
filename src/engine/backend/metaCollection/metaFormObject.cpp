@@ -389,10 +389,116 @@ bool ibValueMetaObjectForm::OnAfterCloseMetaObject()
 //***********************************************************************
 
 #include "backend/managedForm/managedFormSerializer.h"
+#include "backend/managedForm/managedFormCompiler.h"
+#include "backend/metaCollection/attribute/metaAttributeObject.h"   // ibValueMetaObjectAttribute
+#include "backend/typeDescription.h"                                 // ibTypeDescription(Memory)
+#include <map>
 
 ibValueMetaObjectManagedForm::ibValueMetaObjectManagedForm(const wxString& name, const wxString& synonym, const wxString& comment)
 	: ibValueMetaObjectForm(name, synonym, comment)
 {
+}
+
+// Compile the declarative element tree into the ordinary FormData blob — the same
+// node shape metadataConfigSpec.cpp::BuildFormData emits, so the runtime LoadForm
+// path (and desktop + web rendering) is reused verbatim. Controls bind through the
+// owner object's main attribute (id 1), exactly as an object form's fields do.
+wxMemoryBuffer ibValueMetaObjectManagedForm::CompileElementsToFormData() const
+{
+	// An object managed form needs an owning business object to bind through.
+	const ibValueMetaObjectGenericData* const owner =
+		dynamic_cast<const ibValueMetaObjectGenericData*>(GetParent());
+	if (owner == nullptr || m_elementRoot.children.empty())
+		return wxMemoryBuffer();
+
+	const ibMetaData* metaData   = GetMetaData();
+	const ibMetaID    ownerMetaID = owner->GetMetaID();
+
+	// Resolve a field/column dataPath to its metaId hop path, against the owner's
+	// live attributes (mirrors metadataConfigSpec::BuildAttrMaps):
+	//   "Attr"          -> { 1, attrId }              (2-hop through the main attribute)
+	//   "Section.Col"   -> { 1, sectionId, colId }    (3-hop into a tabular section)
+	std::map<wxString, ibMetaID> attrs;               // attribute name -> metaId
+	std::map<wxString, std::pair<ibMetaID, std::map<wxString, ibMetaID>>> tabs;   // section -> (id, cols)
+
+	// The predefined Code / Description of a hierarchy reference are real attributes with ids.
+	if (auto* h = dynamic_cast<const ibValueMetaObjectRecordDataHierarchyMutableRef*>(owner)) {
+		if (auto* code = h->GetDataCode())        attrs[wxT("Code")]        = code->GetMetaID();
+		if (auto* desc = h->GetDataDescription()) attrs[wxT("Description")] = desc->GetMetaID();
+	}
+	for (unsigned int i = 0; i < owner->GetChildCount(); ++i) {
+		ibValueMetaObject* child = owner->GetChild(i);
+		if (child == nullptr)
+			continue;
+		if (auto* a = dynamic_cast<ibValueMetaObjectAttribute*>(child)) {
+			attrs[a->GetName()] = a->GetMetaID();
+		}
+		else if (child->GetClassType() == g_metaTableRefCLSID) {
+			std::map<wxString, ibMetaID> cols;
+			for (unsigned int j = 0; j < child->GetChildCount(); ++j)
+				if (auto* col = dynamic_cast<ibValueMetaObjectAttribute*>(child->GetChild(j)))
+					cols[col->GetName()] = col->GetMetaID();
+			tabs[child->GetName()] = { child->GetMetaID(), cols };
+		}
+	}
+
+	ibManagedFormCompiler::Resolver resolve =
+		[&attrs, &tabs](const wxString& dataPath) -> std::vector<ibSourceId> {
+			if (dataPath.IsEmpty())
+				return {};
+			const int dot = dataPath.Find('.');
+			if (dot != wxNOT_FOUND) {
+				const wxString section = dataPath.Left(dot);
+				const wxString column  = dataPath.Mid(dot + 1);
+				auto ti = tabs.find(section);
+				if (ti == tabs.end())
+					return {};
+				if (column.IsEmpty())
+					return { 1, ti->second.first };
+				auto ci = ti->second.second.find(column);
+				if (ci == ti->second.second.end())
+					return { 1, ti->second.first };
+				return { 1, ti->second.first, ci->second };
+			}
+			auto it = attrs.find(dataPath);
+			if (it == attrs.end())
+				return {};
+			return { 1, it->second };
+		};
+
+	// The form root node (id 1) + its Attributes section carrying the main
+	// attribute (id 1, typed to the owner object so field hops resolve).
+	auto root = std::make_shared<ibDataNode>();
+	root->SetValue(wxT("ControlId"), (s32)1);
+	root->SetValue(wxT("Name"), GetName());
+	root->SetValue(wxT("Expanded"), true);
+
+	ibDataNode& attrsNode = root->Child(wxT("Attributes"));
+	ibDataNode& mainAttr  = attrsNode.AddChild(system_to_clsid("FormAttributeValue"), 1);
+	mainAttr.SetValue(wxT("AttributeId"), (s32)1);
+	mainAttr.SetValue(wxT("Main"), true);
+	mainAttr.SetProp<wxString>(wxT("Name"), wxT("Object"));
+	ibTypeDescription td;
+	td.SetDefaultMetaType(object_to_clsid(ownerMetaID));
+	ibDataValue typeVal;
+	ibTypeDescriptionMemory::WriteNode(typeVal, td, metaData);
+	mainAttr.SetProperty(wxT("Type"), typeVal);
+
+	// Emit the control tree (children start at id 2 inside the compiler).
+	ibManagedFormCompiler(resolve).Compile(*root, m_elementRoot);
+
+	return ibValueMetaObjectFormBase::FormNodeToBlob(ibDataValue::Child(root));
+}
+
+bool ibValueMetaObjectManagedForm::OnAfterRunMetaObject(int flags)
+{
+	// Compile the elements into FormData BEFORE the base registers its deferred
+	// form builder (which reads GetFormData on first access). The whole config
+	// has run by now, so the owner's attribute ids are resolvable.
+	const wxMemoryBuffer blob = CompileElementsToFormData();
+	if (!blob.IsEmpty())
+		SetFormData(blob);
+	return ibValueMetaObjectForm::OnAfterRunMetaObject(flags);
 }
 
 bool ibValueMetaObjectManagedForm::ReadData(const ibDataNode& node)

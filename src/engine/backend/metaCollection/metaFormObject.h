@@ -257,6 +257,16 @@ public:
 	const ibManagedElement&                GetElementRoot()  const { return m_elementRoot; }
 	const std::vector<ibManagedAttribute>& GetElementAttrs() const { return m_elementAttrs; }
 
+	// Runtime open: compile the element tree into the FormData blob (using the
+	// owner's now-resolvable attribute ids) BEFORE the base registers its deferred
+	// form builder, so the form materialises from the elements. Empty tree ->
+	// FormData stays empty -> base auto-layout (never broken).
+	virtual bool OnAfterRunMetaObject(int flags) override;
+
+	// Compile m_elementRoot into a control-tree FormData blob bound through the
+	// owner object's main attribute. Empty when there is no owner / no elements.
+	wxMemoryBuffer CompileElementsToFormData() const;
+
 protected:
 	virtual bool ReadData(const ibDataNode& node) override;
 	virtual bool WriteData(ibDataNode& node) const override;
