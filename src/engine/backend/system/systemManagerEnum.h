@@ -131,4 +131,55 @@ class ibValueEnumEventLogLevel : public ibValueEnumeration<ibEventLogLevel> {
 	}
 };
 
+class ibValueEnumCommandBarButtonsAlignment : public ibValueEnumeration<ibCommandBarButtonsAlignment> {
+	public:
+	ibValueEnumCommandBarButtonsAlignment() : ibValueEnumeration() {}
+
+	virtual void CreateEnumeration() {
+		AddEnumeration(ibCommandBarButtonsAlignment::ibCommandBarButtonsAlignment_Auto, wxT("Auto"), _("Auto"));
+		AddEnumeration(ibCommandBarButtonsAlignment::ibCommandBarButtonsAlignment_Left, wxT("Left"), _("Left"));
+		AddEnumeration(ibCommandBarButtonsAlignment::ibCommandBarButtonsAlignment_Right, wxT("Right"), _("Right"));
+		// OES-RU: 1C ВыравниваниеКнопокКоманднойПанели member names.
+		AddEnumAlias(ibCommandBarButtonsAlignment::ibCommandBarButtonsAlignment_Auto,  wxString::FromUTF8("\xD0\x90\xD0\xB2\xD1\x82\xD0\xBE"));         // Авто
+		AddEnumAlias(ibCommandBarButtonsAlignment::ibCommandBarButtonsAlignment_Left,  wxString::FromUTF8("\xD0\x9B\xD0\xB5\xD0\xB2\xD0\xBE"));         // Лево
+		AddEnumAlias(ibCommandBarButtonsAlignment::ibCommandBarButtonsAlignment_Right, wxString::FromUTF8("\xD0\x9F\xD1\x80\xD0\xB0\xD0\xB2\xD0\xBE")); // Право
+	}
+};
+
+class ibValueEnumCommandBarButtonType : public ibValueEnumeration<ibCommandBarButtonType> {
+	public:
+	ibValueEnumCommandBarButtonType() : ibValueEnumeration() {}
+
+	virtual void CreateEnumeration() {
+		AddEnumeration(ibCommandBarButtonType::ibCommandBarButtonType_Action, wxT("Action"), _("Action"));
+		AddEnumeration(ibCommandBarButtonType::ibCommandBarButtonType_Separator, wxT("Separator"), _("Separator"));
+		AddEnumeration(ibCommandBarButtonType::ibCommandBarButtonType_Submenu, wxT("Submenu"), _("Submenu"));
+		AddEnumeration(ibCommandBarButtonType::ibCommandBarButtonType_CheckBox, wxT("CheckBox"), _("Check box"));
+		AddEnumeration(ibCommandBarButtonType::ibCommandBarButtonType_Break, wxT("Break"), _("Break"));
+		// OES-RU: 1C ТипКнопкиКоманднойПанели member names.
+		AddEnumAlias(ibCommandBarButtonType::ibCommandBarButtonType_Action,    wxString::FromUTF8("\xD0\x94\xD0\xB5\xD0\xB9\xD1\x81\xD1\x82\xD0\xB2\xD0\xB8\xD0\xB5"));         // Действие
+		AddEnumAlias(ibCommandBarButtonType::ibCommandBarButtonType_Separator, wxString::FromUTF8("\xD0\xA0\xD0\xB0\xD0\xB7\xD0\xB4\xD0\xB5\xD0\xBB\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C")); // Разделитель
+		AddEnumAlias(ibCommandBarButtonType::ibCommandBarButtonType_Submenu,   wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xB4\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x8E"));                 // Подменю
+		AddEnumAlias(ibCommandBarButtonType::ibCommandBarButtonType_CheckBox,  wxString::FromUTF8("\xD0\xA4\xD0\xBB\xD0\xB0\xD0\xB6\xD0\xBE\xD0\xBA"));                         // Флажок
+		AddEnumAlias(ibCommandBarButtonType::ibCommandBarButtonType_Break,     wxString::FromUTF8("\xD0\xA0\xD0\xB0\xD0\xB7\xD1\x80\xD1\x8B\xD0\xB2"));                         // Разрыв
+	}
+};
+
+class ibValueEnumCommandBarButtonRepresentation : public ibValueEnumeration<ibCommandBarButtonRepresentation> {
+	public:
+	ibValueEnumCommandBarButtonRepresentation() : ibValueEnumeration() {}
+
+	virtual void CreateEnumeration() {
+		AddEnumeration(ibCommandBarButtonRepresentation::ibCommandBarButtonRepresentation_Auto, wxT("Auto"), _("Auto"));
+		AddEnumeration(ibCommandBarButtonRepresentation::ibCommandBarButtonRepresentation_Picture, wxT("Picture"), _("Picture"));
+		AddEnumeration(ibCommandBarButtonRepresentation::ibCommandBarButtonRepresentation_Text, wxT("Text"), _("Text"));
+		AddEnumeration(ibCommandBarButtonRepresentation::ibCommandBarButtonRepresentation_PictureAndText, wxT("PictureAndText"), _("Picture and text"));
+		// OES-RU: 1C ОтображениеКнопкиКоманднойПанели member names.
+		AddEnumAlias(ibCommandBarButtonRepresentation::ibCommandBarButtonRepresentation_Auto,           wxString::FromUTF8("\xD0\x90\xD0\xB2\xD1\x82\xD0\xBE"));                                 // Авто
+		AddEnumAlias(ibCommandBarButtonRepresentation::ibCommandBarButtonRepresentation_Picture,        wxString::FromUTF8("\xD0\x9A\xD0\xB0\xD1\x80\xD1\x82\xD0\xB8\xD0\xBD\xD0\xBA\xD0\xB0")); // Картинка
+		AddEnumAlias(ibCommandBarButtonRepresentation::ibCommandBarButtonRepresentation_Text,           wxString::FromUTF8("\xD0\x9D\xD0\xB0\xD0\xB4\xD0\xBF\xD0\xB8\xD1\x81\xD1\x8C"));         // Надпись
+		AddEnumAlias(ibCommandBarButtonRepresentation::ibCommandBarButtonRepresentation_PictureAndText, wxString::FromUTF8("\xD0\x9A\xD0\xB0\xD1\x80\xD1\x82\xD0\xB8\xD0\xBD\xD0\xBA\xD0\xB0\xD0\x98\xD0\x9D\xD0\xB0\xD0\xB4\xD0\xBF\xD0\xB8\xD1\x81\xD1\x8C")); // КартинкаИНадпись
+	}
+};
+
 #endif

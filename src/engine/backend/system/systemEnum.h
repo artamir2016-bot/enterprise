@@ -53,4 +53,31 @@ enum ibEventLogLevel
 	ibEventLogLevel_Note
 };
 
+// ВыравниваниеКнопокКоманднойПанели — how a command bar aligns its buttons.
+enum ibCommandBarButtonsAlignment
+{
+	ibCommandBarButtonsAlignment_Auto = 1,
+	ibCommandBarButtonsAlignment_Left,
+	ibCommandBarButtonsAlignment_Right
+};
+
+// ТипКнопкиКоманднойПанели — the kind of a command-bar button.
+enum ibCommandBarButtonType
+{
+	ibCommandBarButtonType_Action = 1,
+	ibCommandBarButtonType_Separator,
+	ibCommandBarButtonType_Submenu,
+	ibCommandBarButtonType_CheckBox,
+	ibCommandBarButtonType_Break
+};
+
+// ОтображениеКнопкиКоманднойПанели — how a command-bar button is shown.
+enum ibCommandBarButtonRepresentation
+{
+	ibCommandBarButtonRepresentation_Auto = 1,
+	ibCommandBarButtonRepresentation_Picture,
+	ibCommandBarButtonRepresentation_Text,
+	ibCommandBarButtonRepresentation_PictureAndText
+};
+
 #endif
