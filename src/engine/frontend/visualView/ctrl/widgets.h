@@ -344,9 +344,26 @@ class ibValueComboBox : public ibValueWindow {
 	virtual void Update(wxObject* wxobject, ibVisualHost* visualHost) override;
 	virtual void Cleanup(wxObject* obj, ibVisualHost* visualHost) override;
 
-	//load & save object in control 
+	//support icons
+	virtual wxIcon GetIcon() const;
+	static wxIcon GetIconGroup();
+
+	//load & save object in control
 	virtual bool ReadData(const ibDataNode& node);
 	virtual bool WriteData(ibDataNode& node) const;
+
+	// The current text (editable combo — the value shown / typed).
+	wxString GetValueText() const { return m_propertyValue->GetValueAsString(); }
+	// The static choice list, one entry per line (mirrors 1C's ChoiceList / СписокВыбора).
+	std::vector<wxString> GetItems() const;
+
+	// Commit the typed/selected text into the Value property (wxEVT_COMBOBOX/wxEVT_TEXT).
+	void OnSelectionCommitted(wxCommandEvent& event);
+
+	private:
+	ibPropertyCategory* m_categoryComboBox = ibPropertyObject::CreatePropertyCategory(wxT("ComboBox"), _("Combo box"));
+	ibPropertyString* m_propertyItems = ibPropertyObject::CreateProperty<ibPropertyString>(m_categoryComboBox, wxT("Items"), _("Items"), wxT(""));
+	ibPropertyString* m_propertyValue = ibPropertyObject::CreateProperty<ibPropertyString>(m_categoryComboBox, wxT("Value"), _("Value"), wxT(""));
 };
 
 #include <wx/choice.h>
@@ -362,17 +379,32 @@ class ibValueChoice : public ibValueWindow {
 	virtual void Update(wxObject* wxobject, ibVisualHost* visualHost) override;
 	virtual void Cleanup(wxObject* obj, ibVisualHost* visualHost) override;
 
-	//load & save object in control 
+	//support icons
+	virtual wxIcon GetIcon() const;
+	static wxIcon GetIconGroup();
+
+	//load & save object in control
 	virtual bool ReadData(const ibDataNode& node);
 	virtual bool WriteData(ibDataNode& node) const;
+
+	// The currently selected entry (its text).
+	wxString GetValueText() const { return m_propertyValue->GetValueAsString(); }
+	// The choice list, one entry per line (mirrors 1C's ChoiceList / СписокВыбора).
+	std::vector<wxString> GetItems() const;
+
+	// Commit a selection into the Value property (bound wxEVT_CHOICE, web + desktop).
+	void OnSelectionCommitted(wxCommandEvent& event);
+
+	private:
+	ibPropertyCategory* m_categoryChoice = ibPropertyObject::CreatePropertyCategory(wxT("Choice"), _("Choice"));
+	ibPropertyString* m_propertyItems = ibPropertyObject::CreateProperty<ibPropertyString>(m_categoryChoice, wxT("Items"), _("Items"), wxT(""));
+	ibPropertyString* m_propertyValue = ibPropertyObject::CreateProperty<ibPropertyString>(m_categoryChoice, wxT("Value"), _("Value"), wxT(""));
 };
 
 #include <wx/listbox.h>
 
 class ibValueListBox : public ibValueWindow {
 	public:
-
-public:
 
 	ibValueListBox();
 
@@ -382,9 +414,26 @@ public:
 	virtual void Update(wxObject* wxobject, ibVisualHost* visualHost) override;
 	virtual void Cleanup(wxObject* obj, ibVisualHost* visualHost) override;
 
-	//load & save object in control 
+	//support icons
+	virtual wxIcon GetIcon() const;
+	static wxIcon GetIconGroup();
+
+	//load & save object in control
 	virtual bool ReadData(const ibDataNode& node);
 	virtual bool WriteData(ibDataNode& node) const;
+
+	// The currently selected entry (its text).
+	wxString GetValueText() const { return m_propertyValue->GetValueAsString(); }
+	// The list entries, one per line.
+	std::vector<wxString> GetItems() const;
+
+	// Commit a selection into the Value property (bound wxEVT_LISTBOX).
+	void OnSelectionCommitted(wxCommandEvent& event);
+
+	private:
+	ibPropertyCategory* m_categoryListBox = ibPropertyObject::CreatePropertyCategory(wxT("ListBox"), _("List box"));
+	ibPropertyString* m_propertyItems = ibPropertyObject::CreateProperty<ibPropertyString>(m_categoryListBox, wxT("Items"), _("Items"), wxT(""));
+	ibPropertyString* m_propertyValue = ibPropertyObject::CreateProperty<ibPropertyString>(m_categoryListBox, wxT("Value"), _("Value"), wxT(""));
 };
 
 #include <wx/checkbox.h>

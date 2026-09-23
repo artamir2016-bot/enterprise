@@ -181,6 +181,17 @@
     <ClCompile Include="visualView\ctrl\checkboxEvent.cpp" />
     <ClCompile Include="visualView\ctrl\checkboxProperty.cpp" />
     <ClCompile Include="visualView\ctrl\checkbox_res.cpp" />
+    <!-- List-input controls: Choice / ComboBox / ListBox render through
+         ibWebChoice / ibWebComboBox / ibWebListBox (web/webWindow.h); the
+         .cpp files carry an OES_USE_WEB branch, so CT_CHOI / CT_CMBB /
+         CT_LSTB register on the web and the JS renderers draw <select> /
+         editable combo / list. -->
+    <ClCompile Include="visualView\ctrl\choice.cpp" />
+    <ClCompile Include="visualView\ctrl\choice_res.cpp" />
+    <ClCompile Include="visualView\ctrl\combobox.cpp" />
+    <ClCompile Include="visualView\ctrl\combobox_res.cpp" />
+    <ClCompile Include="visualView\ctrl\listbox.cpp" />
+    <ClCompile Include="visualView\ctrl\listbox_res.cpp" />
     <!-- Toolbar is ported, not stubbed: ibWebToolbar / ibWebToolBarItem
          / ibWebToolBarSeparator (web/webWindow.h) are real widgets, and
          the toolbar plus every companion file below is in this project,

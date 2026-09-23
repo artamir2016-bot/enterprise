@@ -1889,6 +1889,90 @@ class CheckBox extends BaseControl{
 }
 
 
+// Commit a picked / typed value to the server. Reuses /change/<id>
+// (wfrontendFireTextChange → Dispatch(id,"text",value) → the list control's
+// HandleRequest("text") → FireSelection), so no new endpoint is needed.
+async function commitListValue(id,value){
+  const body=new URLSearchParams({value:value});
+  const r=await netFetch(API+'/change/'+id,{
+    method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:body.toString()
+  });
+  if(r.ok){
+    const tree=await r.json();
+    if(tree&&!tree.error){ main.innerHTML=''; main.appendChild(render(tree)); }
+    else OES.handleBackendError(tree);
+  }
+}
+
+// Choice — a pick-only drop-down (<select>). node.items is a string array,
+// node.value the current selection.
+class Choice extends BaseControl{
+  render(node){
+    const wrap=document.createElement('label');wrap.className='ctrl choice';
+    if(node.label){ const s=document.createElement('span');s.textContent=node.label+' ';wrap.appendChild(s); }
+    const sel=document.createElement('select');
+    const items=node.items||[];
+    // A placeholder empty option keeps an unset value from silently
+    // adopting the first item.
+    if(node.value===undefined||node.value===''||!items.includes(node.value)){
+      const o=document.createElement('option');o.value='';o.textContent='';
+      o.selected=true;sel.appendChild(o);
+    }
+    for(const it of items){
+      const o=document.createElement('option');o.value=it;o.textContent=it;
+      if(it===node.value) o.selected=true;
+      sel.appendChild(o);
+    }
+    if(node.enabled===false) sel.disabled=true;
+    if(node.id) sel.addEventListener('change',()=>commitListValue(node.id,sel.value));
+    wrap.appendChild(sel);
+    return wrap;
+  }
+}
+
+// ComboBox — an editable drop-down: a text input backed by a <datalist> so
+// the user can pick an item OR type a free value.
+class ComboBox extends BaseControl{
+  render(node){
+    const wrap=document.createElement('label');wrap.className='ctrl combobox';
+    if(node.label){ const s=document.createElement('span');s.textContent=node.label+' ';wrap.appendChild(s); }
+    const inp=document.createElement('input');inp.type='text';
+    inp.value=node.value||'';
+    const listId='dl_'+(node.id||Math.floor(Math.random()*1e9));
+    const dl=document.createElement('datalist');dl.id=listId;
+    for(const it of (node.items||[])){
+      const o=document.createElement('option');o.value=it;dl.appendChild(o);
+    }
+    inp.setAttribute('list',listId);
+    if(node.enabled===false) inp.disabled=true;
+    if(node.id) inp.addEventListener('change',()=>commitListValue(node.id,inp.value));
+    wrap.appendChild(inp);wrap.appendChild(dl);
+    return wrap;
+  }
+}
+
+// ListBox — an always-open list (<select size=N>). Single selection.
+class ListBox extends BaseControl{
+  render(node){
+    const wrap=document.createElement('label');wrap.className='ctrl listbox';
+    if(node.label){ const s=document.createElement('span');s.textContent=node.label;wrap.appendChild(s); }
+    const items=node.items||[];
+    const sel=document.createElement('select');
+    sel.size=Math.max(2,Math.min(10,items.length||2));
+    for(const it of items){
+      const o=document.createElement('option');o.value=it;o.textContent=it;
+      if(it===node.value) o.selected=true;
+      sel.appendChild(o);
+    }
+    if(node.enabled===false) sel.disabled=true;
+    if(node.id) sel.addEventListener('change',()=>commitListValue(node.id,sel.value));
+    wrap.appendChild(sel);
+    return wrap;
+  }
+}
+
 const renderers={
   'visualHost':    new HostControl(),
   'mdiChild':      new HostControl(),
@@ -1900,6 +1984,9 @@ const renderers={
   'button':        new Button(),
   'textctrl':      new TextCtrl(),
   'checkbox':      new CheckBox(),
+  'choice':        new Choice(),
+  'combobox':      new ComboBox(),
+  'listbox':       new ListBox(),
   'toolbar':       new Toolbar(),
   'tool':          new Tool(),
   'toolseparator': new ToolSeparator(),

@@ -506,4 +506,86 @@ private:
 	bool     m_enableClearButton  = true;
 };
 
+// -----------------------------------------------------------------------------
+// List-input controls: Choice (drop-down, pick-only), ComboBox (drop-down that
+// also accepts typed text) and ListBox (always-open list). All three carry a
+// flat list of string items + the current value, and commit a selection by
+// firing the matching desktop wx event so the shared ibValue<Control> Bind
+// handler (OnSelectionCommitted) runs unchanged on both builds. Items are the
+// static choice list today (1C's ChoiceList / СписокВыбора); source-bound
+// enum / reference lists are a later increment.
+// -----------------------------------------------------------------------------
+
+// Shared plumbing for the three list controls — items[] + value + a
+// selection commit that posts a concrete wx event type. Subclasses only
+// pick the type tag and the wx event to fire.
+class ibWebListInput : public ibWebWindow {
+public:
+	explicit ibWebListInput(int id = 0) : ibWebWindow(id) {}
+
+	void SetItems(const std::vector<wxString>& items) { m_items = items; }
+	void SetValue(const wxString& v) { m_value = v; }
+	const wxString& GetValue() const { return m_value; }
+
+	// The wx event a selection fires (wxEVT_CHOICE / wxEVT_COMBOBOX /
+	// wxEVT_LISTBOX) — the desktop control emits it natively; web
+	// synthesises the same event so OnSelectionCommitted reads GetString()
+	// identically on both sides.
+	bool FireSelection(const wxString& v) {
+		m_value = v;
+		wxCommandEvent ev(SelectionEventType());
+		ev.SetString(v);
+		return FireEvent(ev);
+	}
+
+	virtual bool HandleRequest(const wxString& kind,
+		const wxString& value) override
+	{
+		if (kind == wxT("select") || kind == wxT("text"))
+			return FireSelection(value);
+		return false;
+	}
+
+	virtual nlohmann::json ToJSON() const override {
+		auto node = ibWebWindow::ToJSON();
+		auto arr = nlohmann::json::array();
+		for (const wxString& it : m_items)
+			arr.push_back(std::string(it.utf8_str()));
+		node["items"] = arr;
+		node["value"] = std::string(m_value.utf8_str());
+		return node;
+	}
+
+protected:
+	virtual wxEventType SelectionEventType() const = 0;
+
+private:
+	std::vector<wxString> m_items;
+	wxString              m_value;
+};
+
+class ibWebChoice : public ibWebListInput {
+public:
+	explicit ibWebChoice(int id = 0) : ibWebListInput(id) {}
+	virtual wxString GetControlType() const override { return wxT("choice"); }
+protected:
+	virtual wxEventType SelectionEventType() const override { return wxEVT_CHOICE; }
+};
+
+class ibWebComboBox : public ibWebListInput {
+public:
+	explicit ibWebComboBox(int id = 0) : ibWebListInput(id) {}
+	virtual wxString GetControlType() const override { return wxT("combobox"); }
+protected:
+	virtual wxEventType SelectionEventType() const override { return wxEVT_COMBOBOX; }
+};
+
+class ibWebListBox : public ibWebListInput {
+public:
+	explicit ibWebListBox(int id = 0) : ibWebListInput(id) {}
+	virtual wxString GetControlType() const override { return wxT("listbox"); }
+protected:
+	virtual wxEventType SelectionEventType() const override { return wxEVT_LISTBOX; }
+};
+
 #endif
