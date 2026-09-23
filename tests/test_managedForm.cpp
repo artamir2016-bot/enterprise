@@ -9,6 +9,7 @@
 #include "backend/serialize/dataBuilder.h"
 #include "backend/managedForm/managedElement.h"
 #include "backend/managedForm/managedFormCompiler.h"
+#include "backend/managedForm/managedFormSerializer.h"
 
 namespace {
 
@@ -186,4 +187,102 @@ TEST(ManagedForm, ButtonEmitsButtonControl) {
 	ASSERT_NE(b, nullptr);
 	EXPECT_EQ(b->GetClsid(), CT_BUTN);
 	EXPECT_EQ(b->GetProp<wxString>(wxT("Title")), wxT("OK"));
+}
+
+// --- serialization round-trip (1b-1) ----------------------------------------
+
+namespace {
+
+// A representative tree: a titled horizontal head group with two fields of
+// different view kinds, a pages group, and a table with columns.
+ibManagedElement SampleTree() {
+	ibManagedElement root(ibManagedNodeKind::Group);
+
+	ibManagedElement head(ibManagedNodeKind::Group, wxT("head"));
+	head.representation = ibGroupRepresentation::TitledBox;
+	head.title = wxT("Head");
+	head.layout = ibGroupLayout::Horizontal;
+	ibManagedElement code(ibManagedNodeKind::Field, wxT("code"));
+	code.dataPath = wxT("Code"); code.viewKind = ibFieldViewKind::InputField; code.title = wxT("Code");
+	ibManagedElement vat(ibManagedNodeKind::Field, wxT("vat"));
+	vat.dataPath = wxT("Vat"); vat.viewKind = ibFieldViewKind::ChoiceField;
+	head.children = { code, vat };
+
+	ibManagedElement tab(ibManagedNodeKind::Table, wxT("lines"));
+	tab.dataPath = wxT("Goods");
+	ibManagedElement c1(ibManagedNodeKind::Column, wxT("item")); c1.dataPath = wxT("Goods.Item");
+	ibManagedElement c2(ibManagedNodeKind::Column, wxT("qty"));  c2.dataPath = wxT("Goods.Qty");
+	tab.children = { c1, c2 };
+
+	root.children = { head, tab };
+	return root;
+}
+
+void ExpectSameElement(const ibManagedElement& a, const ibManagedElement& b) {
+	EXPECT_EQ(static_cast<int>(a.kind), static_cast<int>(b.kind));
+	EXPECT_EQ(a.name, b.name);
+	EXPECT_EQ(a.title, b.title);
+	EXPECT_EQ(a.dataPath, b.dataPath);
+	EXPECT_EQ(static_cast<int>(a.viewKind), static_cast<int>(b.viewKind));
+	EXPECT_EQ(static_cast<int>(a.layout), static_cast<int>(b.layout));
+	EXPECT_EQ(static_cast<int>(a.representation), static_cast<int>(b.representation));
+	EXPECT_EQ(a.commandId, b.commandId);
+	ASSERT_EQ(a.children.size(), b.children.size());
+	for (std::size_t i = 0; i < a.children.size(); ++i)
+		ExpectSameElement(a.children[i], b.children[i]);
+}
+
+} // namespace
+
+// Write -> Read reproduces the element tree exactly (every field, full nesting).
+TEST(ManagedForm, SerializerRoundTripTree) {
+	const ibManagedElement original = SampleTree();
+	std::vector<ibManagedAttribute> attrs = {
+		{ wxT("Object"), 1, true },
+		{ wxT("Helper"), 42, false },
+	};
+
+	ibDataNode node;
+	ibManagedFormSerializer::Write(node, original, attrs);
+
+	ibManagedElement restored;
+	std::vector<ibManagedAttribute> restoredAttrs;
+	ibManagedFormSerializer::Read(node, restored, restoredAttrs);
+
+	ExpectSameElement(original, restored);
+	ASSERT_EQ(restoredAttrs.size(), 2u);
+	EXPECT_EQ(restoredAttrs[0].name, wxT("Object"));
+	EXPECT_EQ(restoredAttrs[0].id, 1);
+	EXPECT_TRUE(restoredAttrs[0].isMain);
+	EXPECT_EQ(restoredAttrs[1].name, wxT("Helper"));
+	EXPECT_EQ(restoredAttrs[1].id, 42);
+	EXPECT_FALSE(restoredAttrs[1].isMain);
+}
+
+// A tree that survived serialization compiles to the SAME control-tree shape as
+// the original — the serializer preserves everything the compiler reads.
+TEST(ManagedForm, SerializedTreeCompilesIdentically) {
+	const ibManagedElement original = SampleTree();
+
+	ibDataNode node;
+	ibManagedFormSerializer::Write(node, original, {});
+	ibManagedElement restored;
+	std::vector<ibManagedAttribute> ignore;
+	ibManagedFormSerializer::Read(node, restored, ignore);
+
+	ibDataNode formA, formB;
+	ibManagedFormCompiler(StubResolver()).Compile(formA, original);
+	ibManagedFormCompiler(StubResolver()).Compile(formB, restored);
+
+	ASSERT_EQ(formA.Children().size(), formB.Children().size());
+	// top level: [SizerItem->StaticBox(head), SizerItem->Tablebox(lines)]
+	EXPECT_EQ(ControlUnderCell(formA.Children()[0])->GetClsid(),
+	          ControlUnderCell(formB.Children()[0])->GetClsid());
+	EXPECT_EQ(ControlUnderCell(formA.Children()[1])->GetClsid(),
+	          ControlUnderCell(formB.Children()[1])->GetClsid());
+	// the table's columns survived (2 CT_TBLC each)
+	const ibDataNode* tableA = ControlUnderCell(formA.Children()[1]);
+	const ibDataNode* tableB = ControlUnderCell(formB.Children()[1]);
+	EXPECT_EQ(tableA->Children().size(), tableB->Children().size());
+	EXPECT_EQ(tableB->Children().size(), 2u);
 }
