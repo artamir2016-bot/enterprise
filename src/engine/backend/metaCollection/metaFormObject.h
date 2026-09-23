@@ -3,8 +3,10 @@
 
 #include "metaModuleObject.h"
 #include "backend/uniqueKey.h"
+#include "backend/managedForm/managedElement.h"   // ibManagedElement — the declarative form tree
 
 #include <functional>
+#include <vector>
 
 #define defaultFormType wxNOT_FOUND
 #define formDefaultName wxT("Form")
@@ -229,6 +231,39 @@ private:
 	ibPropertyForm* m_propertyForm = ibPropertyObject::CreateProperty<ibPropertyForm>(m_categoryContext, wxT("FormData"), _("Form"));
 	ibPropertyCategory* m_categoryForm = ibPropertyObject::CreatePropertyCategory(wxT("Form"), _("Form"));
 	ibPropertyList* m_properyFormType = ibPropertyObject::CreateProperty<ibPropertyList>(m_categoryForm, wxT("FormType"), _("Type"), &ibValueMetaObjectForm::FillFormType);
+};
+
+// -----------------------------------------------------------------------
+// ibValueMetaObjectManagedForm — a 1C-style «управляемая форма»
+// -----------------------------------------------------------------------
+// A declarative object form: instead of a hand-drawn control tree it owns an
+// ELEMENT TREE (Group / Field / Table / … with ViewKind, no geometry) that the
+// platform COMPILES into the ordinary control-tree FormData the runtime form
+// already loads. So it derives the object form and reuses its entire open /
+// build / deferred-cache machinery — the only additions are the element tree
+// and its serialization. The compile-elements-to-FormData step (which needs the
+// owner's live attribute ids) is wired at runtime-open (see docs/managed-form.md
+// §7, increment 1b-3); until then a managed form falls back to the base
+// auto-layout, so it is never broken.
+class BACKEND_API ibValueMetaObjectManagedForm : public ibValueMetaObjectForm {
+public:
+	ibValueMetaObjectManagedForm(const wxString& strName = wxEmptyString,
+		const wxString& synonym = wxEmptyString, const wxString& comment = wxEmptyString);
+
+	// The declarative source model. Setting it does NOT recompile FormData here
+	// (that needs the owner's live ids) — the runtime-open step does.
+	void SetElementTree(const ibManagedElement& root,
+		const std::vector<ibManagedAttribute>& attrs) { m_elementRoot = root; m_elementAttrs = attrs; }
+	const ibManagedElement&                GetElementRoot()  const { return m_elementRoot; }
+	const std::vector<ibManagedAttribute>& GetElementAttrs() const { return m_elementAttrs; }
+
+protected:
+	virtual bool ReadData(const ibDataNode& node) override;
+	virtual bool WriteData(ibDataNode& node) const override;
+
+private:
+	ibManagedElement                m_elementRoot;    // the declarative tree (root Group)
+	std::vector<ibManagedAttribute> m_elementAttrs;   // the form's own attributes
 };
 
 // -----------------------------------------------------------------------

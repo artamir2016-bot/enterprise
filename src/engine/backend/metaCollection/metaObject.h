@@ -49,6 +49,7 @@ constexpr ibClassID g_metaLanguageCLSID = metadata_to_clsid("MD_LANG");
 //ADVANCED OBJECTS
 constexpr ibClassID g_metaAttributeCLSID = metadata_to_clsid("MD_ATTR");
 constexpr ibClassID g_metaFormCLSID = metadata_to_clsid("MD_FRM");
+constexpr ibClassID g_metaManagedFormCLSID = metadata_to_clsid("MD_MFRM");   // 1C-style managed form (declarative element tree)
 constexpr ibClassID g_metaTemplateCLSID = metadata_to_clsid("MD_TMPL");
 constexpr ibClassID g_metaCommandCLSID       = metadata_to_clsid("MD_OCMD");   // OBJECT command (under a business object, like Form)
 constexpr ibClassID g_metaModuleCLSID = metadata_to_clsid("MD_MOD");

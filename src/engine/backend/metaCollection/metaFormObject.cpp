@@ -385,6 +385,37 @@ bool ibValueMetaObjectForm::OnAfterCloseMetaObject()
 }
 
 //***********************************************************************
+//*                            ManagedForm                              *
+//***********************************************************************
+
+#include "backend/managedForm/managedFormSerializer.h"
+
+ibValueMetaObjectManagedForm::ibValueMetaObjectManagedForm(const wxString& name, const wxString& synonym, const wxString& comment)
+	: ibValueMetaObjectForm(name, synonym, comment)
+{
+}
+
+bool ibValueMetaObjectManagedForm::ReadData(const ibDataNode& node)
+{
+	// The object-form base reads the form type + the (cached) FormData blob.
+	if (!ibValueMetaObjectForm::ReadData(node))
+		return false;
+	// Then our own declarative source: the element tree lives in the "Elements"
+	// child sub-node (absent on an old blob -> an empty tree, never an error).
+	if (const ibDataNode* elems = node.FindChild(wxT("Elements")))
+		ibManagedFormSerializer::Read(*elems, m_elementRoot, m_elementAttrs);
+	return true;
+}
+
+bool ibValueMetaObjectManagedForm::WriteData(ibDataNode& node) const
+{
+	if (!ibValueMetaObjectForm::WriteData(node))
+		return false;
+	ibManagedFormSerializer::Write(node.Child(wxT("Elements")), m_elementRoot, m_elementAttrs);
+	return true;
+}
+
+//***********************************************************************
 //*                           CommonFormObject metaData                 *
 //***********************************************************************
 
@@ -478,4 +509,5 @@ bool ibValueMetaObjectCommonForm::OnAfterCloseMetaObject()
 //***********************************************************************
 
 METADATA_TYPE_REGISTER(ibValueMetaObjectForm, "Form", g_metaFormCLSID);
+METADATA_TYPE_REGISTER(ibValueMetaObjectManagedForm, "ManagedForm", g_metaManagedFormCLSID);
 METADATA_TYPE_REGISTER(ibValueMetaObjectCommonForm, "CommonForm", g_metaCommonFormCLSID);
