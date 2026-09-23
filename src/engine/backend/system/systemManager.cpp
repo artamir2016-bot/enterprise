@@ -232,7 +232,8 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("FileCopy"), 2, wxT("FileCopy(fileSrcName : string, fileDstName : string)"));
 	helper.AppendFunc(wxT("FileDelete"), 1, wxT("FileDelete(fileName : string)"));
 	helper.AppendFunc(wxT("GetTempDir"), wxT("GetTempDir()"));
-	helper.AppendFunc(wxT("GetTempFileName"), wxT("GetTempFileName()"));
+	// Optional extension arg (1C ПолучитьИмяВременногоФайла("txt")) — accepted, ignored for now.
+	helper.AppendFunc(wxT("GetTempFileName"), 1, wxT("GetTempFileName([extension : string])"));
 	//--- Window operations: 
 	helper.AppendFunc(wxT("ActiveWindow"), wxT("ActiveWindow()"));
 	//--- Special:
