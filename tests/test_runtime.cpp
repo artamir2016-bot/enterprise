@@ -622,6 +622,24 @@ TEST(RuntimeTest, EscapedQuoteStillLiteralQuote) {
 	EXPECT_EQ(ret.GetString(), wxT("a\"b"));
 }
 
+// ValueStorage wraps a value and returns it via Get()/Получить().
+TEST(RuntimeTest, ValueStorageWrapsAndReturns) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("Function C() Public\n")
+		wxT("  var s; s = New ValueStorage(42);\n")
+		wxT("  Return s.Get();\n")
+		wxT("EndFunction\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+
+	ibProcUnit pu;
+	ASSERT_TRUE(TryExecute(pu, cc.m_cByteCode));
+
+	ibValue ret;
+	pu.CallAsFunc(wxT("C"), ret);
+	EXPECT_EQ(ret.GetInteger(), 42);
+}
+
 TEST(RuntimeTest, ContainerStore_InsertGetOverwriteOrder) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	const wxString src =

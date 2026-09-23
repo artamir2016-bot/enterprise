@@ -60,3 +60,22 @@ void ibValueReportBuilder_BindNames(ibValue::ibMemberTable& /*helper*/, const ib
 void ibValueDataCompression_BindNames(ibValue::ibMemberTable& /*helper*/, const ibValue* /*ctx*/) {}
 VALUE_TYPE_REGISTER(ibValueReportBuilder, "ReportBuilder", g_valueReportBuilderCLSID);
 VALUE_TYPE_REGISTER(ibValueDataCompression, "DataCompression", g_valueDataCompressionCLSID);
+
+// ValueStorage — Get()/Получить() returns the wrapped value.
+void ibValueStorage_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
+{
+	helper.AppendFunc(wxT("Get"), wxT("Get()"));                                     // 0
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Get"));  // Получить
+}
+
+bool ibValueStorage::CallAsFunc(const long lMethodNum, ibValue& pvarRetValue, ibValue** /*paParams*/, const long /*lSizeArray*/)
+{
+	switch (lMethodNum) {
+	case enGet:
+		pvarRetValue = m_value;
+		return true;
+	}
+	return false;
+}
+
+VALUE_TYPE_REGISTER(ibValueStorage, "ValueStorage", g_valueStorageCLSID);

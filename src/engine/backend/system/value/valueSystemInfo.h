@@ -58,4 +58,27 @@ public:
 	virtual bool Init(ibValue** paParams, const long lSizeArray) override { return true; }
 };
 
+// ХранилищеЗначения (ValueStorage) — wraps an arbitrary value so it can be held/passed
+// as an opaque box; Получить()/Get() returns the wrapped value. A real minimal type
+// (holds the value in memory); DB-blob (de)serialization + compression are later work.
+// Construct: Новый ХранилищеЗначения(Значение [, СжатиеДанных]).
+constexpr ibClassID g_valueStorageCLSID = value_to_clsid("VL_VSTG");
+void ibValueStorage_BindNames(ibValue::ibMemberTable& helper, const ibValue* ctx);
+class BACKEND_API ibValueStorage : public ibValueStaticMembers<&ibValueStorage_BindNames> {
+	enum Func { enGet = 0 };
+public:
+	ibValueStorage() : ibValueStaticMembers(ibValueTypes::TYPE_VALUE) {}
+
+	virtual bool Init() override { return true; }
+	virtual bool Init(ibValue** paParams, const long lSizeArray) override {
+		if (lSizeArray > 0 && paParams && paParams[0]) m_value = *paParams[0];
+		return true;
+	}
+
+	virtual bool CallAsFunc(const long lMethodNum, ibValue& pvarRetValue, ibValue** paParams, const long lSizeArray) override;
+
+private:
+	ibValue m_value;
+};
+
 #endif
