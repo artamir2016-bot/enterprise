@@ -622,6 +622,75 @@ TEST(RuntimeTest, EscapedQuoteStillLiteralQuote) {
 	EXPECT_EQ(ret.GetString(), wxT("a\"b"));
 }
 
+// 1C conditional compilation (#If ... Then) — SERVER context: server branch kept,
+// client branch dropped; #ElsIf with Not / Or / parentheses evaluates correctly.
+// (English keywords/symbols so the test module needs no /utf-8; the Russian
+// #Если/Сервер spellings run through the same code path — see EvalPreprocCondition.)
+TEST(RuntimeTest, PreprocIfServerBranchKept) {
+	const short prev = ibCompileCode::GetCodeStyle();
+	ibCompileCode::SetCodeStyle(CODE_VES);
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("Function C() Public\n")
+		wxT("#If Server Then\n")
+		wxT("  Return 1;\n")
+		wxT("#Else\n")
+		wxT("  Return 2;\n")
+		wxT("#EndIf\n")
+		wxT("EndFunction\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+	ibProcUnit pu;
+	ASSERT_TRUE(TryExecute(pu, cc.m_cByteCode));
+	ibValue ret;
+	pu.CallAsFunc(wxT("C"), ret);
+	EXPECT_EQ(ret.GetInteger(), 1);
+	ibCompileCode::SetCodeStyle(prev);
+}
+
+TEST(RuntimeTest, PreprocIfClientBranchDropped) {
+	const short prev = ibCompileCode::GetCodeStyle();
+	ibCompileCode::SetCodeStyle(CODE_VES);
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("Function C() Public\n")
+		wxT("  x = 0;\n")
+		wxT("#If Client Then\n")
+		wxT("  x = 5;\n")
+		wxT("#EndIf\n")
+		wxT("  Return x;\n")
+		wxT("EndFunction\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+	ibProcUnit pu;
+	ASSERT_TRUE(TryExecute(pu, cc.m_cByteCode));
+	ibValue ret;
+	pu.CallAsFunc(wxT("C"), ret);
+	EXPECT_EQ(ret.GetInteger(), 0);
+	ibCompileCode::SetCodeStyle(prev);
+}
+
+TEST(RuntimeTest, PreprocElsIfWithNotOrParens) {
+	const short prev = ibCompileCode::GetCodeStyle();
+	ibCompileCode::SetCodeStyle(CODE_VES);
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("Function C() Public\n")
+		wxT("#If WebClient Then\n")
+		wxT("  Return 1;\n")
+		wxT("#ElsIf Not (ThinClient Or WebClient) Then\n")
+		wxT("  Return 2;\n")
+		wxT("#Else\n")
+		wxT("  Return 3;\n")
+		wxT("#EndIf\n")
+		wxT("EndFunction\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+	ibProcUnit pu;
+	ASSERT_TRUE(TryExecute(pu, cc.m_cByteCode));
+	ibValue ret;
+	pu.CallAsFunc(wxT("C"), ret);
+	EXPECT_EQ(ret.GetInteger(), 2);
+	ibCompileCode::SetCodeStyle(prev);
+}
+
 // ValueStorage wraps a value and returns it via Get()/Получить().
 TEST(RuntimeTest, ValueStorageWrapsAndReturns) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);

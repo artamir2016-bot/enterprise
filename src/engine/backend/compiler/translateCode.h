@@ -384,6 +384,14 @@ public:
 	wxString GetStrToEndLine() const;
 	void PrepareFromCurrent(int nMode, const wxString& strName = wxEmptyString);
 
+	// Conditional-compilation (1C `#Если <cond> Тогда`): evaluate the condition that
+	// follows, CONSUMING it and its terminating `Тогда`. Symbols resolve in SERVER
+	// context (Сервер/НаСервере = true; client/thin/web/mobile/external = false), or via
+	// #Define. Supports НЕ / И / ИЛИ and parentheses.
+	bool EvalPreprocCondition();
+	// Read the next preprocessor directive word, splicing a blank after '#' (`# Если`).
+	bool ReadDirectiveWord(wxString& strWord) const;
+
 	wxString GetModuleName() const { return m_strModuleName; }
 
 	unsigned int GetBufferSize() const { return m_strBuffer.size(); }

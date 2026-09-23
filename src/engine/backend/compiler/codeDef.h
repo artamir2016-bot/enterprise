@@ -247,6 +247,11 @@ enum { // numbers of keywords (in strict sequence as the values ​​themselves
 	KEY_BY,             // group-by / orderby key separator
 	KEY_INTO,           // `group ... into <id>`             — group binding
 	KEY_RESTRICT,       // `restrict <id> in <src> join ... where ...` — access-policy filter
+	// Conditional-compilation with a CONDITION (1C `#Если <expr> Тогда` / `#ИначеЕсли`),
+	// distinct from the name-only `#Ifdef`. Kept at the tail so the enum/s_listKeyWord
+	// index lock-step is preserved.
+	KEY_IF_COND,        // `#If`   / `#Если <cond> Then`
+	KEY_ELSIF_COND,     // `#ElsIf`/ `#ИначеЕсли <cond> Then`
 	LastKeyWord
 };
 

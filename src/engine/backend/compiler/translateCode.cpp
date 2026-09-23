@@ -5,6 +5,8 @@
 
 #include "translateCode.h"
 
+#include <functional>   // std::function — #Если condition evaluator
+
 //////////////////////////////////////////////////////////////////////
 //                           Constants
 //////////////////////////////////////////////////////////////////////
@@ -98,6 +100,8 @@ struct ibKeyWords s_listKeyWord[] =
 	{"By"},
 	{"Into"},
 	{"Restrict"},
+	{"#If"},
+	{"#ElsIf"},
 };
 
 // THIS TABLE AND THE KEY_* ENUM ARE ONE THING IN TWO PLACES, and the translator
@@ -156,6 +160,14 @@ static const ibRuKeyWordAlias s_ruKeyWordAlias[] =
 	{ "\xD0\x9D\xD0\xB5\xD0\xBE\xD0\xBF\xD1\x80\xD0\xB5\xD0\xB4\xD0\xB5\xD0\xBB\xD0\xB5\xD0\xBD\xD0\xBE", KEY_UNDEFINED },                       // Неопределено
 	{ "\xD0\x98\xD1\x81\xD1\x82\xD0\xB8\xD0\xBD\xD0\xB0", KEY_TRUE },                                                                            // Истина
 	{ "\xD0\x9B\xD0\xBE\xD0\xB6\xD1\x8C", KEY_FALSE },                                                                                          // Ложь
+	// OES-RU: 1C conditional-compilation directives (#Если/#ИначеЕсли/#Иначе/#КонецЕсли) and
+	// region markers (#Область/#КонецОбласти). #Если/#ИначеЕсли carry a CONDITION + `Тогда`.
+	{ "#\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8", KEY_IF_COND },                                                                                       // #Если
+	{ "#\xD0\x98\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8", KEY_ELSIF_COND },                                             // #ИначеЕсли
+	{ "#\xD0\x98\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5", KEY_ELSEDEF },                                                                               // #Иначе
+	{ "#\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8", KEY_ENDIFDEF },                                               // #КонецЕсли
+	{ "#\xD0\x9E\xD0\xB1\xD0\xBB\xD0\xB0\xD1\x81\xD1\x82\xD1\x8C", KEY_REGION },                                                                 // #Область
+	{ "#\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\x9E\xD0\xB1\xD0\xBB\xD0\xB0\xD1\x81\xD1\x82\xD0\xB8", KEY_ENDREGION },                       // #КонецОбласти
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -1167,6 +1179,14 @@ bool ibTranslateCode::PrepareLexem()
 			wxString strOrig;
 			if (GetWord(s, strOrig)) {
 
+				// 1C allows blanks after '#' in a directive (`# Если`); GetWord stops at the
+				// blank, yielding a bare "#". Splice the following word so the directive keyword
+				// is recognised. '#' only ever begins a preprocessor directive, so this is safe.
+				if (s == wxT("#") && IsWord()) {
+					wxString strDir;
+					if (GetWord(strDir)) s = wxT("#") + strDir;
+				}
+
 				//processing user definitions (#define)
 				// One chain walk, not the HasDefine-then-GetDefine pair.
 				if (const ibLexemList* pDef = m_defineList->FindDefine(s)) {
@@ -1380,8 +1400,43 @@ bool ibTranslateCode::PrepareLexem()
 				}
 				continue;
 			}
+			else if (m_current_lex.m_numData == KEY_IF_COND) { // 1C `#Если <cond> Тогда` — condition-based
+				// Include the FIRST branch whose condition is true; ignore the rest. Handles the
+				// #Если / #ИначеЕсли* / #Иначе / #КонецЕсли chain. Conditions evaluate in SERVER
+				// context (see EvalPreprocCondition).
+				bool taken = false;
+				bool cond = EvalPreprocCondition();          // consumes the condition + `Тогда`
+				for (;;) {
+					const int nMode = (cond && !taken) ? LEXEM_ADD : LEXEM_IGNORE;
+					if (nMode == LEXEM_ADD) taken = true;
+					PrepareFromCurrent(nMode);               // stops at the next directive
+
+					wxString strWord;
+					if (!ReadDirectiveWord(strWord)) { SetError(ERROR_USE_ENDDEF, m_currentPos); break; }
+					const int kk = IsKeyWord(strWord);
+					if (kk == KEY_ELSIF_COND) { cond = EvalPreprocCondition(); continue; }
+					if (kk == KEY_ELSEDEF) {
+						PrepareFromCurrent(!taken ? LEXEM_ADD : LEXEM_IGNORE);
+						wxString endWord;
+						if (!ReadDirectiveWord(endWord) || IsKeyWord(endWord) != KEY_ENDIFDEF)
+							SetError(ERROR_USE_ENDDEF, m_currentPos);
+						break;
+					}
+					if (kk != KEY_ENDIFDEF) SetError(ERROR_USE_ENDDEF, m_currentPos);
+					break;
+				}
+				continue;
+			}
 			else if (m_current_lex.m_numData == KEY_ENDIFDEF) {//end of conditional compilation
 				m_currentPos = m_current_lex.m_numString;//here we saved the previous value
+#ifdef UTF8_LEXEM_TRANSLATE
+				m_currentUtf8Pos = m_current_lex.m_numUtf8String;
+#endif
+				break;
+			}
+			else if (m_current_lex.m_numData == KEY_ELSIF_COND) {// `#ИначеЕсли` — stop the current branch
+				// The enclosing KEY_IF_COND chain re-reads this directive and evaluates its condition.
+				m_currentPos = m_current_lex.m_numString;
 #ifdef UTF8_LEXEM_TRANSLATE
 				m_currentUtf8Pos = m_current_lex.m_numUtf8String;
 #endif
@@ -1500,6 +1555,96 @@ void ibTranslateCode::PrepareFromCurrent(int nMode, const wxString& strName)
 		m_currentUtf8Pos = translate.m_currentUtf8Pos;
 #endif
 	}
+}
+
+bool ibTranslateCode::ReadDirectiveWord(wxString& strWord) const
+{
+	if (!IsWord()) return false;
+	if (!GetWord(strWord)) return false;
+	// `# Если` — a blank after '#' makes GetWord stop at the bare '#'; splice the word.
+	if (strWord == wxT("#") && IsWord()) {
+		wxString rest;
+		if (GetWord(rest)) strWord = wxT("#") + rest;
+	}
+	return true;
+}
+
+bool ibTranslateCode::EvalPreprocCondition()
+{
+	// SERVER compilation context for the inlined runtime root: server symbols true,
+	// client/thin/web/mobile/external false. Unknown names fall back to #Define lookup.
+	auto symbolValue = [this](const wxString& name) -> bool {
+		struct S { const char* u8; bool v; };
+		static const S kSym[] = {
+			{ "\xD0\xA1\xD0\xB5\xD1\x80\xD0\xB2\xD0\xB5\xD1\x80", true },                                                 // Сервер
+			{ "\xD0\x9D\xD0\xB0\xD0\xA1\xD0\xB5\xD1\x80\xD0\xB2\xD0\xB5\xD1\x80\xD0\xB5", true },                         // НаСервере
+			{ "Server", true }, { "AtServer", true },
+			{ "\xD0\x9A\xD0\xBB\xD0\xB8\xD0\xB5\xD0\xBD\xD1\x82", false },                                                 // Клиент
+			{ "\xD0\x9D\xD0\xB0\xD0\x9A\xD0\xBB\xD0\xB8\xD0\xB5\xD0\xBD\xD1\x82\xD0\xB5", false },                         // НаКлиенте
+			{ "\xD0\xA2\xD0\xBE\xD0\xBD\xD0\xBA\xD0\xB8\xD0\xB9\xD0\x9A\xD0\xBB\xD0\xB8\xD0\xB5\xD0\xBD\xD1\x82", false },                 // ТонкийКлиент
+			{ "\xD0\xA2\xD0\xBE\xD0\xBB\xD1\x81\xD1\x82\xD1\x8B\xD0\xB9\xD0\x9A\xD0\xBB\xD0\xB8\xD0\xB5\xD0\xBD\xD1\x82", false },         // ТолстыйКлиент
+			{ "\xD0\x92\xD0\xB5\xD0\xB1\xD0\x9A\xD0\xBB\xD0\xB8\xD0\xB5\xD0\xBD\xD1\x82", false },                         // ВебКлиент
+			{ "\xD0\x9C\xD0\xBE\xD0\xB1\xD0\xB8\xD0\xBB\xD1\x8C\xD0\xBD\xD1\x8B\xD0\xB9\xD0\x9A\xD0\xBB\xD0\xB8\xD0\xB5\xD0\xBD\xD1\x82", false }, // МобильныйКлиент
+			{ "\xD0\x92\xD0\xBD\xD0\xB5\xD1\x88\xD0\xBD\xD0\xB5\xD0\xB5\xD0\xA1\xD0\xBE\xD0\xB5\xD0\xB4\xD0\xB8\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5", false }, // ВнешнееСоединение
+			{ "Client", false }, { "AtClient", false }, { "ThinClient", false }, { "ThickClient", false },
+			{ "WebClient", false }, { "MobileClient", false }, { "ExternalConnection", false },
+		};
+		for (const auto& s : kSym)
+			if (name.IsSameAs(wxString::FromUTF8(s.u8), false)) return s.v;
+		return m_defineList->HasDefine(name);   // custom #Define'd flag → true; else false
+	};
+
+	// Collect condition tokens (words, '(' , ')') up to and including `Тогда` (KEY_THEN).
+	std::vector<wxString> toks;
+	for (;;) {
+		SkipSpaces();
+		if (m_currentPos >= m_bufferSize) break;
+		const wxChar c = m_strBuffer[m_currentPos];
+		if (c == wxT('(') || c == wxT(')')) {
+			toks.emplace_back(1, c);
+			m_currentPos++;
+#ifdef UTF8_LEXEM_TRANSLATE
+			m_currentUtf8Pos++;
+#endif
+			continue;
+		}
+		if (c == wxT('\n') || c == wxT(';')) break;   // safety: never run past the directive line
+		if (!IsWord()) break;
+		wxString w;
+		if (!GetWord(w)) break;
+		if (IsKeyWord(w) == KEY_THEN) break;          // `Тогда` closes the condition (consumed)
+		toks.emplace_back(w);
+	}
+
+	// Recursive-descent boolean evaluation: Or := And (ИЛИ And)*, And := Not (И Not)*,
+	// Not := НЕ Not | Prim, Prim := '(' Or ')' | symbol.
+	size_t idx = 0;
+	std::function<bool()> parseOr, parseAnd, parseNot, parsePrim;
+	parsePrim = [&]() -> bool {
+		if (idx < toks.size() && toks[idx] == wxT("(")) {
+			++idx;
+			const bool v = parseOr();
+			if (idx < toks.size() && toks[idx] == wxT(")")) ++idx;
+			return v;
+		}
+		if (idx >= toks.size()) return false;
+		return symbolValue(toks[idx++]);
+	};
+	parseNot = [&]() -> bool {
+		if (idx < toks.size() && IsKeyWord(toks[idx]) == KEY_NOT) { ++idx; return !parseNot(); }
+		return parsePrim();
+	};
+	parseAnd = [&]() -> bool {
+		bool v = parseNot();
+		while (idx < toks.size() && IsKeyWord(toks[idx]) == KEY_AND) { ++idx; v = parseNot() && v; }
+		return v;
+	};
+	parseOr = [&]() -> bool {
+		bool v = parseAnd();
+		while (idx < toks.size() && IsKeyWord(toks[idx]) == KEY_OR) { ++idx; v = parseAnd() || v; }
+		return v;
+	};
+	return toks.empty() ? false : parseOr();
 }
 
 void ibTranslateCode::AppendModule(ibTranslateCode* module)

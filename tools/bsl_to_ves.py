@@ -78,6 +78,9 @@ def preprocess_onec_module(code: str) -> str:
         return stack[-1]["active"] if stack else True
 
     for line in code.splitlines():
+        # 1C allows blanks after '#' (`# Если`); collapse them so the directive is recognised
+        # (and _strip_cond's fixed prefix length lines up).
+        line = re.sub(r"^(\s*)#[ \t]+", r"\1#", line)
         low = line.strip().lower()
         if low.startswith("#если"):
             parent = emitting()
