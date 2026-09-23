@@ -55,6 +55,7 @@ add_executable(oes_tests
     test_gitService.cpp
     test_metadataSerialize.cpp
     test_configSpec.cpp
+    test_managedForm.cpp
     test_calcDisplacement.cpp
     test_calcBase.cpp
     test_calcPriority.cpp
