@@ -54,3 +54,9 @@ bool ibValueSystemInfo::GetPropVal(const long lPropNum, ibValue& pvarPropVal)
 #include "backend/compiler/typeCtor.h"
 
 VALUE_TYPE_REGISTER(ibValueSystemInfo, "SystemInfo", g_valueSystemInfoCLSID);
+
+// Interim empty stubs (see header). No members — construct-only.
+void ibValueReportBuilder_BindNames(ibValue::ibMemberTable& /*helper*/, const ibValue* /*ctx*/) {}
+void ibValueDataCompression_BindNames(ibValue::ibMemberTable& /*helper*/, const ibValue* /*ctx*/) {}
+VALUE_TYPE_REGISTER(ibValueReportBuilder, "ReportBuilder", g_valueReportBuilderCLSID);
+VALUE_TYPE_REGISTER(ibValueDataCompression, "DataCompression", g_valueDataCompressionCLSID);

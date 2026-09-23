@@ -18,3 +18,4 @@ ENUM_TYPE_REGISTER(ibValueEnumAllowedLength, "AllowedLength", enum_to_clsid("EN_
 ENUM_TYPE_REGISTER(ibValueEnumCommandBarButtonsAlignment, "CommandBarButtonsAlignment", enum_to_clsid("EN_CBBA"));
 ENUM_TYPE_REGISTER(ibValueEnumCommandBarButtonType, "CommandBarButtonType", enum_to_clsid("EN_CBBT"));
 ENUM_TYPE_REGISTER(ibValueEnumCommandBarButtonRepresentation, "CommandBarButtonRepresentation", enum_to_clsid("EN_CBBR"));
+ENUM_TYPE_REGISTER(ibValueEnumReportBuilderDimensionType, "ReportBuilderDimensionType", enum_to_clsid("EN_RBDT"));

@@ -182,4 +182,19 @@ class ibValueEnumCommandBarButtonRepresentation : public ibValueEnumeration<ibCo
 	}
 };
 
+class ibValueEnumReportBuilderDimensionType : public ibValueEnumeration<ibReportBuilderDimensionType> {
+	public:
+	ibValueEnumReportBuilderDimensionType() : ibValueEnumeration() {}
+
+	virtual void CreateEnumeration() {
+		AddEnumeration(ibReportBuilderDimensionType::ibReportBuilderDimensionType_Items, wxT("Items"), _("Items"));
+		AddEnumeration(ibReportBuilderDimensionType::ibReportBuilderDimensionType_Hierarchy, wxT("Hierarchy"), _("Hierarchy"));
+		AddEnumeration(ibReportBuilderDimensionType::ibReportBuilderDimensionType_HierarchyOnly, wxT("HierarchyOnly"), _("Hierarchy only"));
+		// OES-RU: 1C ТипИзмеренияПостроителяОтчета member names.
+		AddEnumAlias(ibReportBuilderDimensionType::ibReportBuilderDimensionType_Items,         wxString::FromUTF8("\xD0\xAD\xD0\xBB\xD0\xB5\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x82\xD1\x8B"));                                 // Элементы
+		AddEnumAlias(ibReportBuilderDimensionType::ibReportBuilderDimensionType_Hierarchy,     wxString::FromUTF8("\xD0\x98\xD0\xB5\xD1\x80\xD0\xB0\xD1\x80\xD1\x85\xD0\xB8\xD1\x8F"));                                 // Иерархия
+		AddEnumAlias(ibReportBuilderDimensionType::ibReportBuilderDimensionType_HierarchyOnly, wxString::FromUTF8("\xD0\xA2\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xBA\xD0\xBE\xD0\x98\xD0\xB5\xD1\x80\xD0\xB0\xD1\x80\xD1\x85\xD0\xB8\xD1\x8F")); // ТолькоИерархия
+	}
+};
+
 #endif

@@ -80,4 +80,12 @@ enum ibCommandBarButtonRepresentation
 	ibCommandBarButtonRepresentation_PictureAndText
 };
 
+// ТипИзмеренияПостроителяОтчета — how a report-builder dimension expands.
+enum ibReportBuilderDimensionType
+{
+	ibReportBuilderDimensionType_Items = 1,
+	ibReportBuilderDimensionType_Hierarchy,
+	ibReportBuilderDimensionType_HierarchyOnly
+};
+
 #endif

@@ -31,4 +31,31 @@ public:
 	virtual bool GetPropVal(const long lPropNum, ibValue& pvarPropVal) override;
 };
 
+// ---------------------------------------------------------------------------
+// Interim EMPTY New-able stubs for platform types OES does not model yet. They
+// exist so imported modules that construct them compile and LOAD (their other,
+// unrelated functions become available) — the objects carry no behaviour.
+// ---------------------------------------------------------------------------
+
+// ПостроительОтчета (ReportBuilder) — legacy report-building object. Stub: constructs,
+// no members/methods (report building is not implemented).
+constexpr ibClassID g_valueReportBuilderCLSID = value_to_clsid("VL_RPBL");
+void ibValueReportBuilder_BindNames(ibValue::ibMemberTable& helper, const ibValue* ctx);
+class BACKEND_API ibValueReportBuilder : public ibValueStaticMembers<&ibValueReportBuilder_BindNames> {
+public:
+	ibValueReportBuilder() : ibValueStaticMembers(ibValueTypes::TYPE_VALUE) {}
+	virtual bool Init() override { return true; }
+	virtual bool Init(ibValue** paParams, const long lSizeArray) override { return true; }
+};
+
+// СжатиеДанных (DataCompression) — zip/deflate helper. Stub: constructs, no members.
+constexpr ibClassID g_valueDataCompressionCLSID = value_to_clsid("VL_DCMP");
+void ibValueDataCompression_BindNames(ibValue::ibMemberTable& helper, const ibValue* ctx);
+class BACKEND_API ibValueDataCompression : public ibValueStaticMembers<&ibValueDataCompression_BindNames> {
+public:
+	ibValueDataCompression() : ibValueStaticMembers(ibValueTypes::TYPE_VALUE) {}
+	virtual bool Init() override { return true; }
+	virtual bool Init(ibValue** paParams, const long lSizeArray) override { return true; }
+};
+
 #endif
