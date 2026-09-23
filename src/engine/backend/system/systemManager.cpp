@@ -156,7 +156,11 @@ enum
 	// PredefinedValue("Enum.X.Y" / "Catalog.X.EmptyRef") — interim: returns Undefined
 	// (full path→predefined resolution is a later feature).
 	enPredefinedValue,
-	enGetConnectionsLock   // ПолучитьБлокировкуУстановкиСоединений — interim empty
+	enGetConnectionsLock,   // ПолучитьБлокировкуУстановкиСоединений — interim empty
+	// Ordinary-application value storage (СохранитьЗначение / ВосстановитьЗначение) — interim:
+	// save is a no-op, restore returns Undefined (a real per-user store is later work).
+	enSaveValue,
+	enRestoreValue
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -309,6 +313,8 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("OpenValue"), -1, wxT("OpenValue(...)"));
 	helper.AppendFunc(wxT("PredefinedValue"), 1, wxT("PredefinedValue(path : string)"));
 	helper.AppendFunc(wxT("GetConnectionsLock"), wxT("GetConnectionsLock()"));
+	helper.AppendProc(wxT("SaveValue"), 2, wxT("SaveValue(key : string, value : any)"));
+	helper.AppendFunc(wxT("RestoreValue"), 1, wxT("RestoreValue(key : string)"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -349,6 +355,11 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F\xD0\xA1\xD0\xB2\xD0\xBE\xD0\xB9\xD1\x81\xD1\x82\xD0\xB2"), wxT("FillPropertyValues"));  // ЗаполнитьЗначенияСвойств
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xA7\xD0\xB8\xD1\x81\xD0\xBB\xD0\xBE\xD0\x9F\xD1\x80\xD0\xBE\xD0\xBF\xD0\xB8\xD1\x81\xD1\x8C\xD1\x8E"), wxT("NumberInWords"));  // ЧислоПрописью
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\x9E\xD0\xB1\xD1\x89\xD1\x83\xD1\x8E\xD0\xA4\xD0\xBE\xD1\x80\xD0\xBC\xD1\x83"), wxT("GetCommonForm"));  // ПолучитьОбщуюФорму
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\x9E\xD0\xB1\xD1\x89\xD0\xB8\xD0\xB9\xD0\x9C\xD0\xB0\xD0\xBA\xD0\xB5\xD1\x82"), wxT("GetCommonTemplate"));  // ПолучитьОбщийМакет
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD0\xBE\xD1\x85\xD1\x80\xD0\xB0\xD0\xBD\xD0\xB8\xD1\x82\xD1\x8C\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("SaveValue"));  // СохранитьЗначение
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x92\xD0\xBE\xD1\x81\xD1\x81\xD1\x82\xD0\xB0\xD0\xBD\xD0\xBE\xD0\xB2\xD0\xB8\xD1\x82\xD1\x8C\xD0\x97\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("RestoreValue"));  // ВосстановитьЗначение
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA2\xD0\xB5\xD0\xBA\xD1\x83\xD1\x89\xD0\xB8\xD0\xB9\xD0\xAF\xD0\xB7\xD1\x8B\xD0\xBA"), wxT("GeneralLanguage"));  // ТекущийЯзык
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\x98\xD0\xBC\xD1\x8F\xD0\x92\xD1\x80\xD0\xB5\xD0\xBC\xD0\xB5\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB3\xD0\xBE\xD0\xA4\xD0\xB0\xD0\xB9\xD0\xBB\xD0\xB0"), wxT("GetTempFileName"));  // ПолучитьИмяВременногоФайла
 	// ПолучитьФорму(path) — INTERIM alias to GetCommonForm: unblocks form modules that open a
 	// form by full metadata path; GetCommonForm resolves by name, so a non-common path finds nothing.
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9F\xD0\xBE\xD0\xBB\xD1\x83\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\xA4\xD0\xBE\xD1\x80\xD0\xBC\xD1\x83"), wxT("GetCommonForm"));  // ПолучитьФорму
@@ -557,6 +568,7 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		case enOpenValue:
 		case enPredefinedValue:
 		case enGetConnectionsLock:
+		case enRestoreValue:
 			pvarRetValue = ibValue();
 			return true;
 		case enDetailErrorDescription:
@@ -658,6 +670,7 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 		case enWriteLogEvent:
 		case enShowUserNotification:
 		case enExecuteNotifyProcessing:
+		case enSaveValue:
 			return true;   // interim no-op
 		case enAlert: Alert(paParams[0]->GetString()); return true;
 		case enSetStatus: SetStatus(paParams[0]->GetString()); return true;
