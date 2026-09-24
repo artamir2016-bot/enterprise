@@ -313,11 +313,15 @@ private:
 		// the reaper + metadata watch stay cheap, fine enough that
 		// deployed-config changes propagate within a Designer→try-it
 		// roundtrip.
-		// 2-minute idle cutoff — faster reclamation of cookie sessions
-		// after browser tab close. The JS client fires a beforeunload
-		// beacon to /logout (best-effort; some browsers drop it); this
-		// cutoff is the guaranteed upper bound if the beacon misses.
-		constexpr std::int64_t kIdleMs   = 2 * 60 * 1000;
+		// 30-minute idle cutoff — the "user stepped away" window. A 2-minute
+		// cutoff (tried for faster cookie reclamation after tab close) evicts
+		// an ACTIVE-but-quiet user: someone reading a form for >2 min, or a
+		// backgrounded tab whose /active poll is paused by visibilitychange,
+		// loses their session and every unsaved edit on the next action. Tab
+		// CLOSE is reclaimed promptly by the JS beforeunload beacon to /logout;
+		// this cutoff is only the backstop for when that beacon misses, so a
+		// generous window costs a few stale sessions for 30 min, not correctness.
+		constexpr std::int64_t kIdleMs   = 30 * 60 * 1000;
 		constexpr auto         kInterval = seconds(15);
 
 		// Capture the metadata guid observed at server start. Compared
