@@ -86,10 +86,11 @@ rebuilds fields from the source type and drops 1C's ВидПоля entirely.
 
 **Auto is live (1c, landed 2026-09-24).** The compiler takes an `AutoKindResolver` (dataPath ->
 concrete kind); the metatype builds it from the owner's attribute types, mirroring the auto-form
-rule in `formObject.cpp` — a single **boolean** draws as a checkbox, everything else as an input
-field. An explicit ViewKind is honoured as-is. (The reference **select button** on an input, and a
-real **picture** control for `PictureField` / picture decorations, are still to come — a reference
-Auto field currently draws as a plain input and a picture as a labelled placeholder.)
+rule in `formObject.cpp` — a single **boolean** draws as a checkbox, a primitive (number/string/date)
+as a plain input, a **reference** as an input WITH a select button (`ReferenceField`). An explicit
+ViewKind is honoured as-is. **`PictureField` draws through a real Picture control** (`CT_PICT`,
+desktop `wxStaticBitmap` / web `<img>`) — the tails landed 2026-09-24. Open only: the runtime fetch
+of a *bound* picture value (a static Picture property renders today; the bound image is a later step).
 
 ---
 
