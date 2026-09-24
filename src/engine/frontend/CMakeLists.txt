@@ -100,3 +100,107 @@ set_target_properties(frontend PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME "frontend"
 )
+
+# =============================================================================
+# wfrontend + wenterprise-server — the WEB stack.
+#
+# Historically MSBuild-only (absent from CMake), which forced a separate native
+# wxWidgets build just to link them. They are the SAME frontend sources compiled
+# with OES_USE_WEB (rendering to HTML/JSON instead of wx widgets) plus the web/
+# layer — so building them HERE reuses the CMake-built wx + backend, no native
+# wx bootstrap. Windows-only in practice (winsock via cpp-httplib); gated so the
+# Linux/macOS CI is untouched.
+# =============================================================================
+if(WIN32)
+    set(WFRONTEND_SOURCES
+        wfrontend.cpp
+        web/webClient.cpp web/webSession.cpp web/webApplication.cpp web/webFrame.cpp
+        web/webWindow.cpp web/webSizer.cpp web/webTimer.cpp web/webChildFrame.cpp web/webStubs.cpp
+        visualView/visualHost.cpp visualView/visualHostEvent.cpp visualView/visualHostClient.cpp
+        visualView/visualHostClientDocView.cpp visualView/controlEnum.cpp visualView/layerObject.cpp
+        docView/docManager.cpp docView/docView.cpp
+        visualView/layers/commandBar.cpp visualView/layers/commandReceiver.cpp
+        visualView/ctrl/control.cpp visualView/ctrl/controlProperty.cpp visualView/ctrl/typeControl.cpp
+        visualView/ctrl/window.cpp visualView/ctrl/frame.cpp visualView/ctrl/frameEvent.cpp
+        visualView/ctrl/frameID.cpp visualView/ctrl/frameProperty.cpp
+        visualView/ctrl/sizer.cpp visualView/ctrl/boxsizer.cpp visualView/ctrl/boxsizer_res.cpp
+        visualView/ctrl/staticboxsizer.cpp visualView/ctrl/staticboxsizer_res.cpp
+        visualView/ctrl/gridsizer.cpp visualView/ctrl/gridsizer_res.cpp
+        visualView/ctrl/wrapsizer.cpp visualView/ctrl/wrapsizer_res.cpp visualView/ctrl/itemsizer.cpp
+        visualView/ctrl/button.cpp visualView/ctrl/button_res.cpp visualView/ctrl/buttonEvent.cpp
+        visualView/ctrl/statictext.cpp visualView/ctrl/statictextEvent.cpp visualView/ctrl/statictext_res.cpp
+        visualView/ctrl/textctrl.cpp visualView/ctrl/textctrlEvent.cpp visualView/ctrl/textctrlProperty.cpp
+        visualView/ctrl/textctrl_res.cpp
+        visualView/ctrl/checkbox.cpp visualView/ctrl/checkboxEvent.cpp visualView/ctrl/checkboxProperty.cpp
+        visualView/ctrl/checkbox_res.cpp
+        visualView/ctrl/choice.cpp visualView/ctrl/choice_res.cpp
+        visualView/ctrl/combobox.cpp visualView/ctrl/combobox_res.cpp
+        visualView/ctrl/listbox.cpp visualView/ctrl/listbox_res.cpp
+        visualView/ctrl/picture.cpp visualView/ctrl/picture_res.cpp
+        visualView/ctrl/toolBar.cpp visualView/ctrl/toolBar_res.cpp
+        visualView/ctrl/toolBarItem.cpp visualView/ctrl/toolBarItem_res.cpp
+        visualView/ctrl/toolBarEvent.cpp visualView/ctrl/toolBarProperty.cpp visualView/ctrl/toolBarMenu.cpp
+        visualView/ctrl/toolBarAction.cpp visualView/ctrl/toolBarItemAction.cpp
+        visualView/ctrl/tableBox.cpp visualView/ctrl/tableBox_res.cpp
+        visualView/ctrl/tableBoxColumn.cpp visualView/ctrl/tableBoxColumn_res.cpp
+        visualView/ctrl/form.cpp visualView/ctrl/formAttribute.cpp visualView/ctrl/formCommand.cpp
+        visualView/ctrl/formControl.cpp visualView/ctrl/formObject.cpp visualView/ctrl/formVisualHost.cpp
+        visualView/ctrl/formAction.cpp visualView/ctrl/formFactory.cpp visualView/ctrl/formMem.cpp
+        visualView/ctrl/form_res.cpp
+    )
+
+    add_library(wfrontend SHARED ${WFRONTEND_SOURCES})
+
+    target_include_directories(wfrontend
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_SOURCE_DIR}/src/engine
+            ${CMAKE_SOURCE_DIR}/src/engine/backend
+            ${CMAKE_SOURCE_DIR}/src/3rdparty/cpp-httplib
+    )
+
+    target_compile_definitions(wfrontend
+        PRIVATE
+            NOPCH
+            OES_USE_WEB
+            WFRONTEND_EXPORTS      # FRONTEND_API -> dllexport (frontend.h keys on either export macro)
+    )
+
+    target_link_libraries(wfrontend
+        PRIVATE
+            backend
+            wx::core wx::aui wx::html wx::propgrid wx::adv wx::stc wx::xrc wx::qa
+            wx::base wx::net wx::xml
+    )
+
+    set_target_properties(wfrontend PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "wfrontend"
+    )
+
+    # The web server process — drives wfrontend over HTTP (cpp-httplib).
+    add_executable(wenterprise-server ${CMAKE_SOURCE_DIR}/src/engine/wenterprise-server/main.cpp)
+
+    target_include_directories(wenterprise-server
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_SOURCE_DIR}/src/engine
+            ${CMAKE_SOURCE_DIR}/src/3rdparty/cpp-httplib
+    )
+
+    target_link_libraries(wenterprise-server
+        PRIVATE
+            wfrontend
+            backend
+            wx::base wx::net
+            ws2_32 crypt32
+    )
+
+    set_target_properties(wenterprise-server PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+        OUTPUT_NAME "wenterprise-server"
+    )
+endif()
