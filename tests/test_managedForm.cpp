@@ -94,6 +94,20 @@ TEST(ManagedForm, ViewKindSelectsControl) {
 	EXPECT_EQ(ControlUnderCell(form.Children()[1])->GetClsid(), CT_STTX);
 }
 
+// A PictureField compiles to the Picture control (CT_PICT).
+TEST(ManagedForm, PictureFieldEmitsPictureControl) {
+	ibManagedElement root(ibManagedNodeKind::Group);
+	ibManagedElement pic(ibManagedNodeKind::Field, wxT("logo"));
+	pic.viewKind = ibFieldViewKind::PictureField;
+	root.children = { pic };
+
+	ibDataNode form;
+	ibManagedFormCompiler(StubResolver()).Compile(form, root);
+
+	ASSERT_EQ(form.Children().size(), 1u);
+	EXPECT_EQ(ControlUnderCell(form.Children()[0])->GetClsid(), control_to_clsid("CT_PICT"));
+}
+
 // A titled subgroup becomes a Staticboxsizer carrying its Title + Orient, and
 // lays ITS fields out sizerable.
 TEST(ManagedForm, TitledHorizontalSubgroup) {

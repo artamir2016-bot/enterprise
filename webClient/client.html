@@ -1973,8 +1973,26 @@ class ListBox extends BaseControl{
   }
 }
 
+// Picture — an <img> from the server-encoded data URI (node.picture). Empty -> a
+// small placeholder box so the layout slot is still visible.
+class Picture extends BaseControl{
+  render(node){
+    const wrap=document.createElement('span');wrap.className='ctrl picture';
+    if(node.picture){
+      const img=document.createElement('img');img.src=node.picture;
+      img.style.maxWidth='100%';img.alt=node.label||'';
+      wrap.appendChild(img);
+    } else {
+      wrap.style.display='inline-block';wrap.style.minWidth='24px';
+      wrap.style.minHeight='24px';wrap.style.border='1px dashed #b9b7ab';
+    }
+    return wrap;
+  }
+}
+
 const renderers={
   'visualHost':    new HostControl(),
+  'picture':       new Picture(),
   'mdiChild':      new HostControl(),
   'boxsizer':      new BoxSizer(),
   'wrapsizer':     new WrapSizer(),

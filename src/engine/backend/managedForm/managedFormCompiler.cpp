@@ -22,6 +22,7 @@ const ibClassID kCtrlStaticBox = control_to_clsid("CT_SSZER");  // Staticboxsize
 const ibClassID kCtrlSizerItem = control_to_clsid("CT_SIZR");   // SizerItem
 const ibClassID kCtrlNotebook  = control_to_clsid("CT_NTBK");   // Notebook
 const ibClassID kCtrlPage      = control_to_clsid("CT_NTPG");   // NotebookPage
+const ibClassID kCtrlPicture   = control_to_clsid("CT_PICT");   // Picture
 
 // wxOrientation raw values (wx/defs.h, stable ABI) — this backend TU stays
 // GUI-header-free, so they are hardcoded (mirrors metadataConfigSpec.cpp).
@@ -47,7 +48,7 @@ ibClassID ibManagedFormCompiler::ClsidForViewKind(ibFieldViewKind viewKind) {
 	case ibFieldViewKind::LabelField:    return kCtrlStatic;
 	case ibFieldViewKind::ChoiceField:   return kCtrlChoice;
 	case ibFieldViewKind::ComboBoxField: return kCtrlCombo;
-	case ibFieldViewKind::PictureField:  return kCtrlStatic;  // picture control lands with §3-full; label placeholder
+	case ibFieldViewKind::PictureField:  return kCtrlPicture; // the Picture control (CT_PICT)
 	case ibFieldViewKind::ReferenceField: return kCtrlText;  // text box + a select button (set in EmitField)
 	case ibFieldViewKind::InputField:    return kCtrlText;
 	case ibFieldViewKind::Auto:

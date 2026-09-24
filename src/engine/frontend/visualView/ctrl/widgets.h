@@ -668,4 +668,35 @@ private:
 	ibPropertyEnum<ibValueEnumOrient>* m_propertyOrient = ibPropertyObject::CreateProperty<ibPropertyEnum<ibValueEnumOrient>>(m_categoryGauge, wxT("Orient"), _("Orient"), wxHORIZONTAL);
 };
 
+// PICTURE — shows an image: a stored Picture (a decoration / logo) on desktop as
+// a wxStaticBitmap, on web as an <img>. A Source may bind it to a picture-typed
+// value (rendered at runtime — the binding is carried but the runtime fetch is a
+// later step). This is the control a 1C PictureField / PictureDecoration imports
+// into instead of a placeholder label.
+class ibValuePicture : public ibValueWindow {
+	public:
+
+	ibValuePicture();
+
+	//control factory
+	virtual wxObject* Create(ibFrontendWindow* wxparent, ibVisualHost* visualHost) override;
+	virtual void OnCreated(wxObject* wxobject, ibFrontendWindow* wxparent, ibVisualHost* visualHost, bool firstCreated) override;
+	virtual void Update(wxObject* wxobject, ibVisualHost* visualHost) override;
+	virtual void Cleanup(wxObject* obj, ibVisualHost* visualHost) override;
+
+	//support icons
+	virtual wxIcon GetIcon() const;
+	static wxIcon GetIconGroup();
+
+	//load & save object in control
+	virtual bool ReadData(const ibDataNode& node);
+	virtual bool WriteData(ibDataNode& node) const;
+
+	private:
+	ibPropertyCategory* m_categoryPicture = ibPropertyObject::CreatePropertyCategory(wxT("Picture"), _("Picture"));
+	ibPropertyPicture* m_propertyPicture = ibPropertyObject::CreateProperty<ibPropertyPicture>(m_categoryPicture, wxT("Picture"), _("Picture"));
+	ibPropertyCategory* m_categoryPictureData = ibPropertyObject::CreatePropertyCategory(wxT("Data"), _("Data"));
+	ibPropertySource*  m_propertySource  = ibPropertyObject::CreateProperty<ibPropertySource>(m_categoryPictureData, wxT("Source"), _("Source"), ibValueTypes::TYPE_EMPTY);
+};
+
 #endif

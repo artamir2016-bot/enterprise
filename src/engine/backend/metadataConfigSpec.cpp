@@ -736,6 +736,11 @@ ibManagedElement BuildManagedElement(const json& c, const wxString& tableAttr) {
 	else if (kind == wxT("label")) {
 		el.kind = ibManagedNodeKind::Decoration;
 	}
+	else if (kind == wxT("picture")) {
+		el.kind = ibManagedNodeKind::Field;
+		el.viewKind = ibFieldViewKind::PictureField;
+		el.dataPath = JStr(c, "attr");   // empty for a picture decoration (unbound)
+	}
 	else {   // field / checkbox / radio / html — a bound field, view kind by name or the JSON kind
 		el.kind = ibManagedNodeKind::Field;
 		el.dataPath = JStr(c, "attr");

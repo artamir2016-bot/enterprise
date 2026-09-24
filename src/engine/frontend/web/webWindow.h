@@ -564,6 +564,27 @@ private:
 	wxString              m_value;
 };
 
+// Picture — shows an image. The bitmap is encoded server-side to a
+// data:image/png;base64 URI (ibValuePicture::Update) so the browser renders an
+// <img src="..."> with no round trip. Empty uri -> nothing drawn.
+class ibWebPicture : public ibWebWindow {
+public:
+	explicit ibWebPicture(int id = 0) : ibWebWindow(id) {}
+	virtual wxString GetControlType() const override { return wxT("picture"); }
+
+	void SetPictureDataUri(const wxString& uri) { m_pictureDataUri = uri; }
+
+	virtual nlohmann::json ToJSON() const override {
+		auto node = ibWebWindow::ToJSON();
+		if (!m_pictureDataUri.IsEmpty())
+			node["picture"] = std::string(m_pictureDataUri.utf8_str());
+		return node;
+	}
+
+private:
+	wxString m_pictureDataUri;
+};
+
 class ibWebChoice : public ibWebListInput {
 public:
 	explicit ibWebChoice(int id = 0) : ibWebListInput(id) {}

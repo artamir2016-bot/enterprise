@@ -124,6 +124,8 @@
     <ClCompile Include="visualView\ctrl\itemsizer.cpp" />
     <ClCompile Include="visualView\ctrl\listbox.cpp" />
     <ClCompile Include="visualView\ctrl\listbox_res.cpp" />
+    <ClCompile Include="visualView\ctrl\picture.cpp" />
+    <ClCompile Include="visualView\ctrl\picture_res.cpp" />
     <ClCompile Include="visualView\ctrl\notebook.cpp" />
     <ClCompile Include="visualView\ctrl\notebookEvent.cpp" />
     <ClCompile Include="visualView\ctrl\notebookMenu.cpp" />

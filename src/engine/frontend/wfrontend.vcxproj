@@ -192,6 +192,8 @@
     <ClCompile Include="visualView\ctrl\combobox_res.cpp" />
     <ClCompile Include="visualView\ctrl\listbox.cpp" />
     <ClCompile Include="visualView\ctrl\listbox_res.cpp" />
+    <ClCompile Include="visualView\ctrl\picture.cpp" />
+    <ClCompile Include="visualView\ctrl\picture_res.cpp" />
     <!-- Toolbar is ported, not stubbed: ibWebToolbar / ibWebToolBarItem
          / ibWebToolBarSeparator (web/webWindow.h) are real widgets, and
          the toolbar plus every companion file below is in this project,

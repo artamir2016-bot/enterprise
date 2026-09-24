@@ -583,14 +583,17 @@ def _map_form_children(child_items, in_table):
     out = []
     for el in child_items:
         tag = _local(el.tag)
-        # Picture controls (PictureField / PictureDecoration) — OES has no image widget yet (task #40).
-        # Emit a placeholder Statictext so the layout SLOT is preserved (the surrounding column/row keeps
-        # its shape) instead of silently dropping the element and collapsing the layout. Replaced by a real
-        # picture control when task #40 lands.
+        # Picture controls (PictureField / PictureDecoration) -> the OES Picture control
+        # (CT_PICT). A PictureField binds to a picture-typed attribute (carried as "attr");
+        # a PictureDecoration is a static/unbound image. The managed converter maps kind
+        # "picture" -> a Field with the PictureField view kind.
         if tag in ("PictureField", "PictureDecoration") and not in_table:
-            report["stub:Picture"] += 1
-            out.append({"kind": "label", "name": el.get("name") or "",
-                        "title": _title_loc(el) or "ru = '[картинка]';"})
+            report["Picture"] += 1
+            node = {"kind": "picture", "name": el.get("name") or ""}
+            dp = _last_seg(_data_path(el))
+            if dp:
+                node["attr"] = dp
+            out.append(node)
             continue
         kind = _CTRL_KIND.get(tag)
         if kind is None:
