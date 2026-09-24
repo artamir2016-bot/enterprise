@@ -123,6 +123,7 @@ public:
 
 	virtual ibClassID ResolveChild(const ibClassID& clsid) const {
 		if (clsid == g_metaFormCLSID ||
+			clsid == g_metaManagedFormCLSID ||   // managed form — a form child of the object, like the ordinary form
 			clsid == g_metaTemplateCLSID ||
 			clsid == g_metaCommandCLSID)   // every business object owns its own commands (object scope)
 			return clsid;
@@ -139,7 +140,7 @@ public:
 	//form
 	std::vector<ibValueMetaObjectFormBase*> GetFormArrayObject(
 		std::vector<ibValueMetaObjectFormBase*> array = std::vector<ibValueMetaObjectFormBase*>()) const {
-		FillArrayObjectByFilter<ibValueMetaObjectFormBase>(array, { g_metaFormCLSID });
+		FillArrayObjectByFilter<ibValueMetaObjectFormBase>(array, { g_metaFormCLSID, g_metaManagedFormCLSID });
 		return array;
 	}
 
@@ -164,7 +165,7 @@ public:
 	//form
 	template <typename _T1>
 	ibValueMetaObjectFormBase* FindFormObjectByFilter(const _T1& id, const ibFormID& form_id = wxNOT_FOUND) const {
-		ibValueMetaObjectFormBase* founded = FindObjectByFilter<ibValueMetaObjectFormBase>(id, { g_metaCommonFormCLSID, g_metaFormCLSID });
+		ibValueMetaObjectFormBase* founded = FindObjectByFilter<ibValueMetaObjectFormBase>(id, { g_metaCommonFormCLSID, g_metaFormCLSID, g_metaManagedFormCLSID });
 		if ((founded != nullptr && form_id == founded->GetTypeForm()) || form_id == wxNOT_FOUND)
 			return founded;
 		return nullptr;

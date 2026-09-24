@@ -22,7 +22,10 @@
 
 #include "backend/metadataConfiguration.h"
 #include "backend/metadataConfigSpec.h"
-#include "backend/metaCollection/metaFormObject.h"     // ibValueMetaObjectForm / FormBlobToNode
+#include "backend/metaCollection/metaFormObject.h"     // ibValueMetaObjectForm / ManagedForm / FormBlobToNode
+#include "backend/metaCollection/metaObject.h"          // g_metaManagedFormCLSID
+#include "backend/metaCollection/partial/catalog.h"      // ibValueMetaObjectCatalog (managed-form owner)
+#include "backend/managedForm/managedElement.h"          // ibManagedElement (managed form tree)
 #include "backend/metaCollection/partial/document.h"    // ibValueMetaObjectDocument (RegisterRecords)
 #include "backend/metaCollection/partial/accountingRegister.h"  // ibValueMetaObjectAccountingRegister
 #include "backend/metaCollection/partial/chartOfAccounts.h"     // ibValueMetaObjectChartOfAccounts
@@ -1095,6 +1098,103 @@ TEST(ConfigSpec, BuildFromJson_FormAttributeBindsField) {
 	ASSERT_NE(field, nullptr);
 	EXPECT_NE(field->GetProperty(wxT("Source")).Kind(), ibDataKind::Empty)
 		<< "the field bound to a form attribute must have a Source";
+}
+
+// =============================================================================
+// Managed form (1C «управляемая форма») — end-to-end on a live config (1b-4).
+// Build a real catalog (attributes + a tabular section), attach a ManagedForm
+// with a hand-authored element tree, compile it, and assert the produced
+// FormData decodes to the ordinary control tree — bound through the owner's REAL
+// attribute ids. This exercises the whole 1b arc: element model -> serializer ->
+// metatype -> compiler -> the runtime FormData shape LoadForm consumes.
+// =============================================================================
+TEST(ConfigSpec, ManagedForm_CompilesElementTreeToFormData) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "MFCfg",
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [
+	        { "name": "Price",  "type": "Number" },
+	        { "name": "Active", "type": "Boolean" }
+	      ],
+	      "tabularSections": [
+	        { "name": "Lines", "attributes": [ { "name": "Qty", "type": "Number" } ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectCatalog* owner = FindMeta<ibValueMetaObjectCatalog>(cfg.GetCommonMetaObject(), wxT("Products"));
+	ASSERT_NE(owner, nullptr);
+
+	// Control: an ordinary form creates the same way (isolates ManagedForm-specific failures).
+	ibValueMetaObject* ord = cfg.CreateMetaObject(g_metaFormCLSID, owner, /*runObject*/ false, wxT("OrdForm"));
+	ASSERT_NE(ord, nullptr) << "control: ordinary form creates headless under the catalog";
+
+	// Attach a managed form to the catalog through the metadata API (headless, like the Designer load).
+	ibValueMetaObject* obj = cfg.CreateMetaObject(g_metaManagedFormCLSID, owner, /*runObject*/ false, wxT("MItemForm"));
+	ASSERT_NE(obj, nullptr);
+	auto* mf = dynamic_cast<ibValueMetaObjectManagedForm*>(obj);
+	ASSERT_NE(mf, nullptr) << "ManagedForm clsid resolves to ibValueMetaObjectManagedForm";
+
+	// A titled head group (Price + Active) and a table over the Lines section.
+	ibManagedElement root(ibManagedNodeKind::Group);
+	ibManagedElement head(ibManagedNodeKind::Group, wxT("Head"));
+	head.representation = ibGroupRepresentation::TitledBox;
+	head.title = wxT("Head");
+	ibManagedElement price(ibManagedNodeKind::Field, wxT("PriceField"));
+	price.dataPath = wxT("Price");   // Auto -> textctrl
+	ibManagedElement active(ibManagedNodeKind::Field, wxT("ActiveFlag"));
+	active.dataPath = wxT("Active"); active.viewKind = ibFieldViewKind::CheckBoxField;
+	head.children = { price, active };
+
+	ibManagedElement table(ibManagedNodeKind::Table, wxT("LinesTable"));
+	table.dataPath = wxT("Lines");
+	ibManagedElement qty(ibManagedNodeKind::Column, wxT("QtyCol"));
+	qty.dataPath = wxT("Lines.Qty");
+	table.children = { qty };
+
+	root.children = { head, table };
+	mf->SetElementTree(root, {});
+
+	// Compile against the owner's live attribute ids.
+	const wxMemoryBuffer blob = mf->CompileElementsToFormData();
+	ASSERT_GT(blob.GetDataLen(), 0u) << "the element tree compiled to a non-empty FormData blob";
+
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(blob);
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+	std::vector<ibClassID> clsids;
+	CollectClsids(*rootVal.AsChild(), clsids);
+	auto has = [&](const char* key) {
+		const ibClassID c = control_to_clsid(key);
+		return std::find(clsids.begin(), clsids.end(), c) != clsids.end();
+	};
+	EXPECT_TRUE(has("CT_SIZR"));   // layout cells
+	EXPECT_TRUE(has("CT_SSZER"));  // titled head group
+	EXPECT_TRUE(has("CT_TXTC"));   // Price (Auto)
+	EXPECT_TRUE(has("CT_CHKB"));   // Active (CheckBox view kind)
+	EXPECT_TRUE(has("CT_TABL"));   // Lines table
+	EXPECT_TRUE(has("CT_TBLC"));   // Qty column
+
+	// The Price field is bound (a Source hop path through the owner's real Price id).
+	std::function<const ibDataNode*(const ibDataNode&, ibClassID)> findCtrl =
+		[&](const ibDataNode& n, ibClassID want) -> const ibDataNode* {
+			for (const ibDataNode& ch : n.Children()) {
+				if (ch.GetClsid() == want) return &ch;
+				if (const ibDataNode* r = findCtrl(ch, want)) return r;
+			}
+			return nullptr;
+		};
+	const ibDataNode* priceCtrl = findCtrl(*rootVal.AsChild(), control_to_clsid("CT_TXTC"));
+	ASSERT_NE(priceCtrl, nullptr);
+	EXPECT_NE(priceCtrl->GetProperty(wxT("Source")).Kind(), ibDataKind::Empty)
+		<< "a bound managed field carries a Source resolved against the owner attribute";
+
+	// The whole thing round-trips: SetFormData(blob) then GetFormData is what LoadForm reads.
+	mf->SetFormData(blob);
+	EXPECT_FALSE(mf->GetFormData().IsEmpty());
 }
 
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {

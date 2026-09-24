@@ -123,6 +123,7 @@ wxString ibMetaDiffWalker::GroupLabelFor(ibClassID clsid)
 
 	if (clsid == g_metaAttributeCLSID)                  return _("Attributes");
 	if (clsid == g_metaFormCLSID)                       return _("Forms");
+	if (clsid == g_metaManagedFormCLSID)                return _("Forms");
 	if (clsid == g_metaTemplateCLSID)                   return _("Templates");
 	if (clsid == g_metaModuleCLSID)                     return _("Modules");
 	if (clsid == g_metaManagerCLSID)                    return _("Manager modules");
@@ -201,6 +202,7 @@ int ibMetaDiffWalker::GroupOrderRank(ibClassID clsid)
 		{ g_metaAccountDimensionKindsTableCLSID,         360 },
 		{ g_metaRecalculationCLSID,              365 },   // Recalculation subordinate tables (under a calc register)
 		{ g_metaFormCLSID,                       370 },
+		{ g_metaManagedFormCLSID,                371 },   // managed form — beside the ordinary form
 		{ g_metaCommandCLSID,                    375 },   // an object's own commands sit between forms and templates
 		{ g_metaTemplateCLSID,                   380 },
 		{ g_metaModuleCLSID,                     390 },

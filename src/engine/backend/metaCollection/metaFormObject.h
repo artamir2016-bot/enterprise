@@ -257,6 +257,12 @@ public:
 	const ibManagedElement&                GetElementRoot()  const { return m_elementRoot; }
 	const std::vector<ibManagedAttribute>& GetElementAttrs() const { return m_elementAttrs; }
 
+	// Create without the interactive form-TYPE dialog the base object form runs
+	// (SelectFormType needs the designer metaTree). A managed form is an object
+	// form by construction; its type defaults, and it registers with its owner.
+	// This also makes it creatable headless (import / tests).
+	virtual bool OnCreateMetaObject(ibMetaData* metaData, int flags) override;
+
 	// Runtime open: compile the element tree into the FormData blob (using the
 	// owner's now-resolvable attribute ids) BEFORE the base registers its deferred
 	// form builder, so the form materialises from the elements. Empty tree ->

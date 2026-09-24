@@ -490,6 +490,21 @@ wxMemoryBuffer ibValueMetaObjectManagedForm::CompileElementsToFormData() const
 	return ibValueMetaObjectFormBase::FormNodeToBlob(ibDataValue::Child(root));
 }
 
+bool ibValueMetaObjectManagedForm::OnCreateMetaObject(ibMetaData* metaData, int flags)
+{
+	// Skip ibValueMetaObjectForm's metaTree->SelectFormType (a designer-only, GUI
+	// form-type picker). Go through the form BASE, then register with the owner so
+	// the object knows about this form — the same OnCreateFormObject the object form
+	// calls, minus the dialog. Form type stays default (object).
+	if (!ibValueMetaObjectFormBase::OnCreateMetaObject(metaData, flags))
+		return false;
+	if ((flags & newObjectFlag) != 0) {
+		if (auto* owner = dynamic_cast<ibValueMetaObjectGenericData*>(m_parent))
+			owner->OnCreateFormObject(this);
+	}
+	return true;
+}
+
 bool ibValueMetaObjectManagedForm::OnAfterRunMetaObject(int flags)
 {
 	// Compile the elements into FormData BEFORE the base registers its deferred
