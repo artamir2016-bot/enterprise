@@ -855,6 +855,11 @@ def parse_forms(dump_dir, kind_dir, base_name, limit=0):
             controls = parse_form_controls(form_xml)
             if controls:
                 entry["controls"] = controls
+                # A 1C form IS a managed form (logform namespace); import it AS one — the
+                # generator stores its control tree as the declarative element tree
+                # (ManagedForm metatype) instead of a synthesised control blob.
+                entry["managed"] = True
+                report["ManagedForms"] += 1
                 report["FormControls"] += 1
             # The form's own attributes — so fields bound to them (not to a catalog
             # attribute) resolve a type and render instead of staying blank.
