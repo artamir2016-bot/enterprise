@@ -411,6 +411,37 @@ TEST(CompilerTest, WhileLoopEmitsGoto) {
 	EXPECT_GE(CountOpcodeAnyType(cc.m_cByteCode, OPER_GOTO), 1u);
 }
 
+TEST(CompilerTest, OneWordForeachCompiles) {
+	// OES's own single-word Foreach keyword — the baseline the two-word form
+	// below must match.
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("s = 0;\n")
+		wxT("items = New Array();\n")
+		wxT("Foreach x In items Do\n")
+		wxT("  s = s + 1;\n")
+		wxT("EndDo;\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+	EXPECT_GE(CountOpcodeAnyType(cc.m_cByteCode, OPER_FOREACH), 1u);
+}
+
+TEST(CompilerTest, TwoWordForEachCompiles) {
+	// Native 1C two-word spelling "For Each" (Russian "Для Каждого") — imported
+	// 1C modules use it. OES's own keyword is the single word Foreach; the
+	// two-word form lexes as KEY_FOR + a bare "Each"/"Каждого" qualifier, which
+	// CompileFor detects and routes to the shared foreach body. Must compile to
+	// a foreach loop, NOT fail with "Symbol expected '='".
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("s = 0;\n")
+		wxT("items = New Array();\n")
+		wxT("For Each x In items Do\n")
+		wxT("  s = s + 1;\n")
+		wxT("EndDo;\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+	EXPECT_GE(CountOpcodeAnyType(cc.m_cByteCode, OPER_FOREACH), 1u);
+}
+
 TEST(CompilerTest, SyntaxErrorReturnsFalse) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	// Unterminated assignment — expect compile to fail (return false

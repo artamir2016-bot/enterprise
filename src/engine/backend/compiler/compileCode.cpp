@@ -4593,6 +4593,24 @@ bool ibCompileCode::CompileFor(ibCompileContext* context)
 
 	GETKeyWord(KEY_FOR);
 
+	// Native 1C two-word for-each: `Для Каждого X Из Y Цикл` / `For Each x In y Do`.
+	// OES's own keyword is the SINGLE word ДляКаждого / Foreach (KEY_FOREACH);
+	// imported 1C modules use the two-word spelling, which lexes as KEY_FOR + a
+	// bare "Каждого" / "Each" identifier. Detect that qualifier, consume it, and
+	// run the shared foreach body (StartLoopList already called above).
+	{
+		const ibLexem& look = PreviewGetLexem();
+		if (look.m_lexType == IDENTIFIER) {
+			const wxString qualifier = look.m_valData.GetString();
+			// "Каждого" (UTF-8 byte-escaped — this TU is not compiled /utf-8) / "Each".
+			const wxString kEachRu = wxString::FromUTF8("\xD0\x9A\xD0\xB0\xD0\xB6\xD0\xB4\xD0\xBE\xD0\xB3\xD0\xBE");
+			if (qualifier.CmpNoCase(kEachRu) == 0 || qualifier.CmpNoCase(wxT("Each")) == 0) {
+				GetLexem();   // consume the "Каждого"/"Each" qualifier
+				return CompileForeachBody(context);
+			}
+		}
+	}
+
 	if (gs_codeStyle == CODE_CES)
 		GETDelimeter(wxT('('));
 
@@ -4682,6 +4700,14 @@ bool ibCompileCode::CompileForeach(ibCompileContext* context)
 
 	GETKeyWord(KEY_FOREACH);
 
+	return CompileForeachBody(context);
+}
+
+// Everything after the foreach header keyword(s). CompileForeach reaches here
+// past the single-word KEY_FOREACH; CompileFor reaches here past the native 1C
+// two-word "Для Каждого" / "For Each" (KEY_FOR + the "Каждого"/"Each" qualifier).
+bool ibCompileCode::CompileForeachBody(ibCompileContext* context)
+{
 	if (gs_codeStyle == CODE_CES)
 		GETDelimeter(wxT('('));
 

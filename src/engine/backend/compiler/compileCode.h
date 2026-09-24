@@ -336,6 +336,10 @@ protected:
 	bool CompileWhile(ibCompileContext* context);
 	bool CompileFor(ibCompileContext* context);
 	bool CompileForeach(ibCompileContext* context);
+	// The foreach loop body AFTER the header keyword(s) are consumed. Shared by
+	// CompileForeach (one-word ДляКаждого / Foreach) and CompileFor's detection
+	// of the native 1C two-word spelling Для Каждого / For Each.
+	bool CompileForeachBody(ibCompileContext* context);
 	bool CompileException(ibCompileContext* context);
 
 	ibParamUnit GetCallFunction(ibCompileContext* context, const wxString& strName, const int& nIsSet);
