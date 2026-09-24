@@ -420,11 +420,19 @@ wxMemoryBuffer ibValueMetaObjectManagedForm::CompileElementsToFormData() const
 	//   "Section.Col"   -> { 1, sectionId, colId }    (3-hop into a tabular section)
 	std::map<wxString, ibMetaID> attrs;               // attribute name -> metaId
 	std::map<wxString, std::pair<ibMetaID, std::map<wxString, ibMetaID>>> tabs;   // section -> (id, cols)
+	std::map<wxString, ibFieldViewKind> autoKinds;    // dataPath -> Auto-resolved view kind
+
+	// The live type-driven rule (mirrors the auto-form in formObject.cpp): a single
+	// boolean draws as a checkbox; everything else as an input field.
+	auto kindOf = [](ibValueMetaObjectAttributeBase* a) -> ibFieldViewKind {
+		return a->ContainType(ibValueTypes::TYPE_BOOLEAN)
+			? ibFieldViewKind::CheckBoxField : ibFieldViewKind::InputField;
+	};
 
 	// The predefined Code / Description of a hierarchy reference are real attributes with ids.
 	if (auto* h = dynamic_cast<const ibValueMetaObjectRecordDataHierarchyMutableRef*>(owner)) {
-		if (auto* code = h->GetDataCode())        attrs[wxT("Code")]        = code->GetMetaID();
-		if (auto* desc = h->GetDataDescription()) attrs[wxT("Description")] = desc->GetMetaID();
+		if (auto* code = h->GetDataCode())        { attrs[wxT("Code")]        = code->GetMetaID(); autoKinds[wxT("Code")]        = kindOf(code); }
+		if (auto* desc = h->GetDataDescription()) { attrs[wxT("Description")] = desc->GetMetaID(); autoKinds[wxT("Description")] = kindOf(desc); }
 	}
 	for (unsigned int i = 0; i < owner->GetChildCount(); ++i) {
 		ibValueMetaObject* child = owner->GetChild(i);
@@ -432,12 +440,15 @@ wxMemoryBuffer ibValueMetaObjectManagedForm::CompileElementsToFormData() const
 			continue;
 		if (auto* a = dynamic_cast<ibValueMetaObjectAttribute*>(child)) {
 			attrs[a->GetName()] = a->GetMetaID();
+			autoKinds[a->GetName()] = kindOf(a);
 		}
 		else if (child->GetClassType() == g_metaTableRefCLSID) {
 			std::map<wxString, ibMetaID> cols;
 			for (unsigned int j = 0; j < child->GetChildCount(); ++j)
-				if (auto* col = dynamic_cast<ibValueMetaObjectAttribute*>(child->GetChild(j)))
+				if (auto* col = dynamic_cast<ibValueMetaObjectAttribute*>(child->GetChild(j))) {
 					cols[col->GetName()] = col->GetMetaID();
+					autoKinds[child->GetName() + wxT(".") + col->GetName()] = kindOf(col);
+				}
 			tabs[child->GetName()] = { child->GetMetaID(), cols };
 		}
 	}
@@ -484,8 +495,14 @@ wxMemoryBuffer ibValueMetaObjectManagedForm::CompileElementsToFormData() const
 	ibTypeDescriptionMemory::WriteNode(typeVal, td, metaData);
 	mainAttr.SetProperty(wxT("Type"), typeVal);
 
-	// Emit the control tree (children start at id 2 inside the compiler).
-	ibManagedFormCompiler(resolve).Compile(*root, m_elementRoot);
+	// Emit the control tree (children start at id 2 inside the compiler). Auto
+	// fields pick their control from the bound attribute's type.
+	ibManagedFormCompiler compiler(resolve);
+	compiler.SetAutoKindResolver([&autoKinds](const wxString& dataPath) -> ibFieldViewKind {
+		auto it = autoKinds.find(dataPath);
+		return it == autoKinds.end() ? ibFieldViewKind::InputField : it->second;
+	});
+	compiler.Compile(*root, m_elementRoot);
 
 	return ibValueMetaObjectFormBase::FormNodeToBlob(ibDataValue::Child(root));
 }

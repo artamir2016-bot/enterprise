@@ -1197,6 +1197,50 @@ TEST(ConfigSpec, ManagedForm_CompilesElementTreeToFormData) {
 	EXPECT_FALSE(mf->GetFormData().IsEmpty());
 }
 
+// ViewKind Auto resolves from the bound attribute's TYPE (1c): a boolean field
+// becomes a checkbox, a numeric field a text input — the live type-driven rule.
+TEST(ConfigSpec, ManagedForm_AutoViewKindFollowsAttributeType) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "MFAutoCfg",
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [
+	        { "name": "Price",  "type": "Number" },
+	        { "name": "Active", "type": "Boolean" }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectCatalog* owner = FindMeta<ibValueMetaObjectCatalog>(cfg.GetCommonMetaObject(), wxT("Products"));
+	ASSERT_NE(owner, nullptr);
+	auto* mf = dynamic_cast<ibValueMetaObjectManagedForm*>(
+		cfg.CreateMetaObject(g_metaManagedFormCLSID, owner, /*runObject*/ false, wxT("MAuto")));
+	ASSERT_NE(mf, nullptr);
+
+	// BOTH fields Auto — the type decides the control.
+	ibManagedElement root(ibManagedNodeKind::Group);
+	ibManagedElement price(ibManagedNodeKind::Field, wxT("Price"));   price.dataPath = wxT("Price");
+	ibManagedElement active(ibManagedNodeKind::Field, wxT("Active")); active.dataPath = wxT("Active");
+	root.children = { price, active };   // both ViewKind == Auto (default)
+	mf->SetElementTree(root, {});
+
+	const wxMemoryBuffer blob = mf->CompileElementsToFormData();
+	ASSERT_GT(blob.GetDataLen(), 0u);
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(blob);
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+	std::vector<ibClassID> clsids;
+	CollectClsids(*rootVal.AsChild(), clsids);
+
+	// The boolean Auto field -> exactly one checkbox; the numeric Auto field -> a text input.
+	EXPECT_EQ(1, std::count(clsids.begin(), clsids.end(), control_to_clsid("CT_CHKB")))
+		<< "the boolean Auto field resolves to a checkbox";
+	EXPECT_TRUE(std::find(clsids.begin(), clsids.end(), control_to_clsid("CT_TXTC")) != clsids.end())
+		<< "the numeric Auto field resolves to a text input";
+}
+
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

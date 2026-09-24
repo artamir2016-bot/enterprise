@@ -84,6 +84,13 @@ auto-built form does. Import maps 1C ВидПоля onto the explicit kinds; any
 to `Auto`. This is the enum an imported managed form finally *honours* — today the importer
 rebuilds fields from the source type and drops 1C's ВидПоля entirely.
 
+**Auto is live (1c, landed 2026-09-24).** The compiler takes an `AutoKindResolver` (dataPath ->
+concrete kind); the metatype builds it from the owner's attribute types, mirroring the auto-form
+rule in `formObject.cpp` — a single **boolean** draws as a checkbox, everything else as an input
+field. An explicit ViewKind is honoured as-is. (The reference **select button** on an input, and a
+real **picture** control for `PictureField` / picture decorations, are still to come — a reference
+Auto field currently draws as a plain input and a picture as a labelled placeholder.)
+
 ---
 
 ## 4. The compiler (element tree → control-tree blob)
@@ -140,8 +147,10 @@ AOT bytecode cache relates to source).
    asserts the node shape (clsids, Source hops, nesting) matches the metadataConfigSpec target.
 2. **Runtime open.** Wire `GetObjectForm` so a managed form actually opens as a live `ibValueForm`
    on desktop; verify a hand-authored managed catalog form renders.
-3. **ViewKind full + Table/Button/Pages/Decoration.** The rest of §2/§3; each verified by a
-   compile-shape test.
+3. **ViewKind Auto (live) — LANDED 1c (2026-09-24).** The compiler's `AutoKindResolver` +
+   the metatype building it from owner attribute types (boolean -> checkbox, else input). Table /
+   Button / Pages / Decoration already emit (§2). Still open: the reference select button and a
+   real picture control.
 4. **Import.** Map 1C managed-form XML (`onec_to_spec.py` already reads the ChildItems tree) onto
    the element model, honouring ВидПоля — a managed form imports to a ManagedForm metaobject
    instead of being flattened into a synthesised control tree.

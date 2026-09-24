@@ -29,7 +29,15 @@ public:
 	// means "unbound" — the control is emitted without a Source.
 	using Resolver = std::function<std::vector<ibSourceId>(const wxString& dataPath)>;
 
+	// For a Field whose ViewKind is Auto, decide the concrete kind from the bound
+	// value's TYPE (the live type-driven rule the auto-form uses: boolean -> a
+	// checkbox, a reference -> an input with a select button, else a plain input).
+	// Optional: without it, Auto falls back to a plain input.
+	using AutoKindResolver = std::function<ibFieldViewKind(const wxString& dataPath)>;
+
 	explicit ibManagedFormCompiler(Resolver resolve) : m_resolve(std::move(resolve)) {}
+
+	void SetAutoKindResolver(AutoKindResolver r) { m_autoKind = std::move(r); }
 
 	// Compile the element tree into `formRoot` (the form's control-tree root
 	// node). Children of `root` become the form's top-level controls. Returns the
@@ -55,7 +63,8 @@ private:
 	// the type-driven Auto rule needs live metadata and lands with runtime open).
 	static ibClassID ClsidForViewKind(ibFieldViewKind viewKind);
 
-	Resolver m_resolve;
+	Resolver         m_resolve;
+	AutoKindResolver m_autoKind;
 	int      m_nextId = 2;   // 1 is the form root's own id; controls start at 2
 	int      m_count  = 0;
 };

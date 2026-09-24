@@ -194,8 +194,13 @@ void ibManagedFormCompiler::EmitField(ibDataNode& parent, const ibManagedElement
 	(void)tableId;
 	ibDataNode* host = &parent;
 	if (sizerable) host = &AddSizerItem(parent, /*expand*/ false);
+	// Auto resolves against the bound value's type (checkbox for a boolean, etc.);
+	// an explicit ViewKind is honoured as-is.
+	ibFieldViewKind kind = el.viewKind;
+	if (kind == ibFieldViewKind::Auto && m_autoKind)
+		kind = m_autoKind(el.dataPath);
 	const int id = m_nextId++;
-	ibDataNode& node = host->AddChild(ClsidForViewKind(el.viewKind), id);
+	ibDataNode& node = host->AddChild(ClsidForViewKind(kind), id);
 	node.SetValue(wxT("ControlId"), (s32)id);
 	node.SetValue(wxT("Name"), el.name);
 	if (!el.title.IsEmpty())
