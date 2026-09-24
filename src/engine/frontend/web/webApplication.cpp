@@ -304,6 +304,29 @@ bool ibWebApplication::Dispatch(int controlId, const wxString& kind, const wxStr
 	return true;
 }
 
+bool ibWebApplication::DispatchFormCommand(int commandId)
+{
+	ibVisualHostClient* host = GetActiveHost();
+	if (host == nullptr)
+		return false;
+	ibValueForm* form = host->GetValueForm();
+	if (form == nullptr)
+		return false;
+
+	// The form is its own srcForm — CallAsAction routes form-chrome ids
+	// (Close/Update/…) to the form's own verbs and everything else to the
+	// command provider (an object source runs its WriteObject etc.).
+	form->CallAsAction(commandId, form);
+
+	// A command may have closed the form (Save-and-close) — drain the queued
+	// tab closes now that the handler chain has unwound (mirror of Dispatch).
+	if (m_frame != nullptr)
+		m_frame->DrainPendingCloses();
+
+	MarkDirty();
+	return true;
+}
+
 void ibWebApplication::MarkDirty()
 {
 	m_seq.fetch_add(1, std::memory_order_acq_rel);

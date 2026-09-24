@@ -36,6 +36,43 @@ void ibVisualHostClient::SetCaption(const wxString& strCaption)
 		tab->SetTitle(strCaption);
 }
 
+// Control tree (base) + the form's command bar as a JSON "commands" array.
+// The browser has no toolbar layer, so the form's standard commands (Save /
+// Close / Create / …) travel with the form JSON. Command ids live in their
+// own bands (object 1..27, form chrome 10000..10003, tablebox 20000..20004)
+// distinct from control ids — the client posts them to /form-action/<id>,
+// which routes to ibValueForm::CallAsAction (NOT the per-control dispatch).
+nlohmann::json ibVisualHostClient::ToJSON() const
+{
+	nlohmann::json node = ibVisualHost::ToJSON();
+
+	if (m_valueForm != nullptr) {
+		auto commands = nlohmann::json::array();
+		// GetStandardCommands rebuilds the set (provider commands + form chrome).
+		auto set = m_valueForm->GetStandardCommands(m_valueForm->GetTypeForm());
+		for (unsigned int i = 0; i < set.GetCount(); ++i) {
+			const ibActionID id = set.GetID(i);
+			if (id == wxNOT_FOUND) {           // separator
+				commands.push_back({ { "separator", true } });
+				continue;
+			}
+			// Only commands the form marks for its bar (createInForm) — skips
+			// the "available-only" band, matching desktop's toolbar AutoFill.
+			if (!set.IsCreateInForm(id))
+				continue;
+			nlohmann::json cmd = {
+				{ "id",       static_cast<int>(id) },
+				{ "caption",  std::string(set.GetCaptionByID(id).utf8_str()) },
+				{ "modifies", set.GetModifiesDataByID(id) },
+			};
+			commands.push_back(std::move(cmd));
+		}
+		node["commands"] = std::move(commands);
+	}
+
+	return node;
+}
+
 #else  // !OES_USE_WEB
 // Desktop-only implementation: the facade panel that carries the form's chrome, with the
 // scrolling window holding its controls inside; tab, wxDocView Doc/View machinery.

@@ -256,6 +256,7 @@ public:
 	// Defined after OpenFormInSession below — needs the helper in scope.
 	std::string OpenForm(const std::string& id, int metaID);
 	std::string FireAction(const std::string& id, int controlID);
+	std::string FireFormCommand(const std::string& id, int commandID);
 	std::string FireKind(const std::string& id, int controlID, const std::string& kind, const std::string& value = std::string());
 	std::string FireTextChange(const std::string& id, int controlID, const std::string& newValue);
 	std::string FireToggle(const std::string& id, int controlID, bool checked);
@@ -1285,6 +1286,50 @@ WFRONTEND_API std::string wfrontendFireAction(const std::string& sessionId, int 
 {
 	Sessions().Touch(sessionId);
 	return Sessions().FireAction(sessionId, controlID);
+}
+
+namespace {
+std::string FireFormCommandInSession(ibWebSession* session, int commandID)
+{
+	if (session == nullptr || !session->IsAuthenticated()) return "{}";
+	ibWebApplication* app = session->App();
+	if (app == nullptr) return "{}";
+
+	return app->RunOnWorker([app, commandID]() -> std::string {
+		try {
+			if (!app->DispatchFormCommand(commandID))
+				return "{}";
+		}
+		catch (const ibBackendException& e) {
+			return ExceptionToJson(e);
+		}
+		catch (...) {
+			return R"({"error":"unknown exception"})";
+		}
+		ibVisualHostClient* host = app->GetActiveHost();
+		return host != nullptr ? host->ToJSON().dump(2) : std::string("{}");
+	}).get();
+}
+} // namespace
+
+std::string SessionManager::FireFormCommand(const std::string& id, int commandID)
+{
+	std::shared_ptr<ibWebSession> keeper;
+	ibWebSession* s = nullptr;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_sessions.find(id);
+		if (it == m_sessions.end()) return "{}";
+		keeper = it->second;
+		s = keeper.get();
+	}
+	return FireFormCommandInSession(s, commandID);
+}
+
+WFRONTEND_API std::string wfrontendFireFormCommand(const std::string& sessionId, int commandID)
+{
+	Sessions().Touch(sessionId);
+	return Sessions().FireFormCommand(sessionId, commandID);
 }
 
 namespace {

@@ -233,6 +233,14 @@ WFRONTEND_API std::string wfrontendCtorsJSON();
 WFRONTEND_API std::string wfrontendFireAction(const std::string& sessionId,
 	int controlID);
 
+// Trigger a FORM-level command (the form's command bar: Save / Close /
+// Create / …). commandID is a "commands" entry id from the form JSON. Unlike
+// wfrontendFireAction (per-control), this routes through
+// ibValueForm::CallAsAction. Returns the rebuilt form JSON, "{}" on invalid
+// session / no active form.
+WFRONTEND_API std::string wfrontendFireFormCommand(const std::string& sessionId,
+	int commandID);
+
 // Generic kind-aware dispatcher. Routes the `kind` string into
 // ibWebWindow::HandleRequest on the target control. Textctrl side
 // buttons use "buttonSelect"/"buttonOpen"/"buttonClear"; callers can

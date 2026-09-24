@@ -569,6 +569,18 @@ int main(int argc, char** argv)
 			"application/json; charset=utf-8");
 	});
 
+	// POST /form-action/<commandID>: fire a FORM-level command (the form's
+	// command bar — Save / Close / Create / …). commandID is a "commands"
+	// entry id from the form JSON; routed via ibValueForm::CallAsAction (not
+	// the per-control dispatch). Returns the updated form JSON.
+	svr.Post(prefix + R"(/form-action/(\d+))", [](const httplib::Request& req, httplib::Response& res) {
+		std::string id;
+		if (!RequireSessionId(req, res, id)) return;
+		const int commandID = std::atoi(req.matches[1].str().c_str());
+		res.set_content(wfrontendFireFormCommand(id, commandID),
+			"application/json; charset=utf-8");
+	});
+
 	// POST /fire/<controlID>/<kind> — generic kind-aware dispatch.
 	// kind is routed into ibWebWindow::HandleRequest on the target
 	// control (e.g. "buttonSelect"/"buttonOpen"/"buttonClear" for a

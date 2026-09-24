@@ -53,6 +53,16 @@ public:
 	// on desktop the pointer is always set, the && just short-circuits.
 	virtual bool         IsShownHost() const { return m_valueForm && m_valueForm->IsShown(); }
 	virtual ibValueForm* GetValueForm() const { return m_valueForm; }
+
+#ifdef OES_USE_WEB
+	// Web: emit the control tree (base ibWebWindow::ToJSON) PLUS the open
+	// form's command bar as a "commands" array — the browser has no toolbar
+	// layer, so the form's standard commands (Save / Close / Create / …)
+	// ride alongside the controls. Each entry: {id, caption, modifies}.
+	// A separator (action id == wxNOT_FOUND) becomes {separator:true}.
+	// Desktop builds the toolbar through wx; this override is web-only.
+	virtual nlohmann::json ToJSON() const override;
+#endif
 	virtual void         SetValueForm(ibValueForm* valueForm) { m_valueForm = valueForm; }
 
 	ibFormVisualDocument* GetDocument() const { return m_document; }

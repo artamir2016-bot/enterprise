@@ -104,6 +104,13 @@ public:
 	// kept so existing HTTP routes (/action, /change, /toggle) stay
 	// wired without the wfrontend shims knowing the new unified
 	// endpoint exists. Callers choose whichever fits their body shape.
+	// Form-level command dispatch — the form's command bar (Save / Close /
+	// Create / …). Its ids live in their own bands (object 1..27, form chrome
+	// 10000.., tablebox 20000..) distinct from control ids, so it routes
+	// through ibValueForm::CallAsAction directly instead of the per-control
+	// HandleRequest path. Returns false if there's no active form.
+	bool DispatchFormCommand(int commandId);
+
 	bool DispatchControlAction(int controlId)                      { return Dispatch(controlId, wxT("click"), wxString());                      }
 	bool DispatchTextChange(int controlId, const wxString& value)  { return Dispatch(controlId, wxT("text"),  value);                           }
 	bool DispatchToggle(int controlId, bool checked)               { return Dispatch(controlId, wxT("toggle"), checked ? wxT("1") : wxT("0")); }

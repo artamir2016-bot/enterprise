@@ -2109,11 +2109,45 @@ function applyLayout(el, layout){
   else if(f & WX_ALIGN_RIGHT || f & WX_ALIGN_BOTTOM) el.style.alignSelf='flex-end';
 }
 
+// Form command bar. node.commands = [{id,caption,modifies} | {separator:true}].
+// Each button POSTs /form-action/<id>; the server routes it to the form's
+// CallAsAction (Save writes the object, Close closes the tab, etc.) and
+// returns the rebuilt form JSON, which we swap into the active host.
+function renderCommandBar(commands){
+  const bar=document.createElement('div');
+  bar.className='form-commandbar';
+  bar.style.cssText='display:flex;gap:4px;flex-wrap:wrap;padding:4px 6px;'
+    +'border-bottom:1px solid #cfcdbf;background:#f2f0e6;margin-bottom:4px';
+  for(const c of commands){
+    if(c.separator){
+      const sep=document.createElement('span');
+      sep.style.cssText='width:1px;background:#cfcdbf;margin:2px 4px';
+      bar.appendChild(sep); continue;
+    }
+    const b=document.createElement('button');
+    b.className='ctrl';b.textContent=c.caption||('#'+c.id);
+    b.onclick=async()=>{
+      const r=await netFetch(API+'/form-action/'+c.id,{method:'POST',credentials:'same-origin'});
+      if(r.ok){
+        const tree=await r.json();
+        if(tree&&!tree.error){ main.innerHTML=''; main.appendChild(render(tree)); refreshTabs(); }
+        else OES.handleBackendError(tree);
+      }
+    };
+    bar.appendChild(b);
+  }
+  return bar;
+}
+
 function render(node){
   if(!node||typeof node!=='object') return document.createTextNode('');
   const ctrl=renderers[node.type]||fallback;
   const el=ctrl.render(node);
   ctrl.applyCommon(el,node);
+  // Form command bar rides at the top of the host node.
+  if(Array.isArray(node.commands) && node.commands.length){
+    el.appendChild(renderCommandBar(node.commands));
+  }
   for(const kid of (node.children||[])){
     const childEl=render(kid);
     applyLayout(childEl, kid.layout);
