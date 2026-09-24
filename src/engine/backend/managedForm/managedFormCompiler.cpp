@@ -48,6 +48,7 @@ ibClassID ibManagedFormCompiler::ClsidForViewKind(ibFieldViewKind viewKind) {
 	case ibFieldViewKind::ChoiceField:   return kCtrlChoice;
 	case ibFieldViewKind::ComboBoxField: return kCtrlCombo;
 	case ibFieldViewKind::PictureField:  return kCtrlStatic;  // picture control lands with §3-full; label placeholder
+	case ibFieldViewKind::ReferenceField: return kCtrlText;  // text box + a select button (set in EmitField)
 	case ibFieldViewKind::InputField:    return kCtrlText;
 	case ibFieldViewKind::Auto:
 	default:                             return kCtrlText;    // the type-driven Auto rule needs live metadata (runtime-open increment)
@@ -208,5 +209,16 @@ void ibManagedFormCompiler::EmitField(ibDataNode& parent, const ibManagedElement
 	const std::vector<ibSourceId> hops = m_resolve ? m_resolve(el.dataPath) : std::vector<ibSourceId>();
 	if (!hops.empty())
 		node.SetProperty(wxT("Source"), MakeSource(hops));
+	// Text-box side buttons: a reference input carries a select button (open the
+	// value's choice), a plain input carries none. The textctrl property defaults
+	// to TRUE, so a primitive input MUST turn it off explicitly.
+	if (kind == ibFieldViewKind::ReferenceField) {
+		node.SetProperty(wxT("ButtonSelect"), ibDataValue::Bool(true));
+		node.SetProperty(wxT("ButtonClear"),  ibDataValue::Bool(true));
+	}
+	else if (kind == ibFieldViewKind::InputField) {
+		node.SetProperty(wxT("ButtonSelect"), ibDataValue::Bool(false));
+		node.SetProperty(wxT("ButtonClear"),  ibDataValue::Bool(false));
+	}
 	m_count++;
 }

@@ -680,6 +680,7 @@ ibFieldViewKind ParseViewKind(const wxString& s) {
 	if (v == wxT("picture")  || v == wxT("picturefield"))  return ibFieldViewKind::PictureField;
 	if (v == wxT("choice")   || v == wxT("choicefield"))   return ibFieldViewKind::ChoiceField;
 	if (v == wxT("combobox") || v == wxT("comboboxfield")) return ibFieldViewKind::ComboBoxField;
+	if (v == wxT("reference")|| v == wxT("referencefield"))return ibFieldViewKind::ReferenceField;
 	return ibFieldViewKind::Auto;
 }
 

@@ -1307,6 +1307,65 @@ TEST(ConfigSpec, ManagedForm_ImportedAsManagedMetatype) {
 	EXPECT_FALSE(mf2->GetElementRoot().children.empty()) << "the element tree survives a config round-trip";
 }
 
+// A reference Auto field draws as an input WITH a select button; a primitive
+// (numeric) Auto field as a plain input (no select button). Both are textctrls,
+// distinguished by their ButtonSelect property.
+TEST(ConfigSpec, ManagedForm_ReferenceFieldGetsSelectButton) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "MFRefCfg",
+	  "catalogs": [
+	    { "name": "Owner" },
+	    { "name": "Products",
+	      "attributes": [
+	        { "name": "Price", "type": "Number" },
+	        { "name": "Boss",  "type": "ref", "refs": ["Catalog.Owner"] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	ibValueMetaObjectCatalog* owner = FindMeta<ibValueMetaObjectCatalog>(cfg.GetCommonMetaObject(), wxT("Products"));
+	ASSERT_NE(owner, nullptr);
+	auto* mf = dynamic_cast<ibValueMetaObjectManagedForm*>(
+		cfg.CreateMetaObject(g_metaManagedFormCLSID, owner, /*runObject*/ false, wxT("MRef")));
+	ASSERT_NE(mf, nullptr);
+
+	ibManagedElement root(ibManagedNodeKind::Group);
+	ibManagedElement price(ibManagedNodeKind::Field, wxT("PriceField")); price.dataPath = wxT("Price");
+	ibManagedElement boss(ibManagedNodeKind::Field, wxT("BossField"));   boss.dataPath = wxT("Boss");
+	root.children = { price, boss };   // both Auto
+	mf->SetElementTree(root, {});
+
+	const wxMemoryBuffer blob = mf->CompileElementsToFormData();
+	ASSERT_GT(blob.GetDataLen(), 0u);
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(blob);
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+
+	// Find a textctrl node by its Name and read its ButtonSelect flag.
+	std::function<const ibDataNode*(const ibDataNode&, const wxString&)> findByName =
+		[&](const ibDataNode& n, const wxString& nm) -> const ibDataNode* {
+			for (const ibDataNode& ch : n.Children()) {
+				if (ch.GetClsid() == control_to_clsid("CT_TXTC") &&
+				    ch.GetValue<wxString>(wxT("Name")) == nm) return &ch;
+				if (const ibDataNode* r = findByName(ch, nm)) return r;
+			}
+			return nullptr;
+		};
+	auto selectButton = [](const ibDataNode* ctrl) -> bool {
+		const ibDataValue v = ctrl->GetProperty(wxT("ButtonSelect"));
+		return v.Kind() == ibDataKind::Bool && v.AsBool();
+	};
+
+	const ibDataNode* priceCtrl = findByName(*rootVal.AsChild(), wxT("PriceField"));
+	const ibDataNode* bossCtrl  = findByName(*rootVal.AsChild(), wxT("BossField"));
+	ASSERT_NE(priceCtrl, nullptr);
+	ASSERT_NE(bossCtrl, nullptr);
+	EXPECT_FALSE(selectButton(priceCtrl)) << "a numeric field has no select button";
+	EXPECT_TRUE(selectButton(bossCtrl))   << "a reference field carries a select button";
+}
+
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

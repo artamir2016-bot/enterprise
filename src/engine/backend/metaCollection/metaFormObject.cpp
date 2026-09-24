@@ -423,10 +423,16 @@ wxMemoryBuffer ibValueMetaObjectManagedForm::CompileElementsToFormData() const
 	std::map<wxString, ibFieldViewKind> autoKinds;    // dataPath -> Auto-resolved view kind
 
 	// The live type-driven rule (mirrors the auto-form in formObject.cpp): a single
-	// boolean draws as a checkbox; everything else as an input field.
+	// boolean draws as a checkbox; a primitive (number / string / date) as a plain
+	// input; anything else (a reference / a composite type) as an input WITH a
+	// select button.
 	auto kindOf = [](ibValueMetaObjectAttributeBase* a) -> ibFieldViewKind {
-		return a->ContainType(ibValueTypes::TYPE_BOOLEAN)
-			? ibFieldViewKind::CheckBoxField : ibFieldViewKind::InputField;
+		if (a->ContainType(ibValueTypes::TYPE_BOOLEAN))
+			return ibFieldViewKind::CheckBoxField;
+		const bool primitive = a->ContainType(ibValueTypes::TYPE_NUMBER)
+			|| a->ContainType(ibValueTypes::TYPE_STRING)
+			|| a->ContainType(ibValueTypes::TYPE_DATE);
+		return primitive ? ibFieldViewKind::InputField : ibFieldViewKind::ReferenceField;
 	};
 
 	// The predefined Code / Description of a hierarchy reference are real attributes with ids.

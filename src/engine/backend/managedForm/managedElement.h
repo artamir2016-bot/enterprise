@@ -40,6 +40,7 @@ enum class ibFieldViewKind {
 	PictureField,
 	ChoiceField,    // drop-down list (CT_CHOI)
 	ComboBoxField,  // editable drop-down (CT_CMBB)
+	ReferenceField, // an input for a reference value — text box WITH a select button
 };
 
 // A Group's child stacking axis.
