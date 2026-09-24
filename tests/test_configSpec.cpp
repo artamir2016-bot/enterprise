@@ -1241,6 +1241,72 @@ TEST(ConfigSpec, ManagedForm_AutoViewKindFollowsAttributeType) {
 		<< "the numeric Auto field resolves to a text input";
 }
 
+// Import (increment 2): a form marked "managed": true is created AS a ManagedForm
+// metaobject, its "controls" tree stored as the declarative element tree and
+// compiled to FormData. The SAME controls JSON the importer already emits maps
+// straight onto the element model (group/field/checkbox/table/column).
+TEST(ConfigSpec, ManagedForm_ImportedAsManagedMetatype) {
+	ibMetaDataConfigurationFile cfg;
+	wxString err;
+	const char* spec = R"JSON({
+	  "name": "MFImportCfg",
+	  "catalogs": [
+	    { "name": "Products",
+	      "attributes": [
+	        { "name": "Price",  "type": "Number" },
+	        { "name": "Active", "type": "Boolean" }
+	      ],
+	      "tabularSections": [
+	        { "name": "Lines", "attributes": [ { "name": "Qty", "type": "Number" } ] }
+	      ],
+	      "forms": [
+	        { "name": "MItemForm", "type": "object", "managed": true, "default": true,
+	          "module": "Procedure OnOpen() EndProcedure",
+	          "controls": [
+	            { "kind": "group", "name": "Head", "title": "ru = 'Head';", "children": [
+	              { "kind": "field",    "name": "PriceField", "attr": "Price" },
+	              { "kind": "checkbox", "name": "ActiveFlag", "attr": "Active" }
+	            ] },
+	            { "kind": "table", "name": "LinesTable", "attr": "Lines", "children": [
+	              { "kind": "column", "name": "QtyCol", "field": "Qty" }
+	            ] }
+	          ] }
+	      ] }
+	  ]
+	})JSON";
+	ASSERT_TRUE(ibBuildConfigFromJsonSpec(wxString::FromUTF8(spec), cfg, err)) << err.utf8_str();
+
+	// The form is a ManagedForm metaobject, not an ordinary one.
+	ibValueMetaObjectManagedForm* mf =
+		FindMeta<ibValueMetaObjectManagedForm>(cfg.GetCommonMetaObject(), wxT("MItemForm"));
+	ASSERT_NE(mf, nullptr) << "the managed form is created as ibValueMetaObjectManagedForm";
+	EXPECT_FALSE(mf->GetModuleText().IsEmpty());
+
+	// It carries a compiled FormData that decodes to the control tree.
+	const wxMemoryBuffer blob = mf->GetFormData();
+	ASSERT_GT(blob.GetDataLen(), 0u);
+	const ibDataValue rootVal = ibValueMetaObjectFormBase::FormBlobToNode(blob);
+	ASSERT_EQ(rootVal.Kind(), ibDataKind::Child);
+	std::vector<ibClassID> clsids;
+	CollectClsids(*rootVal.AsChild(), clsids);
+	auto has = [&](const char* k) {
+		return std::find(clsids.begin(), clsids.end(), control_to_clsid(k)) != clsids.end();
+	};
+	EXPECT_TRUE(has("CT_SSZER")) << "titled Head group";
+	EXPECT_TRUE(has("CT_TXTC"))  << "Price field";
+	EXPECT_TRUE(has("CT_CHKB"))  << "Active checkbox";
+	EXPECT_TRUE(has("CT_TABL"))  << "Lines table";
+	EXPECT_TRUE(has("CT_TBLC"))  << "Qty column";
+
+	// The element tree is the stored source of truth (round-trips through the config).
+	wxMemoryBuffer b1; ASSERT_TRUE(cfg.SaveConfigToBuffer(b1));
+	ibMetaDataConfigurationFile back; ASSERT_TRUE(back.LoadConfigFromBuffer(b1));
+	ibValueMetaObjectManagedForm* mf2 =
+		FindMeta<ibValueMetaObjectManagedForm>(back.GetCommonMetaObject(), wxT("MItemForm"));
+	ASSERT_NE(mf2, nullptr);
+	EXPECT_FALSE(mf2->GetElementRoot().children.empty()) << "the element tree survives a config round-trip";
+}
+
 TEST(ConfigSpec, BuildFromJson_RejectsMalformedJson) {
 	ibMetaDataConfigurationFile cfg;
 	wxString err;

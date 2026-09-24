@@ -20,7 +20,8 @@
 #include "backend/metaCollection/partial/chartOfAccounts.h"            // ibValueMetaObjectChartOfAccounts (chart-of-characteristic-types binding)
 #include "backend/metaCollection/partial/accountingRegister.h"         // ibValueMetaObjectAccountingRegister (chart-of-accounts binding)
 #include "backend/propertyManager/property/propertyChartOfCharacteristicTypes.h" // ibPropertyChartOfCharacteristicTypes::SetValue
-#include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm / ibValueMetaObjectCommonForm
+#include "backend/metaCollection/metaFormObject.h"        // ibValueMetaObjectForm / ibValueMetaObjectCommonForm / ManagedForm
+#include "backend/managedForm/managedElement.h"            // ibManagedElement (managed-form import)
 #include "backend/metaCollection/metaSessionParameterObject.h"  // ibValueMetaObjectSessionParameter
 #include "backend/metaCollection/metaScheduledJobObject.h"      // ibValueMetaObjectScheduledJob
 #include "backend/serialize/dataBuilder.h"                 // ibDataNode / ibDataValue (form control tree)
@@ -663,6 +664,98 @@ wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const Attr
 	return ibValueMetaObjectFormBase::FormNodeToBlob(ibDataValue::Child(root));
 }
 
+// --- Managed form import: the SAME "controls" JSON the importer emits maps
+// straight onto the declarative element tree (docs/managed-form.md). A managed
+// form is stored AS its element tree (source of truth) rather than a synthesised
+// control blob; the metatype compiles it to FormData on open. -------------------
+
+// 1C ВидПоля / an explicit OES view kind name -> ibFieldViewKind. Unknown -> Auto
+// (the type-driven rule decides at compile time).
+ibFieldViewKind ParseViewKind(const wxString& s) {
+	const wxString v = s.Lower();
+	if (v == wxT("input")    || v == wxT("inputfield"))    return ibFieldViewKind::InputField;
+	if (v == wxT("label")    || v == wxT("labelfield"))    return ibFieldViewKind::LabelField;
+	if (v == wxT("checkbox") || v == wxT("checkboxfield")) return ibFieldViewKind::CheckBoxField;
+	if (v == wxT("radio")    || v == wxT("radiofield"))    return ibFieldViewKind::RadioField;
+	if (v == wxT("picture")  || v == wxT("picturefield"))  return ibFieldViewKind::PictureField;
+	if (v == wxT("choice")   || v == wxT("choicefield"))   return ibFieldViewKind::ChoiceField;
+	if (v == wxT("combobox") || v == wxT("comboboxfield")) return ibFieldViewKind::ComboBoxField;
+	return ibFieldViewKind::Auto;
+}
+
+// Convert one control-JSON node into a managed element. `tableAttr` is the
+// enclosing table's data path (empty outside a table), so a column's binding is
+// the "Section.Column" path the compiler's resolver expects.
+ibManagedElement BuildManagedElement(const json& c, const wxString& tableAttr) {
+	const wxString kind = JStr(c, "kind", wxT("field")).Lower();
+	const wxString name = JStr(c, "name");
+	ibManagedElement el;
+	el.name  = name;
+	el.title = JStr(c, "title");
+
+	auto recurseChildren = [&](ibManagedElement& into, const wxString& childTableAttr) {
+		auto ch = c.find("children");
+		if (ch != c.end() && ch->is_array())
+			for (const json& sub : *ch)
+				into.children.push_back(BuildManagedElement(sub, childTableAttr));
+	};
+
+	if (kind == wxT("group") || kind == wxT("box")) {
+		el.kind = ibManagedNodeKind::Group;
+		el.layout = (JStr(c, "orient").Lower() == wxT("horizontal"))
+			? ibGroupLayout::Horizontal : ibGroupLayout::Vertical;
+		el.representation = el.title.IsEmpty() ? ibGroupRepresentation::Plain
+		                                       : ibGroupRepresentation::TitledBox;
+		recurseChildren(el, wxEmptyString);
+	}
+	else if (kind == wxT("pages") || kind == wxT("notebook")) {
+		el.kind = ibManagedNodeKind::Group;
+		el.representation = ibGroupRepresentation::Pages;
+		recurseChildren(el, wxEmptyString);
+	}
+	else if (kind == wxT("page")) {
+		el.kind = ibManagedNodeKind::Page;
+		recurseChildren(el, wxEmptyString);
+	}
+	else if (kind == wxT("table")) {
+		el.kind = ibManagedNodeKind::Table;
+		el.dataPath = JStr(c, "attr");
+		recurseChildren(el, el.dataPath);   // columns bind through this section
+	}
+	else if (kind == wxT("column")) {
+		el.kind = ibManagedNodeKind::Column;
+		const wxString col = JStr(c, "field", JStr(c, "attr"));
+		el.dataPath = tableAttr.IsEmpty() ? col : (tableAttr + wxT(".") + col);
+		el.viewKind = ParseViewKind(JStr(c, "viewKind"));
+	}
+	else if (kind == wxT("button")) {
+		el.kind = ibManagedNodeKind::Button;
+		if (el.title.IsEmpty()) el.title = JStr(c, "caption");
+	}
+	else if (kind == wxT("label")) {
+		el.kind = ibManagedNodeKind::Decoration;
+	}
+	else {   // field / checkbox / radio / html — a bound field, view kind by name or the JSON kind
+		el.kind = ibManagedNodeKind::Field;
+		el.dataPath = JStr(c, "attr");
+		if      (kind == wxT("checkbox")) el.viewKind = ibFieldViewKind::CheckBoxField;
+		else if (kind == wxT("radio"))    el.viewKind = ibFieldViewKind::RadioField;
+		else if (kind == wxT("html"))     el.viewKind = ibFieldViewKind::LabelField;
+		else                              el.viewKind = ParseViewKind(JStr(c, "viewKind"));
+	}
+	return el;
+}
+
+// Build the managed form's root element (a Group) from the form's "controls" array.
+ibManagedElement BuildManagedRoot(const json& f) {
+	ibManagedElement root(ibManagedNodeKind::Group);
+	auto it = f.find("controls");
+	if (it != f.end() && it->is_array())
+		for (const json& c : *it)
+			root.children.push_back(BuildManagedElement(c, wxEmptyString));
+	return root;
+}
+
 // Create form child metaobjects under an owner (catalog/document/register).
 // Form name + module (BSL already translated to VES upstream). When the form JSON
 // carries a "controls" tree (MVP-B), replicate it into the FormData blob so the
@@ -688,7 +781,12 @@ bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
 			err = wxT("form without a 'name'");
 			return false;
 		}
-		ibValueMetaObject* obj = cfg.CreateMetaObject(g_metaFormCLSID, owner, /*runObject*/ false, name);
+		// A 1C managed form is imported AS a managed form — stored as its declarative
+		// element tree (the metatype compiles it to FormData). An ordinary form keeps
+		// the synthesised control-blob path.
+		const bool managed = f.contains("managed") && f["managed"].is_boolean() && f["managed"].get<bool>();
+		ibValueMetaObject* obj = cfg.CreateMetaObject(
+			managed ? g_metaManagedFormCLSID : g_metaFormCLSID, owner, /*runObject*/ false, name);
 		if (obj == nullptr) {
 			err = wxString::Format(wxT("failed to create form '%s'"), name);
 			return false;
@@ -697,10 +795,23 @@ bool AddForms(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* owner,
 			const wxString code = JStr(f, "module");
 			if (!code.IsEmpty())
 				form->SetModuleText(code);
-			const wxMemoryBuffer formData = BuildFormData(f, name, maps,
-				owner->GetMetaID(), refMap, owner->GetMetaData());
-			if (!formData.IsEmpty())
-				form->SetFormData(formData);
+			if (managed) {
+				// Store the element tree, then compile it eagerly (build path is
+				// runObject=false, so OnAfterRun won't fire) so the imported config
+				// carries FormData like the ordinary path.
+				if (auto* mf = dynamic_cast<ibValueMetaObjectManagedForm*>(obj)) {
+					mf->SetElementTree(BuildManagedRoot(f), {});
+					const wxMemoryBuffer blob = mf->CompileElementsToFormData();
+					if (!blob.IsEmpty())
+						mf->SetFormData(blob);
+				}
+			}
+			else {
+				const wxMemoryBuffer formData = BuildFormData(f, name, maps,
+					owner->GetMetaID(), refMap, owner->GetMetaData());
+				if (!formData.IsEmpty())
+					form->SetFormData(formData);
+			}
 
 			// Assign the imported form as the owner's DEFAULT form for its kind.
 			// Without this the catalog/document has no default-form property set, so
