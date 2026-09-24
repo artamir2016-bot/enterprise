@@ -239,7 +239,7 @@ WFRONTEND_API std::string wfrontendFireAction(const std::string& sessionId,
 // pick any kind a control understands. Returns the rebuilt form JSON
 // (same shape as wfrontendFireAction).
 WFRONTEND_API std::string wfrontendFireKind(const std::string& sessionId,
-	int controlID, const std::string& kind);
+	int controlID, const std::string& kind, const std::string& value = std::string());
 
 // Commit a textctrl value edit from the browser. newValue is the raw
 // UTF-8 string the user typed. Server coerces through the backing

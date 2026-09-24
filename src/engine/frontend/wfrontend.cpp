@@ -256,7 +256,7 @@ public:
 	// Defined after OpenFormInSession below — needs the helper in scope.
 	std::string OpenForm(const std::string& id, int metaID);
 	std::string FireAction(const std::string& id, int controlID);
-	std::string FireKind(const std::string& id, int controlID, const std::string& kind);
+	std::string FireKind(const std::string& id, int controlID, const std::string& kind, const std::string& value = std::string());
 	std::string FireTextChange(const std::string& id, int controlID, const std::string& newValue);
 	std::string FireToggle(const std::string& id, int controlID, bool checked);
 	bool        ModalReply(const std::string& id, const std::string& modalId, int result);
@@ -1289,16 +1289,17 @@ WFRONTEND_API std::string wfrontendFireAction(const std::string& sessionId, int 
 
 namespace {
 std::string FireKindInSession(ibWebSession* session, int controlID,
-	const std::string& kind)
+	const std::string& kind, const std::string& value)
 {
 	if (session == nullptr || !session->IsAuthenticated()) return "{}";
 	ibWebApplication* app = session->App();
 	if (app == nullptr) return "{}";
 
-	return app->RunOnWorker([app, controlID, kind]() -> std::string {
+	return app->RunOnWorker([app, controlID, kind, value]() -> std::string {
 		try {
 			const wxString wkind(kind.c_str(), wxConvUTF8);
-			if (!app->Dispatch(controlID, wkind, wxString()))
+			const wxString wvalue(value.c_str(), wxConvUTF8);
+			if (!app->Dispatch(controlID, wkind, wvalue))
 				return "{}";
 		}
 		catch (const ibBackendException& e) {
@@ -1314,7 +1315,7 @@ std::string FireKindInSession(ibWebSession* session, int controlID,
 } // namespace
 
 std::string SessionManager::FireKind(const std::string& id, int controlID,
-	const std::string& kind)
+	const std::string& kind, const std::string& value)
 {
 	std::shared_ptr<ibWebSession> keeper;
 	ibWebSession* s = nullptr;
@@ -1325,14 +1326,14 @@ std::string SessionManager::FireKind(const std::string& id, int controlID,
 		keeper = it->second;
 		s = keeper.get();
 	}
-	return FireKindInSession(s, controlID, kind);
+	return FireKindInSession(s, controlID, kind, value);
 }
 
 WFRONTEND_API std::string wfrontendFireKind(const std::string& sessionId,
-	int controlID, const std::string& kind)
+	int controlID, const std::string& kind, const std::string& value)
 {
 	Sessions().Touch(sessionId);
-	return Sessions().FireKind(sessionId, controlID, kind);
+	return Sessions().FireKind(sessionId, controlID, kind, value);
 }
 
 namespace {

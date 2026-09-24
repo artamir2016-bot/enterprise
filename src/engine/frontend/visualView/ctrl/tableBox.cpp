@@ -418,7 +418,14 @@ wxObject* ibValueModelTableBox::Create(ibFrontendWindow* wxparent, ibVisualHost*
 {
 #ifdef OES_USE_WEB
 	(void)wxparent; (void)visualHost;
-	return new ibWebStubControl(wxT("tablebox"));
+	auto* webTable = new ibWebTableBox(GetControlID());
+	// Row activation (browser double-click) → open the row's object form.
+	webTable->Bind(wxEVT_WEBTABLE_ACTIVATE_ROW, &ibValueModelTableBox::OnWebRowActivated, this);
+	// Bind the source model now (mirrors the desktop OnCreated CreateModel) so
+	// the first Update has a model to page. Runtime open only — the source is
+	// already bound from the serialised form data; no designer auto-bind.
+	CreateModel();
+	return webTable;
 #else
 	ibTableViewCtrl* dataViewCtrl = new ibTableViewCtrl(wxparent, wxID_ANY,
 		wxDefaultPosition,
@@ -503,6 +510,12 @@ void ibValueModelTableBox::OnCreated(wxObject* wxobject, ibFrontendWindow* wxpar
 #include <wx/itemattr.h>
 #endif
 
+#ifdef OES_USE_WEB
+// How many rows the web list pulls per page. Scroll-paging is a later
+// increment; today the browser shows the first page read-only.
+static const int kWebTablePageSize = 100;
+#endif
+
 void ibValueModelTableBox::Update(wxObject* wxobject, ibVisualHost* visualHost)
 {
 #ifndef OES_USE_WEB
@@ -512,8 +525,82 @@ void ibValueModelTableBox::Update(wxObject* wxobject, ibVisualHost* visualHost)
 	if (dataViewCtrl != nullptr) {
 		UpdateWindow(dataViewCtrl);
 	}
+#else
+	(void)visualHost;
+	auto* webTable = dynamic_cast<ibWebTableBox*>(wxobject);
+	if (webTable == nullptr)
+		return;
+
+	// The source may not have been resolvable at Create time (form still
+	// wiring its attributes); re-bind if we still have no model.
+	if (m_tableModel == nullptr)
+		CreateModel();
+
+	m_webRowItems.clear();
+
+	if (m_tableModel != nullptr) {
+		// Columns — caption + width in model column order.
+		std::vector<ibWebTableBox::Column> columns;
+		std::vector<unsigned int> columnIds;
+		ibValueModel::ibValueModelColumnCollection* cols = m_tableModel->GetColumnCollection();
+		if (cols != nullptr) {
+			const unsigned int count = cols->GetColumnCount();
+			columns.reserve(count);
+			columnIds.reserve(count);
+			for (unsigned int i = 0; i < count; ++i) {
+				ibValueModel::ibValueModelColumnCollection::ibValueModelColumnInfo* info = cols->GetColumnInfo(i);
+				if (info == nullptr)
+					continue;
+				ibWebTableBox::Column c;
+				c.m_caption = info->GetColumnCaption();
+				c.m_width   = info->GetColumnWidth();
+				columns.push_back(c);
+				columnIds.push_back(info->GetColumnID());
+			}
+		}
+		webTable->SetColumns(columns);
+
+		// Rows — page the model (Reset direction), read each cell by column id.
+		std::vector<std::vector<wxString>> rows;
+		ibDataViewItemArray items;
+		m_tableModel->GetFirstFetch(ibDataViewItem(), ibDataViewItem(), kWebTablePageSize, items);
+		rows.reserve(items.GetCount());
+		m_webRowItems.reserve(items.GetCount());
+		for (size_t r = 0; r < items.GetCount(); ++r) {
+			const ibDataViewItem& item = items[r];
+			std::vector<wxString> cells;
+			cells.reserve(columnIds.size());
+			for (unsigned int colId : columnIds) {
+				ibValue cellVal;
+				if (m_tableModel->GetValueByMetaID(item, colId, cellVal))
+					cells.push_back(cellVal.GetString());
+				else
+					cells.push_back(wxEmptyString);
+			}
+			rows.push_back(std::move(cells));
+			m_webRowItems.push_back(item);
+		}
+		webTable->SetRows(rows);
+	}
+
+	UpdateWindow(webTable);
 #endif
 }
+
+#ifdef OES_USE_WEB
+void ibValueModelTableBox::OnWebRowActivated(wxCommandEvent& event)
+{
+	const int index = event.GetInt();
+	if (index < 0 || static_cast<size_t>(index) >= m_webRowItems.size())
+		return;
+	if (m_tableModel == nullptr)
+		return;
+	// Same backend door the desktop double-click uses (ActivateRow →
+	// ActivateItem): opens the row's object form on the server, which the web
+	// frame surfaces as a new tab.
+	m_tableModel->ActivateItem(m_webRowItems[index], m_formOwner);
+}
+#endif
 
 void ibValueModelTableBox::OnUpdated(wxObject* wxobject, ibFrontendWindow* wxparent, ibVisualHost* visualHost)
 {

@@ -341,6 +341,12 @@ protected:
 
 	void OnCommandMenu(wxCommandEvent& event);
 	void OnContextMenu(ibDataViewEvent& event);
+#else
+	// Web build: row double-click / Enter from the browser grid. Maps the
+	// posted page index back to the fetched item (kept in m_webRowItems for
+	// the life of the page) and opens the row's object form via the model's
+	// ActivateItem — the same backend door the desktop double-click uses.
+	void OnWebRowActivated(wxCommandEvent& event);
 #endif // !OES_USE_WEB
 
 private:
@@ -382,6 +388,13 @@ private:
 
 	ibValuePtr<ibValueModel> m_tableModel;
 	ibValuePtr<ibValueModel::ibValueModelReturnLine> m_tableCurrentLine;
+
+#ifdef OES_USE_WEB
+	// The items of the page currently rendered to the browser, in row order.
+	// A row "openrow" request carries its page index; this maps it back to the
+	// ibDataViewItem to activate. Rebuilt each Update (re-fetch of the page).
+	std::vector<ibDataViewItem> m_webRowItems;
+#endif
 };
 
 class ibValueModelTableBoxColumn : public ibValueControl,

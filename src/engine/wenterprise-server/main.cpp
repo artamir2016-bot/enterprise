@@ -580,7 +580,9 @@ int main(int argc, char** argv)
 		if (!RequireSessionId(req, res, id)) return;
 		const int controlID = std::atoi(req.matches[1].str().c_str());
 		const std::string kind = req.matches[2].str();
-		res.set_content(wfrontendFireKind(id, controlID, kind),
+		// Optional payload — e.g. the tablebox row index for kind "openrow".
+		const std::string value = req.get_param_value("value");
+		res.set_content(wfrontendFireKind(id, controlID, kind, value),
 			"application/json; charset=utf-8");
 	});
 

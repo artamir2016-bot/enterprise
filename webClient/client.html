@@ -1990,8 +1990,75 @@ class Picture extends BaseControl{
   }
 }
 
+// TableBox — the list / dynamic-list grid. node.columns = [{caption,width}],
+// node.rows = [[cell,cell,...]] (cells in column order). Read-only for now:
+// double-click a row → POST /fire/<id>/openrow value=<rowIndex>, which opens
+// that row's object form on the server (a new tab surfaces in the response).
+class TableBox extends BaseControl{
+  render(node){
+    const wrap=document.createElement('div');wrap.className='ctrl tablebox';
+    wrap.style.cssText='overflow:auto;border:1px solid #b9b7ab;max-height:60vh';
+    const tbl=document.createElement('table');
+    tbl.style.cssText='border-collapse:collapse;width:100%;font-size:.9em';
+    const cols=node.columns||[];
+    // Header row.
+    const thead=document.createElement('thead');
+    const htr=document.createElement('tr');
+    for(const c of cols){
+      const th=document.createElement('th');
+      th.textContent=c.caption||'';
+      th.style.cssText='position:sticky;top:0;background:#e8e6da;border:1px solid #cfcdbf;'
+        +'padding:2px 6px;text-align:left;white-space:nowrap';
+      if(c.width) th.style.minWidth=c.width+'px';
+      htr.appendChild(th);
+    }
+    thead.appendChild(htr);tbl.appendChild(thead);
+    // Body rows.
+    const tbody=document.createElement('tbody');
+    const rows=node.rows||[];
+    rows.forEach((row,idx)=>{
+      const tr=document.createElement('tr');
+      tr.style.cursor='default';
+      tr.onmouseenter=()=>tr.style.background='#eef3fb';
+      tr.onmouseleave=()=>tr.style.background='';
+      for(let ci=0;ci<cols.length;ci++){
+        const td=document.createElement('td');
+        td.textContent=(row[ci]!==undefined?row[ci]:'');
+        td.style.cssText='border:1px solid #e0ded2;padding:2px 6px;white-space:nowrap';
+        tr.appendChild(td);
+      }
+      if(node.id){
+        tr.ondblclick=async()=>{
+          const body=new URLSearchParams({value:String(idx)});
+          const r=await netFetch(API+'/fire/'+node.id+'/openrow',{
+            method:'POST',credentials:'same-origin',
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body:body.toString()
+          });
+          if(r.ok){
+            const tree=await r.json();
+            if(tree&&!tree.error){ main.innerHTML=''; main.appendChild(render(tree)); }
+            else OES.handleBackendError(tree);
+          }
+        };
+      }
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    wrap.appendChild(tbl);
+    if(rows.length===0){
+      const empty=document.createElement('div');
+      empty.textContent='(нет строк)';
+      empty.style.cssText='padding:6px;color:#888;font-size:.85em';
+      wrap.appendChild(empty);
+    }
+    return wrap;
+  }
+}
+
 const renderers={
   'visualHost':    new HostControl(),
+  'tablebox':      new TableBox(),
   'picture':       new Picture(),
   'mdiChild':      new HostControl(),
   'boxsizer':      new BoxSizer(),

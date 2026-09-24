@@ -54,6 +54,11 @@ wxDECLARE_EVENT(wxEVT_CONTROL_BUTTON_CLEAR,  wxCommandEvent);
 wxDECLARE_EVENT(wxEVT_CONTROL_TEXT_ENTER,    wxCommandEvent);
 wxDECLARE_EVENT(wxEVT_CONTROL_TEXT_INPUT,    wxCommandEvent);
 wxDECLARE_EVENT(wxEVT_CONTROL_TEXT_CLEAR,    wxCommandEvent);
+// Web tablebox row activation (double-click / Enter on the browser grid).
+// ibWebTableBox fires this with the row's page index in event.GetInt();
+// ibValueModelTableBox binds it (web build) to map the index back to the
+// fetched ibDataViewItem and open the row's object form (ActivateItem).
+wxDECLARE_EVENT(wxEVT_WEBTABLE_ACTIVATE_ROW,  wxCommandEvent);
 #endif
 
 class ibWebSizer;
@@ -607,6 +612,84 @@ public:
 	virtual wxString GetControlType() const override { return wxT("listbox"); }
 protected:
 	virtual wxEventType SelectionEventType() const override { return wxEVT_LISTBOX; }
+};
+
+// -----------------------------------------------------------------------------
+// TableBox — the list / dynamic-list grid (1C's ДинамическийСписок view). On
+// desktop this is the heavy wxDataView model+control; on web it is a stateless
+// render of the CURRENT page: columns (caption + width) and a batch of rows,
+// each row a flat vector of cell strings in column order. The backing
+// ibValueModel is fetched server-side by ibValueModelTableBox::Update (paged
+// GetFirstFetch + per-cell GetValueByMetaID) and pushed here via SetColumns /
+// SetRows; this class only serialises. Row identity for "open the item" is the
+// row's PAGE INDEX — HandleRequest("openrow", idx) fires
+// wxEVT_WEBTABLE_ACTIVATE_ROW carrying the index, and the paired
+// ibValueModelTableBox maps it back to the fetched item (which it keeps for the
+// life of the page) and calls the model's ActivateItem (opens the object form).
+// Editing / add / delete / scroll-paging are later increments — this is the
+// read-only list that lets a browser drill from a list into an item form.
+// -----------------------------------------------------------------------------
+class ibWebTableBox : public ibWebWindow {
+public:
+	struct Column {
+		wxString m_caption;
+		int      m_width = 80;
+	};
+
+	explicit ibWebTableBox(int id = 0) : ibWebWindow(id) {}
+
+	virtual wxString GetControlType() const override { return wxT("tablebox"); }
+
+	void SetColumns(const std::vector<Column>& columns) { m_columns = columns; }
+	// One row = the cell strings in the same order as m_columns.
+	void SetRows(const std::vector<std::vector<wxString>>& rows) { m_rows = rows; }
+
+	// Row double-click / Enter — post the row's page index so the paired
+	// ibValueModelTableBox opens that row's object form.
+	bool FireActivateRow(long index) {
+		wxCommandEvent ev(wxEVT_WEBTABLE_ACTIVATE_ROW, GetControlId());
+		ev.SetInt(static_cast<int>(index));
+		return FireEvent(ev);
+	}
+
+	virtual bool HandleRequest(const wxString& kind,
+		const wxString& value) override
+	{
+		if (kind == wxT("openrow")) {
+			long idx = -1;
+			if (value.ToLong(&idx) && idx >= 0)
+				return FireActivateRow(idx);
+			return false;
+		}
+		return false;
+	}
+
+	virtual nlohmann::json ToJSON() const override {
+		auto node = ibWebWindow::ToJSON();
+		auto cols = nlohmann::json::array();
+		for (const Column& c : m_columns) {
+			nlohmann::json jc = {
+				{ "caption", std::string(c.m_caption.utf8_str()) },
+				{ "width",   c.m_width },
+			};
+			cols.push_back(std::move(jc));
+		}
+		node["columns"] = std::move(cols);
+
+		auto rows = nlohmann::json::array();
+		for (const std::vector<wxString>& row : m_rows) {
+			auto jr = nlohmann::json::array();
+			for (const wxString& cell : row)
+				jr.push_back(std::string(cell.utf8_str()));
+			rows.push_back(std::move(jr));
+		}
+		node["rows"] = std::move(rows);
+		return node;
+	}
+
+private:
+	std::vector<Column>                     m_columns;
+	std::vector<std::vector<wxString>>      m_rows;
 };
 
 #endif
