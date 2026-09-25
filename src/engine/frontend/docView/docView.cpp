@@ -826,6 +826,7 @@ ibView::~ibView()
         // prevent it from doing anything with us
         m_docChildFrame->SetView(nullptr);
 
+#ifndef OES_USE_WEB
         // it doesn't make sense to leave the frame alive if its associated
         // view doesn't exist any more so unconditionally close it as well
         //
@@ -835,6 +836,15 @@ ibView::~ibView()
         // the view, as it happens if its creation fails in ibDocTemplate::
         // CreateView() for example
         m_docChildFrame->GetWindow()->Destroy();
+#else
+        // WEB: the ibWebDocChildFrame (the tab) is owned by ibWebFrame::m_tabs
+        // (a std::unique_ptr), NOT by the view. Destroying it here — as the
+        // desktop path does — would `delete this` on a tab the frame still
+        // owns, and DrainPendingCloses then deletes it again through the
+        // unique_ptr → double free (crash on close, taking the whole web
+        // server process down). On web we only sever the view↔frame edge
+        // (SetView(nullptr) above); the tab owner does the single delete.
+#endif
     }
 
     if ( m_viewDocument )
