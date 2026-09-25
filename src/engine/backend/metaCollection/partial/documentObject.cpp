@@ -215,7 +215,7 @@ bool ibValueRecordDataObjectDocument::GetPropVal(const long lPropNum, ibValue& p
 		}
 		return GetValueByMetaID(lPropData, pvarPropVal);
 	}
-	return false;
+	return GetSystemPropVal(lPropNum, pvarPropVal);   // ОбменДанными & other standard system props
 }
 
 bool ibValueRecordDataObjectDocument::CallAsFunc(const long lMethodNum, ibValue& pvarRetValue, ibValue** paParams, const long lSizeArray)

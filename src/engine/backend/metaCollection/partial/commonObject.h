@@ -1644,10 +1644,29 @@ class BACKEND_API ibValueManagerDataObjectPredefined : public ibValueManagerData
 	virtual bool GetPropVal(const long lPropNum, ibValue& pvarPropVal) override;        //attribute value
 };
 
-#pragma endregion 
+#pragma endregion
 
-//object with metaobject 
-#pragma region objects 
+// ОбменДанными (DataExchange) — the standard object property every BeforeWrite / OnWrite
+// handler tests (`Если ОбменДанными.Загрузка Тогда ... КонецЕсли`) to skip business logic
+// while a row is being written by a data-exchange import. OES has no data-exchange
+// subsystem, so Load is always False and a write to it is a no-op sink — enough for an
+// imported 1C write-handler to compile and take its normal (non-load) branch. Vended by
+// ibValueRecordDataObject::GetPropVal for every object family (catalog, document, …).
+class BACKEND_API ibValueDataExchange : public ibValueDynamicMembers {
+public:
+	ibValueDataExchange() : ibValueDynamicMembers(ibValueTypes::TYPE_VALUE, true) {
+		m_members.Bind(this, &ibValueDataExchange::FillMembers);
+	}
+	void FillMembers(ibMemberTable& helper) const;   // Load / Загрузка
+	virtual bool GetPropVal(const long lPropNum, ibValue& pvarPropVal) override;
+	virtual bool SetPropVal(const long lPropNum, const ibValue& varPropVal) override;
+	virtual wxString GetClassName() const override { return wxT("DataExchangeParameters"); }
+private:
+	bool m_load = false;
+};
+
+//object with metaobject
+#pragma region objects
 class BACKEND_API ibValueRecordDataObject : public ibValueDynamicMembers, public ibStandardCommandSource,
 	public ibSourceDataObject, public ibValueDataObject, public ibRuntimeModuleDataObject {
 	public:
@@ -1659,7 +1678,8 @@ protected:
 		eProcUnit = g_aliasExport   // module exports go through the descriptor autobind
 	};
 	enum helperProp {
-		eThisObject
+		eThisObject,
+		eDataExchange   // ОбменДанными — vended via the eSystem alias (see FillDataMembers / GetPropVal)
 	};
 	enum helperFunc {
 		eGetFormObject,
@@ -1718,6 +1738,11 @@ public:
 	//    bind their own FillMethods instead.
 	void FillDataMembers(ibMemberTable& helper) const;
 	void FillBaseMethods(ibMemberTable& helper) const;
+
+	// Resolve a standard eSystem property (ОбменДанными) — every object family's
+	// GetPropVal falls through to this, so the value lives in ONE place. Returns
+	// false when the prop isn't an eSystem one (the leaf then returns its own false).
+	bool GetSystemPropVal(const long lPropNum, ibValue& pvarPropVal) const;
 
 	virtual bool SetPropVal(const long lPropNum, const ibValue& varPropVal) override;
 	virtual bool GetPropVal(const long lPropNum, ibValue& pvarPropVal) override;

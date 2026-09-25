@@ -190,7 +190,7 @@ bool ibValueRecordDataObjectChartOfCharacteristicTypes::GetPropVal(const long lP
 		}
 		return GetValueByMetaID(lPropData, pvarPropVal);
 	}
-	return false;
+	return GetSystemPropVal(lPropNum, pvarPropVal);   // ОбменДанными & other standard system props
 }
 
 bool ibValueRecordDataObjectChartOfCharacteristicTypes::CallAsFunc(const long lMethodNum, ibValue& pvarRetValue, ibValue** paParams, const long lSizeArray)

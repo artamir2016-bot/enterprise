@@ -149,7 +149,11 @@ constexpr uint32_t kAOTMagic         = 0x31434250u; // 'PBC1' little-endian
 // on a bare `НСтр(...)`), even though the runtime method dispatch resolves it.
 // The cache is keyed by (descriptor, config_md5) + this version, NOT by the
 // alias set, so adding an alias does not invalidate it on its own — bump here.
-constexpr uint16_t kAOTFormatVersion = 21;
+// v22 (2026-09-25): object families gained the standard property ОбменДанными /
+// DataExchange (ibValueRecordDataObject::FillDataMembers). A blob compiled before
+// it resolved bare `ОбменДанными` against the smaller member surface and failed;
+// bump so cached modules recompile against the object context as it is now.
+constexpr uint16_t kAOTFormatVersion = 22;
 [[maybe_unused]] constexpr uint16_t kAOTFlagPortable = 0x0001;   // reserved — host-endian today, no reader yet
 
 // Sentinel for an over-large collection — guards Deserialize against

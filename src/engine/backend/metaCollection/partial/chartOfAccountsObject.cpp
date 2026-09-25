@@ -215,7 +215,7 @@ bool ibValueRecordDataObjectChartOfAccounts::GetPropVal(const long lPropNum, ibV
 		if (m_metaObject->IsDataReference(lPropData)) { pvarPropVal = GetReference(); return true; }
 		return GetValueByMetaID(lPropData, pvarPropVal);
 	}
-	return false;
+	return GetSystemPropVal(lPropNum, pvarPropVal);   // ОбменДанными & other standard system props
 }
 
 bool ibValueRecordDataObjectChartOfAccounts::CallAsFunc(const long lMethodNum, ibValue& pvarRetValue, ibValue** paParams, const long lSizeArray)

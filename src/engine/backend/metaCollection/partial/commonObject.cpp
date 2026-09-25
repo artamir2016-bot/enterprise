@@ -1716,6 +1716,36 @@ void ibValueRecordDataObject::FillBaseMethods(ibMemberTable& helper) const
 	helper.AppendFunc(wxT("GetMetadata"), wxT("GetMetadata()"));
 }
 
+// ---- ibValueDataExchange (ОбменДанными) --------------------------------------
+void ibValueDataExchange::FillMembers(ibMemberTable& helper) const
+{
+	// Positions are the switch keys below: 0 = Load, 1 = Загрузка (both → m_load).
+	helper.AppendProp(wxT("Load"));                                                                 // 0
+	helper.AppendProp(wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xB3\xD1\x80\xD1\x83\xD0\xB7\xD0\xBA\xD0\xB0")); // Загрузка (1)
+}
+
+bool ibValueDataExchange::GetPropVal(const long lPropNum, ibValue& pvarPropVal)
+{
+	switch (lPropNum) {
+	case 0:   // Load
+	case 1:   // Загрузка
+		pvarPropVal = m_load;
+		return true;
+	}
+	return false;
+}
+
+bool ibValueDataExchange::SetPropVal(const long lPropNum, const ibValue& varPropVal)
+{
+	switch (lPropNum) {
+	case 0:   // Load
+	case 1:   // Загрузка
+		m_load = varPropVal.GetBoolean();   // no exchange subsystem — a sink that keeps handlers happy
+		return true;
+	}
+	return false;
+}
+
 // Shared data surface bound by the base ctor: the metaobject's attributes
 // (eProperty) + tabular sections (eTable) + data-object module exports (eProcUnit).
 // Attribute writability follows IsDataReference (a self-reference attribute is
@@ -1723,6 +1753,13 @@ void ibValueRecordDataObject::FillBaseMethods(ibMemberTable& helper) const
 // BindContextVariable in InitializeObject — no manual AppendProp.
 void ibValueRecordDataObject::FillDataMembers(ibMemberTable& helper) const
 {
+	// Standard object property ОбменДанными / DataExchange — read by imported 1C
+	// write-handlers. eSystem alias, resolved in GetPropVal to an ibValueDataExchange
+	// (Load = False). Added once here so EVERY object family (catalog, document, …)
+	// surfaces it.
+	helper.AppendProp(wxT("DataExchange"), true, true, eDataExchange, eSystem);
+	helper.AppendProp(wxString::FromUTF8("\xD0\x9E\xD0\xB1\xD0\xBC\xD0\xB5\xD0\xBD\xD0\x94\xD0\xB0\xD0\xBD\xD0\xBD\xD1\x8B\xD0\xBC\xD0\xB8"), true, true, eDataExchange, eSystem);  // ОбменДанными
+
 	const ibValueMetaObjectRecordData* metaObject = GetMetaObject();
 	wxASSERT(metaObject);
 	if (metaObject == nullptr)
@@ -1800,6 +1837,26 @@ bool ibValueRecordDataObject::SetPropVal(const long lPropNum, const ibValue& var
 			varPropVal
 		);
 	}
+	else if (lPropAlias == eSystem) {
+		// Standard system props (ОбменДанными) — a write to ОбменДанными itself is a
+		// no-op sink (there is no data-exchange subsystem to configure).
+		return true;
+	}
+	return false;
+}
+
+// Shared eSystem-prop resolver — called by EVERY object family's GetPropVal (which
+// otherwise dispatches only its own eProperty/eTable/eProcUnit) so a standard system
+// property like ОбменДанными resolves uniformly without duplicating the value per leaf.
+bool ibValueRecordDataObject::GetSystemPropVal(const long lPropNum, ibValue& pvarPropVal) const
+{
+	if (m_members.GetPropAlias(lPropNum) != eSystem)
+		return false;
+	switch (m_members.GetPropData(lPropNum)) {
+	case eDataExchange:
+		pvarPropVal = new ibValueDataExchange();   // Load = False
+		return true;
+	}
 	return false;
 }
 
@@ -1817,6 +1874,9 @@ bool ibValueRecordDataObject::GetPropVal(const long lPropNum, ibValue& pvarPropV
 		return GetValueByMetaID(
 			m_members.GetPropData(lPropNum), pvarPropVal
 		);
+	}
+	else if (lPropAlias == eSystem) {
+		return GetSystemPropVal(lPropNum, pvarPropVal);
 	}
 	return false;
 }
