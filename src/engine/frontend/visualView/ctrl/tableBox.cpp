@@ -539,11 +539,53 @@ void ibValueModelTableBox::Update(wxObject* wxobject, ibVisualHost* visualHost)
 	m_webRowItems.clear();
 
 	if (m_tableModel != nullptr) {
-		// Columns — caption + width in model column order.
 		std::vector<ibWebTableBox::Column> columns;
 		std::vector<unsigned int> columnIds;
+
+		// The MODEL's column collection holds EVERY column (so a hidden one a
+		// user re-shows still resolves). WHICH columns are shown, and in what
+		// order, is the tablebox's own column CHILDREN — each an
+		// ibValueModelTableBoxColumn carrying the visibility flag the form
+		// auto-build (ibValueForm::BuildForm) copied from the source
+		// explorer's default-vs-hidden split. Emit only visible children so
+		// the list shows Code / Description / attributes, not the system
+		// service fields (Ref / DeletionMark / DataVersion / PredefinedName /
+		// IsFolder / the tree Parent). Caption + width come from the model
+		// column (matched by id) since the auto-built child leaves them unset;
+		// an explicit child caption/width (a designed form) wins.
 		ibValueModel::ibValueModelColumnCollection* cols = m_tableModel->GetColumnCollection();
-		if (cols != nullptr) {
+
+		auto findInfo = [cols](unsigned int id) -> ibValueModel::ibValueModelColumnCollection::ibValueModelColumnInfo* {
+			if (cols == nullptr) return nullptr;
+			const unsigned int count = cols->GetColumnCount();
+			for (unsigned int i = 0; i < count; ++i) {
+				ibValueModel::ibValueModelColumnCollection::ibValueModelColumnInfo* info = cols->GetColumnInfo(i);
+				if (info != nullptr && info->GetColumnID() == id)
+					return info;
+			}
+			return nullptr;
+		};
+
+		for (unsigned int idx = 0; idx < GetChildCount(); ++idx) {
+			ibValueModelTableBoxColumn* colChild = dynamic_cast<ibValueModelTableBoxColumn*>(GetChild(idx));
+			if (colChild == nullptr || !colChild->GetVisibleColumn())
+				continue;
+			const unsigned int colId = static_cast<unsigned int>(colChild->GetModelColumn());
+			ibValueModel::ibValueModelColumnCollection::ibValueModelColumnInfo* info = findInfo(colId);
+
+			ibWebTableBox::Column c;
+			const wxString childCaption = colChild->GetCaption();
+			c.m_caption = !childCaption.IsEmpty() ? childCaption
+				: (info != nullptr ? info->GetColumnCaption() : colChild->GetControlName());
+			const int childWidth = colChild->GetWidthColumn();
+			c.m_width = childWidth > 0 ? childWidth : (info != nullptr ? info->GetColumnWidth() : 0);
+			columns.push_back(c);
+			columnIds.push_back(colId);
+		}
+
+		// No column children (a model bound with no auto-built columns) — fall
+		// back to the model's full set so the list is never blank.
+		if (columns.empty() && cols != nullptr) {
 			const unsigned int count = cols->GetColumnCount();
 			columns.reserve(count);
 			columnIds.reserve(count);
