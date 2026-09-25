@@ -141,7 +141,15 @@ constexpr uint32_t kAOTMagic         = 0x31434250u; // 'PBC1' little-endian
 // compiled before either existed resolved its names against the smaller context, and
 // a cached one is served without ever asking whether that context still holds. Bump
 // so every module recompiles against the context as it is now.
-constexpr uint16_t kAOTFormatVersion = 20;
+// v21 (2026-09-25): system-function Russian NAME ALIASES (НСтр/ТекущийЯзык/… →
+// Tstr/GeneralLanguage/…) are emitted into a module's m_listFunc by the alias
+// enumeration in ibCompileCode (context-value loop). A blob cached BEFORE an
+// alias was registered lacks that entry, so a child module resolving the alias
+// through the cached root bytecode chain fails to compile (ERROR_CALL_FUNCTION
+// on a bare `НСтр(...)`), even though the runtime method dispatch resolves it.
+// The cache is keyed by (descriptor, config_md5) + this version, NOT by the
+// alias set, so adding an alias does not invalidate it on its own — bump here.
+constexpr uint16_t kAOTFormatVersion = 21;
 [[maybe_unused]] constexpr uint16_t kAOTFlagPortable = 0x0001;   // reserved — host-endian today, no reader yet
 
 // Sentinel for an over-large collection — guards Deserialize against
