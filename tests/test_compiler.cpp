@@ -502,6 +502,87 @@ TEST(CompilerAOT, RealCompileOutputRoundTrips) {
 }
 
 // ===========================================================================
+// Managed-form compilation directives (&НаКлиенте / &НаСервере family)
+// ===========================================================================
+//
+// A leading &-directive on its own line before Procedure/Function must (a) let
+// the module compile (imported 1C form modules carry these on every handler),
+// and (b) be recorded on the function's ibByteFunction::m_execEnv. English
+// spellings are used here to keep the test source ASCII; the Russian aliases map
+// to the same KEY_* tokens (translateCode.cpp s_ruKeyWordAlias).
+
+namespace {
+const ibByteCode::ibByteFunction* FindFn(const ibByteCode& bc, const wxString& name) {
+	for (const auto& fn : bc.m_listFunc)
+		if (fn.m_strRealName.IsSameAs(name, false)) return &fn;
+	return nullptr;
+}
+} // namespace
+
+TEST(CompilerTest, ClientServerDirectivesParseAndStampEnv) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("&AtClient\n")
+		wxT("Procedure OnClick()\n")
+		wxT("EndProcedure\n")
+		wxT("&AtServer\n")
+		wxT("Function Load()\n")
+		wxT("  Return 1;\n")
+		wxT("EndFunction\n")
+		wxT("&AtServerNoContext\n")
+		wxT("Procedure Recalc()\n")
+		wxT("EndProcedure\n")
+		wxT("&AtClientAtServerNoContext\n")
+		wxT("Function Util()\n")
+		wxT("  Return 2;\n")
+		wxT("EndFunction\n")
+		wxT("Procedure Plain()\n")
+		wxT("EndProcedure\n");
+	ASSERT_TRUE(TryCompile(cc, src))
+		<< "a form module carrying &-directives must compile";
+
+	const auto* onClick = FindFn(cc.m_cByteCode, wxT("OnClick"));
+	const auto* load     = FindFn(cc.m_cByteCode, wxT("Load"));
+	const auto* recalc   = FindFn(cc.m_cByteCode, wxT("Recalc"));
+	const auto* util     = FindFn(cc.m_cByteCode, wxT("Util"));
+	const auto* plain    = FindFn(cc.m_cByteCode, wxT("Plain"));
+	ASSERT_NE(onClick, nullptr);
+	ASSERT_NE(load, nullptr);
+	ASSERT_NE(recalc, nullptr);
+	ASSERT_NE(util, nullptr);
+	ASSERT_NE(plain, nullptr);
+
+	EXPECT_EQ(onClick->m_execEnv, ibExecEnv::Client);
+	EXPECT_EQ(load->m_execEnv,    ibExecEnv::Server);
+	EXPECT_EQ(recalc->m_execEnv,  ibExecEnv::ServerNoContext);
+	EXPECT_EQ(util->m_execEnv,    ibExecEnv::ClientServerNoContext);
+	// No directive → Unspecified (per-module-kind default is a later increment).
+	EXPECT_EQ(plain->m_execEnv,   ibExecEnv::Unspecified);
+}
+
+TEST(CompilerAOT, ExecEnvRoundTrips) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("&AtServer\n")
+		wxT("Function ServerCall(x)\n")
+		wxT("  Return x;\n")
+		wxT("EndFunction\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+
+	ibWriterMemory w;
+	ASSERT_TRUE(cc.m_cByteCode.SerializeAOT(w));
+	wxMemoryBuffer blob = w.buffer();
+	ibReaderMemory r(blob);
+	ibByteCode dst;
+	ASSERT_TRUE(dst.DeserializeAOT(r));
+
+	const auto* fn = FindFn(dst, wxT("ServerCall"));
+	ASSERT_NE(fn, nullptr) << "function lost in AOT round-trip";
+	EXPECT_EQ(fn->m_execEnv, ibExecEnv::Server)
+		<< "m_execEnv not preserved across AOT serialize/deserialize";
+}
+
+// ===========================================================================
 // Closure capture — Phase A (compile-side emit only; runtime not wired)
 // ===========================================================================
 //

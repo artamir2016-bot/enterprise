@@ -102,6 +102,12 @@ struct ibKeyWords s_listKeyWord[] =
 	{"Restrict"},
 	{"#If"},
 	{"#ElsIf"},
+	// Managed-form compilation directives — the leading `&` is part of the token
+	// (KEY_AT_CLIENT..KEY_AT_CLIENT_SERVER_NC, same order as codeDef.h).
+	{"&AtClient"},
+	{"&AtServer"},
+	{"&AtServerNoContext"},
+	{"&AtClientAtServerNoContext"},
 };
 
 // THIS TABLE AND THE KEY_* ENUM ARE ONE THING IN TWO PLACES, and the translator
@@ -168,6 +174,11 @@ static const ibRuKeyWordAlias s_ruKeyWordAlias[] =
 	{ "#\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\x95\xD1\x81\xD0\xBB\xD0\xB8", KEY_ENDIFDEF },                                               // #КонецЕсли
 	{ "#\xD0\x9E\xD0\xB1\xD0\xBB\xD0\xB0\xD1\x81\xD1\x82\xD1\x8C", KEY_REGION },                                                                 // #Область
 	{ "#\xD0\x9A\xD0\xBE\xD0\xBD\xD0\xB5\xD1\x86\xD0\x9E\xD0\xB1\xD0\xBB\xD0\xB0\xD1\x81\xD1\x82\xD0\xB8", KEY_ENDREGION },                       // #КонецОбласти
+	// OES-RU: managed-form compilation directives (&НаКлиенте family). Leading `&` literal.
+	{ "&\xD0\x9D\xD0\xB0\xD0\x9A\xD0\xBB\xD0\xB8\xD0\xB5\xD0\xBD\xD1\x82\xD0\xB5", KEY_AT_CLIENT },                                               // &НаКлиенте
+	{ "&\xD0\x9D\xD0\xB0\xD0\xA1\xD0\xB5\xD1\x80\xD0\xB2\xD0\xB5\xD1\x80\xD0\xB5", KEY_AT_SERVER },                                               // &НаСервере
+	{ "&\xD0\x9D\xD0\xB0\xD0\xA1\xD0\xB5\xD1\x80\xD0\xB2\xD0\xB5\xD1\x80\xD0\xB5\xD0\x91\xD0\xB5\xD0\xB7\xD0\x9A\xD0\xBE\xD0\xBD\xD1\x82\xD0\xB5\xD0\xBA\xD1\x81\xD1\x82\xD0\xB0", KEY_AT_SERVER_NC },  // &НаСервереБезКонтекста
+	{ "&\xD0\x9D\xD0\xB0\xD0\x9A\xD0\xBB\xD0\xB8\xD0\xB5\xD0\xBD\xD1\x82\xD0\xB5\xD0\x9D\xD0\xB0\xD0\xA1\xD0\xB5\xD1\x80\xD0\xB2\xD0\xB5\xD1\x80\xD0\xB5\xD0\x91\xD0\xB5\xD0\xB7\xD0\x9A\xD0\xBE\xD0\xBD\xD1\x82\xD0\xB5\xD0\xBA\xD1\x81\xD1\x82\xD0\xB0", KEY_AT_CLIENT_SERVER_NC },  // &НаКлиентеНаСервереБезКонтекста
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -536,10 +547,13 @@ bool ibTranslateCode::IsWord() const
 		// the Unicode build, so CYRILLIC letters lex as name chars — business logic can use
 		// Russian identifiers natively. Verified by RuntimeTest.CyrillicIdentifiers. Keep the
 		// wide classifier here (a byte-wise isalpha would reject Cyrillic).
+		// `&` joins `#` as a word-START char so a managed-form directive (&НаКлиенте /
+		// &AtServer …) lexes as one keyword token. `&` is not a script operator
+		// anywhere, so this steals nothing from expressions.
 #ifdef wxUSE_UNICODE
-		if (((c == wxT('_')) || iswalpha(c) || (c == wxT('#'))) && (c != wxT('[') && c != wxT(']')))
-#else 
-		if (((c == wxT('_')) || isalpha(c) || (c == wxT('#'))) && (c != wxT('[') && c != wxT(']')))
+		if (((c == wxT('_')) || iswalpha(c) || (c == wxT('#')) || (c == wxT('&'))) && (c != wxT('[') && c != wxT(']')))
+#else
+		if (((c == wxT('_')) || isalpha(c) || (c == wxT('#')) || (c == wxT('&'))) && (c != wxT('[') && c != wxT(']')))
 #endif
 			return true;
 	}
@@ -597,6 +611,7 @@ bool ibTranslateCode::GetWord(wxString* strWord, wxString* strRealName, bool rea
 			isalpha(c) || isdigit(c) ||
 #endif 
 			(c == wxT('#') && i == m_currentPos) || //if the first # symbol is a special word
+			(c == wxT('&') && i == m_currentPos) || //leading & — managed-form directive token
 			(c == wxT('.') && get_point)) {
 
 			if (c == wxT('.') && get_point)

@@ -252,6 +252,14 @@ enum { // numbers of keywords (in strict sequence as the values ​​themselves
 	// index lock-step is preserved.
 	KEY_IF_COND,        // `#If`   / `#Если <cond> Then`
 	KEY_ELSIF_COND,     // `#ElsIf`/ `#ИначеЕсли <cond> Then`
+	// Managed-form compilation directives (1C `&НаКлиенте` family). The leading
+	// `&` is part of the token. Read as an optional leading annotation before the
+	// access modifier / Procedure|Function keyword; stamped onto the function's
+	// ibExecEnv. Kept at the tail so the enum / s_listKeyWord index lock-step holds.
+	KEY_AT_CLIENT,             // `&AtClient`                    / `&НаКлиенте`
+	KEY_AT_SERVER,             // `&AtServer`                    / `&НаСервере`
+	KEY_AT_SERVER_NC,          // `&AtServerNoContext`           / `&НаСервереБезКонтекста`
+	KEY_AT_CLIENT_SERVER_NC,   // `&AtClientAtServerNoContext`   / `&НаКлиентеНаСервереБезКонтекста`
 	LastKeyWord
 };
 

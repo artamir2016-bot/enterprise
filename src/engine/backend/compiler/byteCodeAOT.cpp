@@ -153,7 +153,10 @@ constexpr uint32_t kAOTMagic         = 0x31434250u; // 'PBC1' little-endian
 // DataExchange (ibValueRecordDataObject::FillDataMembers). A blob compiled before
 // it resolved bare `ОбменДанными` against the smaller member surface and failed;
 // bump so cached modules recompile against the object context as it is now.
-constexpr uint16_t kAOTFormatVersion = 22;
+// v23 (2026-09-26): ibByteFunction gained m_execEnv (managed-form &НаКлиенте /
+// &НаСервере directive). WriteFunction/ReadFunction now (de)serialise it; a v22
+// blob has no such byte, so bump to force a clean recompile.
+constexpr uint16_t kAOTFormatVersion = 23;
 [[maybe_unused]] constexpr uint16_t kAOTFlagPortable = 0x0001;   // reserved — host-endian today, no reader yet
 
 // Sentinel for an over-large collection — guards Deserialize against
@@ -464,6 +467,7 @@ bool WriteFunction(ibWriterMemory& w, const ibByteCode::ibByteFunction& f) {
 	w.w_s32((int32_t)f.m_lVarCount);
 	w.w_u64((uint64_t)f.m_returnClsid);
 	w.w_u8((uint8_t)f.m_kind);
+	w.w_u8((uint8_t)f.m_execEnv);   // v23 — managed-form &-directive env
 	w.w_s32((int32_t)f.m_parentRef);
 	w.w_stringZ(f.m_strRealName);
 	w.w_stringZ(f.m_strContext);
@@ -496,6 +500,7 @@ bool ReadFunction(const ibReaderMemory& r, ibByteCode::ibByteFunction& f) {
 	f.m_lVarCount       = (long)r.r_s32();
 	f.m_returnClsid     = (ibClassID)r.r_u64();
 	f.m_kind            = (ibFnKind)r.r_u8();
+	f.m_execEnv         = (ibExecEnv)r.r_u8();   // v23 — managed-form &-directive env
 	f.m_parentRef       = (long)r.r_s32();
 	r.r_stringZ(f.m_strRealName);
 	r.r_stringZ(f.m_strContext);

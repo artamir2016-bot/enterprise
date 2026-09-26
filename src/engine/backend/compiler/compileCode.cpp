@@ -1079,7 +1079,12 @@ bool ibCompileCode::CompileModule()
 				return false;
 			}
 		}
-		else if (KEYWORD == lex.m_lexType && (KEY_PROCEDURE == lex.m_numData || KEY_FUNCTION == lex.m_numData)) {
+		else if (KEYWORD == lex.m_lexType && (KEY_PROCEDURE == lex.m_numData || KEY_FUNCTION == lex.m_numData
+			// A leading managed-form directive (&НаКлиенте / &НаСервере / …) precedes the
+			// Procedure|Function keyword; route it to CompileFunction, which consumes the
+			// directive first (ParseFunctionSignature) then the keyword.
+			|| KEY_AT_CLIENT == lex.m_numData || KEY_AT_SERVER == lex.m_numData
+			|| KEY_AT_SERVER_NC == lex.m_numData || KEY_AT_CLIENT_SERVER_NC == lex.m_numData)) {
 			// don't forget to restore the current module context (if necessary)...
 			CompileFunction(mainContext); // load function declaration
 		}
@@ -1431,6 +1436,17 @@ bool ibCompileCode::ParseFunctionSignature(ibCompileContext* context,
 	// path that needs either piece can derive it from m_numReturn
 	// alone via IsReturnLambda / IsReturnFunction (no side flag).
 	//
+	// Optional LEADING managed-form compilation directive (&НаКлиенте / &НаСервере /
+	// &НаСервереБезКонтекста / &НаКлиентеНаСервереБезКонтекста) — appears on its own
+	// line before the Function/Procedure keyword. At most one; stored on the function's
+	// ibExecEnv and mirrored into the bytecode. No dispatch consumer yet (foundation
+	// increment) — this only lets imported 1C form modules compile.
+	ibExecEnv execEnv = ibExecEnv::Unspecified;
+	if      (IsNextKeyWord(KEY_AT_CLIENT))           { GETKeyWord(KEY_AT_CLIENT);            execEnv = ibExecEnv::Client; }
+	else if (IsNextKeyWord(KEY_AT_SERVER))           { GETKeyWord(KEY_AT_SERVER);            execEnv = ibExecEnv::Server; }
+	else if (IsNextKeyWord(KEY_AT_SERVER_NC))        { GETKeyWord(KEY_AT_SERVER_NC);         execEnv = ibExecEnv::ServerNoContext; }
+	else if (IsNextKeyWord(KEY_AT_CLIENT_SERVER_NC)) { GETKeyWord(KEY_AT_CLIENT_SERVER_NC);  execEnv = ibExecEnv::ClientServerNoContext; }
+
 	// Anonymity is determined by the NEXT TOKEN after the keyword:
 	// `Function (` is anonymous, `Function Name(` is named. No
 	// external gate — context (next token) is enough to tell.
@@ -1504,6 +1520,7 @@ bool ibCompileCode::ParseFunctionSignature(ibCompileContext* context,
 
 	outFunction.reset(new ibCompileContext::ibFunction(strFuncName, functionContext));
 	outFunction->m_strRealName = strFuncRealName;
+	outFunction->m_execEnv = execEnv;   // leading &-directive (Unspecified if none)
 	outFunction->m_strShortDescription = strShortDescription;
 	outFunction->m_numLine = numLine;
 	// Derived from the context's m_numReturn — RETURN_FUNCTION and

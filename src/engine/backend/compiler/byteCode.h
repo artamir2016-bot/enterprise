@@ -77,6 +77,22 @@ enum class ibFnKind : uint8_t {
 	Protected,   // appended (AOT-stable) — visible to children, not config-wide
 };
 
+// Compilation-directive EXECUTION ENVIRONMENT — the 1C managed-form &НаКлиенте /
+// &НаСервере family. Says WHERE a procedure runs (client browser vs server
+// worker) and whether the form CONTEXT travels with the call. Stamped on the
+// function from the leading &-directive; Unspecified = none written (the
+// per-module-kind default is resolved in a later increment). Stored on both the
+// compile-side ibFunction and the serialized ibByteFunction, and persisted in the
+// AOT blob, so the env survives a cache hit. Nothing reads it for dispatch yet —
+// this is the foundation the client/server split is built on.
+enum class ibExecEnv : uint8_t {
+	Unspecified = 0,        // no directive written
+	Client,                 // &НаКлиенте / &AtClient
+	Server,                 // &НаСервере / &AtServer
+	ServerNoContext,        // &НаСервереБезКонтекста / &AtServerNoContext
+	ClientServerNoContext,  // &НаКлиентеНаСервереБезКонтекста / &AtClientAtServerNoContext
+};
+
 // Forward decl — full definition lives after ibByteCode so the
 // binder can reference ibByteCode::ibByteCodeVarInfo as the
 // required-bindings table.
@@ -291,6 +307,12 @@ struct ibByteCode {
 		// at COMPILE, and an AOT hit skips compilation, so a restored entry never needs it.
 		bool      m_variadic       = false;
 
+		// Compilation directive — execution environment (&НаКлиенте / &НаСервере
+		// family). Mirrored from the compile-side ibFunction and SERIALISED into
+		// AOT (a cache hit must restore it, unlike m_variadic). Unspecified until a
+		// directive is parsed; no dispatch consumer yet (foundation increment).
+		ibExecEnv m_execEnv        = ibExecEnv::Unspecified;
+
 		// Convenience predicates — preferred over inline `m_kind == X`
 		// at callsites. Symmetric with ibByteCodeVarInfo's helpers.
 		bool IsLocal()         const { return m_kind == ibFnKind::Local; }
@@ -366,6 +388,7 @@ struct ibByteCode {
 			  m_kind(src.m_kind),
 			  m_needsHeapFrame(src.m_needsHeapFrame),
 			  m_variadic(src.m_variadic),
+			  m_execEnv(src.m_execEnv),
 			  m_strRealName(src.m_strRealName),
 			  m_strContext(src.m_strContext)
 		{

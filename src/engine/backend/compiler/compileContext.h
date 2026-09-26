@@ -244,6 +244,12 @@ struct ibCompileContext {
 		// cross-bc visible yet not kind=Export).
 		int  m_access = 0;
 
+		// Compilation directive — execution environment (&НаКлиенте / &НаСервере
+		// family). Stamped from the leading &-directive before the access modifier;
+		// a separate axis from m_kind / m_access. Mirrored to
+		// ibByteFunction::m_execEnv at CompileFunction finalize (templated ctor).
+		ibExecEnv m_execEnv = ibExecEnv::Unspecified;
+
 		// Mirror of bytecode-side m_bCodeRet — true for FUNCTION (returns
 		// a value), false for PROCEDURE. Settled at CompileFunction
 		// finalize. Used by PushCallFunction to gate "called as function
