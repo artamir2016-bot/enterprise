@@ -293,6 +293,22 @@ public:
 	bool ReadAttributes(const ibDataNode& node);
 	bool WriteAttributes(ibDataNode& node) const;
 
+	// ── Runtime CONTEXT marshalling (managed-form client/server split, Increment 3) ──
+	// The live VALUES of the form's attributes, NOT the definitions WriteAttributes persists.
+	// This is what a &НаКлиенте → &НаСервере call must ship across the boundary so the server
+	// sees the same context (Объект and the form-local attributes) the client edited, and hand
+	// the mutated context back on return. Lossless: each value goes through
+	// activeMetaData->Serialize (the same door metadata uses — references / enums intact).
+	//
+	// OPTIMIZATION FOR MANY-ATTRIBUTE FORMS: the MAIN object (a catalog/document with 60+
+	// fields) is shipped BY REFERENCE — just its ref value — WHEN it is a persisted, unmodified
+	// reference; only a NEW or dirty main object serialises its fields (they would be lost by a
+	// bare reference). So a form over a big saved object marshals in near-constant size, while a
+	// create/edit form still carries the pending field edits. `dirtyOnly` skips the whole thing
+	// when the form is not modified (nothing to send).
+	void WriteFormContext(ibDataNode& node, bool dirtyOnly = false) const;
+	bool ReadFormContext(const ibDataNode& node);
+
 	// Available sources (backend wrappers) for a control of the given kind: the
 	// MAIN attribute is always reachable; auxiliary attributes match by kind;
 	// tableColumn enumerates nothing (a column sources from its parent table).

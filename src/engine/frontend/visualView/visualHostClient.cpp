@@ -9,6 +9,9 @@
 #include <iostream>
 #include "frontend/web/webChildFrame.h"
 #include "frontend/web/webSizer.h"
+#include "frontend/visualView/ctrl/form.h"                 // ibValueForm attribute API (GetAttribute…)
+#include "frontend/visualView/ctrl/formAttribute.h"        // ibFormAttributeValue — GetName/GetId/GetValue/GetSourceValue
+#include "backend/metaCollection/partial/commonObject.h"   // ibSourceDataObject — IsModified/GetGuid (formContext by-ref)
 
 // Web-side dtor: tear down the control tree through ClearVisualHost
 // before ~ibWebWindow takes over. ClearVisualHost fires each control's
@@ -68,6 +71,35 @@ nlohmann::json ibVisualHostClient::ToJSON() const
 			commands.push_back(std::move(cmd));
 		}
 		node["commands"] = std::move(commands);
+
+		// FORM CONTEXT (managed-form client/server split, Increment 3). The live attribute
+		// values the client edits and a &НаСервере call must see. Optimised for
+		// many-attribute forms: a persisted, UNMODIFIED source (the main object with its
+		// 60+ fields) ships BY REFERENCE (its guid) — its fields never enter the payload;
+		// only a NEW / dirty object carries a value. This is the observable protocol form of
+		// the lossless ibValueForm::WriteFormContext mechanism (which the RPC stage consumes).
+		auto ctx = nlohmann::json::array();
+		const unsigned int attrCount = m_valueForm->GetAttributeCount();
+		for (unsigned int i = 0; i < attrCount; ++i) {
+			ibFormAttributeValue* av = m_valueForm->GetAttribute(i);
+			if (av == nullptr)
+				continue;
+			nlohmann::json entry = {
+				{ "id",   static_cast<int>(av->GetId()) },
+				{ "name", std::string(av->GetName().utf8_str()) },
+			};
+			ibSourceDataObject* src = av->GetSourceValue();
+			if (src != nullptr && !src->IsModified() && src->GetGuid().isValid()) {
+				entry["ref"] = std::string(src->GetGuid().GetGuid().str().utf8_str());   // by reference — cheap
+			}
+			else {
+				ibValue value;
+				av->GetValue(value);
+				entry["value"] = std::string(value.GetString().utf8_str());
+			}
+			ctx.push_back(std::move(entry));
+		}
+		node["formContext"] = std::move(ctx);
 	}
 
 	return node;

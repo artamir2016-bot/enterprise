@@ -75,6 +75,70 @@ bool ibValueForm::WriteAttributes(ibDataNode& node) const
 	return true;
 }
 
+// ── Runtime CONTEXT marshalling (managed-form client/server split, Increment 3) ──
+// The live VALUES, not the definitions. See the header note for the contract and the
+// many-attributes optimization.
+void ibValueForm::WriteFormContext(ibDataNode& node, bool dirtyOnly) const
+{
+	ibDataNode& ctxNode = node.Child(wxT("FormContext"));
+	for (const auto& av : m_attributes) {
+		if (av == nullptr)
+			continue;
+
+		ibValue value;
+		av->GetValue(value);
+
+		// One child per attribute, keyed by the form-unique attribute id (rename-stable)
+		// so ReadFormContext re-seats it by id, not by ordinal.
+		ibDataNode& attrNode = ctxNode.AddChild(value.GetClassType(), av->GetId());
+		attrNode.SetValue(wxT("Name"), av->GetName());
+
+		ibSourceDataObject* src = av->GetSourceValue();
+
+		// OPTIMIZATION: a persisted, UNMODIFIED source object (the main object with its
+		// 60+ fields) ships BY REFERENCE — just its guid. The receiver re-resolves it from
+		// storage; its fields never touch the wire. Only a NEW / dirty object serialises
+		// its value (the pending field edits would be lost by a bare reference).
+		if (src != nullptr && !src->IsModified() && src->GetGuid().isValid()) {
+			attrNode.SetValue(wxT("Ref"), src->GetGuid().GetGuid().str());
+			continue;
+		}
+
+		// dirtyOnly delta: skip an unchanged source attribute entirely (nothing to send).
+		// A primitive form-local attribute has no source to ask, so it always travels — it
+		// is cheap, and there is no per-attribute change flag to gate it on.
+		if (dirtyOnly && src != nullptr && !src->IsModified())
+			continue;
+
+		// Full, lossless value — the same door metadata uses (references / enums intact).
+		activeMetaData->Serialize(value, attrNode);
+	}
+}
+
+bool ibValueForm::ReadFormContext(const ibDataNode& node)
+{
+	const ibDataNode* ctxNode = node.FindChild(wxT("FormContext"));
+	if (ctxNode == nullptr)
+		return true;   // nothing marshalled — a &…БезКонтекста call, or an empty payload
+
+	for (const ibDataNode& attrNode : ctxNode->Children()) {
+		ibFormAttributeValue* av = FindAttributeById(attrNode.GetMetaId());
+		if (av == nullptr)
+			continue;   // an attribute the receiver does not have (schema drift) — ignore
+
+		// A by-reference marker (clean object): the receiver keeps its own resolved object.
+		// In single-process it is literally the same object; across a real boundary the
+		// server re-resolves the guid. Either way there are no fields to restore.
+		const wxString ref = attrNode.GetValue<wxString>(wxT("Ref"));
+		if (!ref.IsEmpty())
+			continue;
+
+		const ibValue value = activeMetaData->Deserialize(attrNode);
+		av->SetHeldValue(value);
+	}
+	return true;
+}
+
 ibMetaID ibValueForm::NextAttributeId() const
 {
 	ibMetaID nextId = 1;   // form-unique = max existing + 1
