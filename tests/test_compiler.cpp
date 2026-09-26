@@ -150,6 +150,40 @@ size_t CountOpcodeAnyType(const ibByteCode& bc, short baseOper) {
 	return n;
 }
 
+// Dump a compiled module as the CLIENT bytecode JSON shape (mirror of the server
+// emitter wfrontendFormClientBytecode) so OES.ClientVM can be validated against
+// REAL emitted bytecode in a node self-test. DISABLED — run on demand:
+//   oes_tests --gtest_also_run_disabled_tests --gtest_filter=*ClientBytecodeDump*
+[[maybe_unused]] void DumpClientBytecodeJSON(const ibByteCode& bc) {
+	printf("===CLIENT-BYTECODE-BEGIN===\n{\n  \"functions\": [\n");
+	for (size_t i = 0; i < bc.m_listFunc.size(); ++i) {
+		const auto& f = bc.m_listFunc[i];
+		printf("    {\"name\":\"%s\",\"entry\":%ld,\"isFunc\":%s,\"varCount\":%ld,\"params\":%u}%s\n",
+			(const char*)f.m_strRealName.utf8_str(), (long)f.m_lCodeLine,
+			f.m_bCodeRet ? "true" : "false", (long)f.m_lVarCount,
+			(unsigned)f.m_listParam.size(), (i + 1 < bc.m_listFunc.size()) ? "," : "");
+	}
+	printf("  ],\n  \"code\": [\n");
+	for (size_t i = 0; i < bc.m_listCode.size(); ++i) {
+		const auto& u = bc.m_listCode[i];
+		printf("    {\"op\":%d,\"p1a\":%lld,\"p1i\":%lld,\"p2a\":%lld,\"p2i\":%lld,\"p3a\":%lld,\"p3i\":%lld,\"p4a\":%lld,\"p4i\":%lld}%s\n",
+			(int)u.m_numOper,
+			(long long)u.m_param1.m_numArray, (long long)u.m_param1.m_numIndex,
+			(long long)u.m_param2.m_numArray, (long long)u.m_param2.m_numIndex,
+			(long long)u.m_param3.m_numArray, (long long)u.m_param3.m_numIndex,
+			(long long)u.m_param4.m_numArray, (long long)u.m_param4.m_numIndex,
+			(i + 1 < bc.m_listCode.size()) ? "," : "");
+	}
+	printf("  ],\n  \"consts\": [\n");
+	for (size_t i = 0; i < bc.m_listConst.size(); ++i) {
+		printf("    {\"type\":%d,\"value\":\"%s\"}%s\n",
+			(int)bc.m_listConst[i].GetType(),
+			(const char*)bc.m_listConst[i].GetString().utf8_str(),
+			(i + 1 < bc.m_listConst.size()) ? "," : "");
+	}
+	printf("  ]\n}\n===CLIENT-BYTECODE-END===\n");
+}
+
 } // namespace
 
 // ===========================================================================
@@ -593,6 +627,20 @@ TEST(ExecCallClassify, RuleTable) {
 	EXPECT_EQ(ibClassifyExecCall(E::ClientServerNoContext, E::Server), ibExecCall::Direct);
 	// Unresolved participant imposes no constraint.
 	EXPECT_EQ(ibClassifyExecCall(E::Unspecified, E::Server), ibExecCall::Direct);
+}
+
+// DISABLED dumper — prints real emitted client bytecode for the OES.ClientVM
+// node self-test. Run: oes_tests --gtest_also_run_disabled_tests --gtest_filter=*ClientBytecodeDump*
+TEST(ClientBytecodeDump, DISABLED_ArithFn) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("&AtClient\n")
+		wxT("Function Calc(a, b)\n")
+		wxT("  c = a * b;\n")
+		wxT("  Return c + 2;\n")
+		wxT("EndFunction\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+	DumpClientBytecodeJSON(cc.m_cByteCode);
 }
 
 TEST(CompilerAOT, ExecEnvRoundTrips) {
