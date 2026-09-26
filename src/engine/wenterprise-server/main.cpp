@@ -816,6 +816,17 @@ int main(int argc, char** argv)
 			"application/json; charset=utf-8");
 	});
 
+	// GET /client-bytecode — the ACTIVE form's CLIENT-env bytecode as JSON
+	// (managed-form split, Inc 5a). The browser VM (OES.ClientVM) fetches this
+	// once per opened form and runs &НаКлиенте handlers in-page instead of POSTing
+	// /action. "{}" when there is no active form. Read-only projection.
+	svr.Get(prefix + "/client-bytecode", [](const httplib::Request& req, httplib::Response& res) {
+		std::string id;
+		if (!RequireSessionId(req, res, id)) return;
+		res.set_content(wfrontendFormClientBytecode(id),
+			"application/json; charset=utf-8");
+	});
+
 	// GET /debug-status — process-wide debug flag (was --debug on?) +
 	// per-session paused flag (is the session currently parked at a
 	// breakpoint?). Client polls this on its live tick to render the

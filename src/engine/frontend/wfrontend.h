@@ -241,6 +241,12 @@ WFRONTEND_API std::string wfrontendFireAction(const std::string& sessionId,
 WFRONTEND_API std::string wfrontendFireFormCommand(const std::string& sessionId,
 	int commandID);
 
+// Managed-form client/server split (Inc 5a): the active form's CLIENT-env
+// bytecode as JSON — functions (env==Client) + the code/const/var tables — for
+// the browser VM (OES.ClientVM) to execute &НаКлиенте handlers in-page. "{}" on
+// invalid session / no active form. Read-only projection, cacheable by the client.
+WFRONTEND_API std::string wfrontendFormClientBytecode(const std::string& sessionId);
+
 // Generic kind-aware dispatcher. Routes the `kind` string into
 // ibWebWindow::HandleRequest on the target control. Textctrl side
 // buttons use "buttonSelect"/"buttonOpen"/"buttonClear"; callers can

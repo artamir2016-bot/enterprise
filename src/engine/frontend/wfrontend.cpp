@@ -35,6 +35,10 @@
 #include "backend/metaCollection/metaSectionObject.h"
 #include "backend/interfaceHelper.h"
 #include "backend/backend_picture.h"
+#include "backend/compiler/byteCode.h"       // ibByteCode / ibByteUnit / ibExecEnv — client-bytecode emit
+#include "backend/compiler/procUnit.h"       // ibProcUnit::GetByteCode
+#include "frontend/visualView/ctrl/form.h"   // ibValueForm (GetProcUnit via ibRuntimeModuleDataObject)
+#include "frontend/web/jsonAdapter.h"        // nlohmann::json
 
 #include <iostream>
 
@@ -262,6 +266,9 @@ public:
 	std::string FireToggle(const std::string& id, int controlID, bool checked);
 	bool        ModalReply(const std::string& id, const std::string& modalId, int result);
 	std::string ActiveHostJSON(const std::string& id);
+	// Client bytecode of the active form (managed-form split, Inc 5a): the
+	// Client-env functions + code/const/vars as JSON the browser VM runs.
+	std::string FormClientBytecode(const std::string& id);
 
 	// Borrow the session's ibWebApplication for the duration of a
 	// blocking operation (SSE wait). Returns null if id is unknown or
@@ -1330,6 +1337,110 @@ WFRONTEND_API std::string wfrontendFireFormCommand(const std::string& sessionId,
 {
 	Sessions().Touch(sessionId);
 	return Sessions().FireFormCommand(sessionId, commandID);
+}
+
+namespace {
+// Managed-form client/server split, Increment 5a. Project the active form's
+// runtime bytecode into the CLIENT-executable subset: only ibExecEnv::Client
+// functions travel, plus the shared code / const / var tables they run over. The
+// browser VM (OES.ClientVM in client.html) runs this directly — no compiler, no
+// metadata on the client. This is a JSON projection, not the endian-fragile AOT
+// binary. Read-only; runs on the session worker for consistency with the tree it reads.
+std::string FormClientBytecodeInSession(ibWebSession* session)
+{
+	if (session == nullptr || !session->IsAuthenticated()) return "{}";
+	ibWebApplication* app = session->App();
+	if (app == nullptr) return "{}";
+
+	return app->RunOnWorker([app]() -> std::string {
+		ibVisualHostClient* host = app->GetActiveHost();
+		if (host == nullptr) return "{}";
+		ibValueForm* form = host->GetValueForm();
+		if (form == nullptr) return "{}";
+		std::shared_ptr<ibProcUnit> pu = form->GetProcUnit();
+		const ibByteCode* bc = pu ? pu->GetByteCode() : nullptr;
+		if (bc == nullptr) return "{}";
+
+		nlohmann::json root;
+
+		// Functions — CLIENT-env only (the browser never runs server code).
+		auto fns = nlohmann::json::array();
+		for (const auto& fn : bc->m_listFunc) {
+			if (fn.m_execEnv != ibExecEnv::Client)
+				continue;
+			nlohmann::json jf = {
+				{ "name",     std::string(fn.m_strRealName.utf8_str()) },
+				{ "entry",    (long long)fn.m_lCodeLine },
+				{ "isFunc",   fn.m_bCodeRet },
+				{ "varCount", (long long)fn.m_lVarCount },
+			};
+			auto params = nlohmann::json::array();
+			for (const auto& p : fn.m_listParam)
+				params.push_back(std::string(p.m_strName.utf8_str()));
+			jf["params"] = std::move(params);
+			auto locals = nlohmann::json::array();
+			for (const auto& l : fn.m_listLocals)
+				locals.push_back({ { "name", std::string(l.m_strRealName.utf8_str()) },
+				                   { "slot", (long long)(long)l } });
+			jf["locals"] = std::move(locals);
+			fns.push_back(std::move(jf));
+		}
+		root["functions"] = std::move(fns);
+
+		// Instruction tape — opcode + the four operand pairs (array/index), verbatim.
+		auto code = nlohmann::json::array();
+		for (const auto& u : bc->m_listCode) {
+			code.push_back({
+				{ "op",  (int)u.m_numOper },
+				{ "ln",  (long long)u.m_numLine },
+				{ "p1a", (long long)u.m_param1.m_numArray }, { "p1i", (long long)u.m_param1.m_numIndex },
+				{ "p2a", (long long)u.m_param2.m_numArray }, { "p2i", (long long)u.m_param2.m_numIndex },
+				{ "p3a", (long long)u.m_param3.m_numArray }, { "p3i", (long long)u.m_param3.m_numIndex },
+				{ "p4a", (long long)u.m_param4.m_numArray }, { "p4i", (long long)u.m_param4.m_numIndex },
+			});
+		}
+		root["code"] = std::move(code);
+
+		// Const pool — display projection (type tag + string). Exact ibNumber decimals
+		// arrive as strings; the VM parses what it needs. Object consts stringify empty.
+		auto consts = nlohmann::json::array();
+		for (const auto& c : bc->m_listConst)
+			consts.push_back({ { "type", (int)c.GetType() },
+			                   { "value", std::string(c.GetString().utf8_str()) } });
+		root["consts"] = std::move(consts);
+
+		// Module symbol table — external / context bindings the code resolves by slot.
+		auto vars = nlohmann::json::array();
+		for (const auto& v : bc->m_listVar)
+			vars.push_back({ { "name", std::string(v.m_strRealName.utf8_str()) },
+			                 { "kind", (int)v.m_kind },
+			                 { "slot", (long long)(long)v } });
+		root["vars"] = std::move(vars);
+
+		root["startModule"] = (long long)bc->m_lStartModule;
+		return root.dump(2);
+	}).get();
+}
+} // namespace
+
+std::string SessionManager::FormClientBytecode(const std::string& id)
+{
+	std::shared_ptr<ibWebSession> keeper;
+	ibWebSession* s = nullptr;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_sessions.find(id);
+		if (it == m_sessions.end()) return "{}";
+		keeper = it->second;
+		s = keeper.get();
+	}
+	return FormClientBytecodeInSession(s);
+}
+
+WFRONTEND_API std::string wfrontendFormClientBytecode(const std::string& sessionId)
+{
+	Sessions().Touch(sessionId);
+	return Sessions().FormClientBytecode(sessionId);
 }
 
 namespace {
