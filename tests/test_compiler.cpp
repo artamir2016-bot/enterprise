@@ -556,8 +556,43 @@ TEST(CompilerTest, ClientServerDirectivesParseAndStampEnv) {
 	EXPECT_EQ(load->m_execEnv,    ibExecEnv::Server);
 	EXPECT_EQ(recalc->m_execEnv,  ibExecEnv::ServerNoContext);
 	EXPECT_EQ(util->m_execEnv,    ibExecEnv::ClientServerNoContext);
-	// No directive → Unspecified (per-module-kind default is a later increment).
-	EXPECT_EQ(plain->m_execEnv,   ibExecEnv::Unspecified);
+	// No directive → resolved to the module default. This ad-hoc ibCompileCode has
+	// no module descriptor (GetObjectModule() == nullptr), which is the non-form
+	// case, so the undirected procedure defaults to Server (Increment 2).
+	EXPECT_EQ(plain->m_execEnv,   ibExecEnv::Server);
+}
+
+TEST(CompilerTest, UndirectedFunctionDefaultsToServerWithoutFormModule) {
+	// A plain (non-form) module: every undirected procedure resolves to Server.
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	ASSERT_TRUE(TryCompile(cc,
+		wxT("Function Compute(x)\n")
+		wxT("  Return x;\n")
+		wxT("EndFunction\n")));
+	const auto* fn = FindFn(cc.m_cByteCode, wxT("Compute"));
+	ASSERT_NE(fn, nullptr);
+	EXPECT_EQ(fn->m_execEnv, ibExecEnv::Server)
+		<< "an undirected function in a non-form module must default to Server";
+}
+
+TEST(ExecCallClassify, RuleTable) {
+	using E = ibExecEnv;
+	// Same side → direct.
+	EXPECT_EQ(ibClassifyExecCall(E::Client, E::Client), ibExecCall::Direct);
+	EXPECT_EQ(ibClassifyExecCall(E::Server, E::Server), ibExecCall::Direct);
+	// Client → server family → a server round-trip (RPC).
+	EXPECT_EQ(ibClassifyExecCall(E::Client, E::Server),          ibExecCall::ServerHop);
+	EXPECT_EQ(ibClassifyExecCall(E::Client, E::ServerNoContext), ibExecCall::ServerHop);
+	// Server → client is forbidden.
+	EXPECT_EQ(ibClassifyExecCall(E::Server, E::Client),          ibExecCall::Illegal);
+	EXPECT_EQ(ibClassifyExecCall(E::ServerNoContext, E::Client), ibExecCall::Illegal);
+	// No-context server calling a context-requiring server proc — no context to hand over.
+	EXPECT_EQ(ibClassifyExecCall(E::ServerNoContext, E::Server), ibExecCall::Illegal);
+	// Both-sides no-context participant is reachable in place from either side.
+	EXPECT_EQ(ibClassifyExecCall(E::Client, E::ClientServerNoContext), ibExecCall::Direct);
+	EXPECT_EQ(ibClassifyExecCall(E::ClientServerNoContext, E::Server), ibExecCall::Direct);
+	// Unresolved participant imposes no constraint.
+	EXPECT_EQ(ibClassifyExecCall(E::Unspecified, E::Server), ibExecCall::Direct);
 }
 
 TEST(CompilerAOT, ExecEnvRoundTrips) {

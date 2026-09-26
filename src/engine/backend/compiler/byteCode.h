@@ -93,6 +93,38 @@ enum class ibExecEnv : uint8_t {
 	ClientServerNoContext,  // &НаКлиентеНаСервереБезКонтекста / &AtClientAtServerNoContext
 };
 
+// How a CALL from a caller-env procedure to a callee-env procedure is realised
+// under the managed-form client/server split. Both the compiler (call
+// classification / diagnostics) and the later server-call RPC stage read the same
+// rules from here, so they cannot drift apart.
+enum class ibExecCall : uint8_t {
+	Direct,     // same side (or a both-sides / unresolved participant) — a plain in-place call
+	ServerHop,  // client → server — becomes a server round-trip (RPC ships context, runs, returns)
+	Illegal,    // server → client (a server cannot drive the UI), or no-context → context-server
+};
+
+// The rule table. Unspecified means "default not yet resolved" (Increment 2 finalizes
+// it before this is consulted); a both-sides no-context participant is callable
+// anywhere, so either side of such a pair is Direct.
+inline ibExecCall ibClassifyExecCall(ibExecEnv caller, ibExecEnv callee) {
+	if (caller == ibExecEnv::Unspecified || callee == ibExecEnv::Unspecified)
+		return ibExecCall::Direct;
+	if (caller == ibExecEnv::ClientServerNoContext || callee == ibExecEnv::ClientServerNoContext)
+		return ibExecCall::Direct;   // compiled for both sides, no context — always reachable in place
+
+	const bool callerClient = (caller == ibExecEnv::Client);
+	const bool calleeClient = (callee == ibExecEnv::Client);
+	// server family = Server | ServerNoContext
+	const bool calleeServer = !calleeClient;   // (ClientServerNoContext already handled)
+
+	if (callerClient && calleeServer)  return ibExecCall::ServerHop;  // RPC to the server
+	if (!callerClient && calleeClient) return ibExecCall::Illegal;    // server → client is forbidden
+	// server → server: a no-context caller cannot hand context to a context-requiring callee
+	if (caller == ibExecEnv::ServerNoContext && callee == ibExecEnv::Server)
+		return ibExecCall::Illegal;
+	return ibExecCall::Direct;
+}
+
 // Forward decl — full definition lives after ibByteCode so the
 // binder can reference ibByteCode::ibByteCodeVarInfo as the
 // required-bindings table.

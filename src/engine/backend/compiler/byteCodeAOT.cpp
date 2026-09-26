@@ -156,7 +156,11 @@ constexpr uint32_t kAOTMagic         = 0x31434250u; // 'PBC1' little-endian
 // v23 (2026-09-26): ibByteFunction gained m_execEnv (managed-form &НаКлиенте /
 // &НаСервере directive). WriteFunction/ReadFunction now (de)serialise it; a v22
 // blob has no such byte, so bump to force a clean recompile.
-constexpr uint16_t kAOTFormatVersion = 23;
+// v24 (2026-09-26): an undirected function's m_execEnv now RESOLVES at compile to
+// the module default (form → Client, else → Server) instead of staying Unspecified.
+// The format is unchanged (still one byte), but the stored VALUE differs, so a v23
+// blob would restore stale Unspecified envs — bump to regenerate.
+constexpr uint16_t kAOTFormatVersion = 24;
 [[maybe_unused]] constexpr uint16_t kAOTFlagPortable = 0x0001;   // reserved — host-endian today, no reader yet
 
 // Sentinel for an over-large collection — guards Deserialize against

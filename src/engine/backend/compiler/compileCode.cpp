@@ -10,6 +10,7 @@
 #include "system/systemManager.h"
 #include "backend/backend_type.h"  // OES-RU: ibTranslateRuTypeName (New <type> / Type(...) 1C names)
 #include "backend/guid.h"  // wxNewUniqueGuid for anonymous-lambda synthetic naming
+#include "backend/metaCollection/metaFormObject.h"  // ibValueMetaObjectFormBase — module default-env (form → Client)
 
 #pragma warning(push)
 #pragma warning(disable : 4018)
@@ -1520,7 +1521,18 @@ bool ibCompileCode::ParseFunctionSignature(ibCompileContext* context,
 
 	outFunction.reset(new ibCompileContext::ibFunction(strFuncName, functionContext));
 	outFunction->m_strRealName = strFuncRealName;
-	outFunction->m_execEnv = execEnv;   // leading &-directive (Unspecified if none)
+	// Leading &-directive (Unspecified if none). Resolve the DEFAULT here, while the
+	// module descriptor is reachable: an undirected procedure in a FORM module runs on
+	// the client, in every other module (object / manager / common / global) on the
+	// server — the 1C managed-form rule. A concrete env on every function is what the
+	// later call-classification and RPC stages consume.
+	outFunction->m_execEnv = execEnv;
+	if (outFunction->m_execEnv == ibExecEnv::Unspecified) {
+		const ibValueMetaObjectModuleBase* mod = GetObjectModule();
+		outFunction->m_execEnv =
+			(mod != nullptr && dynamic_cast<const ibValueMetaObjectFormBase*>(mod) != nullptr)
+			? ibExecEnv::Client : ibExecEnv::Server;
+	}
 	outFunction->m_strShortDescription = strShortDescription;
 	outFunction->m_numLine = numLine;
 	// Derived from the context's m_numReturn — RETURN_FUNCTION and

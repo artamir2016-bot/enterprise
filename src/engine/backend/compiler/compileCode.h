@@ -18,6 +18,8 @@ struct ibContextVar {
 //*							  Class: compiler                       *
 //*******************************************************************
 
+class BACKEND_API ibValueMetaObjectModuleBase;   // the module descriptor a compile is FOR (null for ad-hoc / eval)
+
 class BACKEND_API ibCompileCode : public ibTranslateCode {
 
 	struct ibCallFunction {
@@ -92,6 +94,13 @@ public:
 	// expose host's params + locals to eval expressions (e.g. watch on
 	// a function parameter `x`).
 	virtual const ibByteCode::ibByteFunction* GetEvalHostFunction() const { return nullptr; }
+
+	// The metaobject module this compile is FOR — form / object / manager / common.
+	// Base has none (ad-hoc string compile, eval expressions); ibCompileModule
+	// overrides with the real descriptor. Used to resolve a function's DEFAULT
+	// execution environment (managed-form client/server split): a form module
+	// defaults its undirected procedures to Client, every other module to Server.
+	virtual const ibValueMetaObjectModuleBase* GetObjectModule() const { return nullptr; }
 
 public:
 
