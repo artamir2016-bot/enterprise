@@ -34,6 +34,7 @@
     FOR:10, FOREACH:11, IN:12, IF:13, LET:14, CONST:15, CONSTN:16, NEXT:17,
     NEXT_ITER:18, MOD:19, INVERT:20, ITER:21, GT:22, EQ:23, LS:24, GE:25,
     LE:26, NE:27, TRY:28, RAISE:29, RAISE_T:30, FUNC:31, ENDFUNC:32,
+    CALL:37, SET:38, SETREF:39, SETCONST:40,
     END:74
   };
 
@@ -74,35 +75,38 @@
   ClientVM.prototype.hasClientFn = function (name) { return !!this.fns[name]; };
 
   // Run a client function by name. `args` seed the leading local slots (params).
-  // Returns the function's value (or undefined for a procedure). Throws
-  // OESVMUnsupported the moment it meets something outside the 5a subset.
   ClientVM.prototype.call = function (name, args) {
     var fn = this.fns[name];
     if (!fn) throw new OESVMUnsupported('no client function ' + name);
-
-    var frame = new Array(Number(fn.varCount) || 0);
-    for (var k = 0; k < frame.length; k++) frame[k] = undefined;
+    var frame = newFrame(Number(fn.varCount) || 0);
     args = args || [];
     for (var a = 0; a < args.length && a < frame.length; a++) frame[a] = args[a];
+    this._budget = GUARD_MAX;               // shared across the whole call tree
+    return this.execFrom(Number(fn.entry), frame);
+  };
 
+  function newFrame(n) { var f = new Array(n); for (var k = 0; k < n; k++) f[k] = undefined; return f; }
+  var GUARD_MAX = 1000000;   // runaway backstop across the whole call tree
+
+  // Execute the tape from `entryIp` over `frame` (the function's local slots),
+  // returning the RET value. Recurses for OPER_CALL. Throws OESVMUnsupported for
+  // anything outside the subset so the caller falls back to the server.
+  ClientVM.prototype.execFrom = function (entryIp, frame) {
     var self = this;
-    function readLocal(arrA, idx) {
+    function read(arrA, idx) {
       var a = Number(arrA);
       if (a === DEF_VAR_CONST) return self.consts[idx];   // const pool
-      if (a <= 0) return frame[idx];                       // local frame slot
+      if (a <= 0) return frame[idx];                        // local frame slot
       throw new OESVMUnsupported('cross-frame operand (extern/context/module)');
     }
-    function writeLocal(arrA, idx, val) {
-      if (Number(arrA) <= 0) { frame[idx] = val; return; } // local frame slot
+    function write(arrA, idx, val) {
+      if (Number(arrA) <= 0) { frame[idx] = val; return; }
       throw new OESVMUnsupported('cross-frame write (extern/context/module)');
     }
 
-    var ip = Number(fn.entry);          // points at OPER_FUNC
-    var guard = 0, GUARD_MAX = 1000000; // runaway backstop
-    var ret;
-
+    var ip = entryIp, ret;
     while (ip >= 0 && ip < this.code.length) {
-      if (++guard > GUARD_MAX) throw new OESVMUnsupported('instruction budget exceeded');
+      if (--self._budget < 0) throw new OESVMUnsupported('instruction budget exceeded');
       var u = this.code[ip];
       var raw = Number(u.op);
       var base = raw % OPER_END_PLUS_1;
@@ -113,37 +117,59 @@
       switch (base) {
         case OP.FUNC:  break;                               // entry marker — no-op
         case OP.NOP:   break;
-        case OP.CONST: writeLocal(u.p1a, u.p1i, this.consts[u.p2i]); break;
-        case OP.CONSTN: writeLocal(u.p1a, u.p1i, Number(u.p2i)); break;
-        case OP.LET:   writeLocal(u.p1a, u.p1i, readLocal(u.p2a, u.p2i)); break;
+        case OP.CONST: write(u.p1a, u.p1i, this.consts[u.p2i]); break;
+        case OP.CONSTN: write(u.p1a, u.p1i, Number(u.p2i)); break;
+        case OP.LET:   write(u.p1a, u.p1i, read(u.p2a, u.p2i)); break;
         case OP.ADD: {
-          var l = readLocal(u.p2a, u.p2i), r = readLocal(u.p3a, u.p3i);
-          writeLocal(u.p1a, u.p1i, (delta === 2 || typeof l === 'string' || typeof r === 'string')
+          var l = read(u.p2a, u.p2i), r = read(u.p3a, u.p3i);
+          write(u.p1a, u.p1i, (delta === 2 || typeof l === 'string' || typeof r === 'string')
             ? String(l) + String(r) : Number(l) + Number(r));
           break;
         }
-        case OP.SUB:  writeLocal(u.p1a, u.p1i, Number(readLocal(u.p2a,u.p2i)) - Number(readLocal(u.p3a,u.p3i))); break;
-        case OP.MULT: writeLocal(u.p1a, u.p1i, Number(readLocal(u.p2a,u.p2i)) * Number(readLocal(u.p3a,u.p3i))); break;
-        case OP.DIV:  writeLocal(u.p1a, u.p1i, Number(readLocal(u.p2a,u.p2i)) / Number(readLocal(u.p3a,u.p3i))); break;
-        case OP.MOD:  writeLocal(u.p1a, u.p1i, Number(readLocal(u.p2a,u.p2i)) % Number(readLocal(u.p3a,u.p3i))); break;
-        case OP.INVERT: writeLocal(u.p1a, u.p1i, -Number(readLocal(u.p2a,u.p2i))); break;
-        case OP.NOT:  writeLocal(u.p1a, u.p1i, isEmpty(readLocal(u.p2a,u.p2i))); break;
-        case OP.AND:  writeLocal(u.p1a, u.p1i, !isEmpty(readLocal(u.p2a,u.p2i)) && !isEmpty(readLocal(u.p3a,u.p3i))); break;
-        case OP.OR:   writeLocal(u.p1a, u.p1i, !isEmpty(readLocal(u.p2a,u.p2i)) || !isEmpty(readLocal(u.p3a,u.p3i))); break;
-        case OP.EQ:   writeLocal(u.p1a, u.p1i, readLocal(u.p2a,u.p2i) == readLocal(u.p3a,u.p3i)); break;
-        case OP.NE:   writeLocal(u.p1a, u.p1i, readLocal(u.p2a,u.p2i) != readLocal(u.p3a,u.p3i)); break;
-        case OP.GT:   writeLocal(u.p1a, u.p1i, Number(readLocal(u.p2a,u.p2i)) >  Number(readLocal(u.p3a,u.p3i))); break;
-        case OP.LS:   writeLocal(u.p1a, u.p1i, Number(readLocal(u.p2a,u.p2i)) <  Number(readLocal(u.p3a,u.p3i))); break;
-        case OP.GE:   writeLocal(u.p1a, u.p1i, Number(readLocal(u.p2a,u.p2i)) >= Number(readLocal(u.p3a,u.p3i))); break;
-        case OP.LE:   writeLocal(u.p1a, u.p1i, Number(readLocal(u.p2a,u.p2i)) <= Number(readLocal(u.p3a,u.p3i))); break;
-        case OP.IF:   if (isEmpty(readLocal(u.p1a, u.p1i))) { ip = Number(u.p2i) - 1; } break;
+        case OP.SUB:  write(u.p1a, u.p1i, Number(read(u.p2a,u.p2i)) - Number(read(u.p3a,u.p3i))); break;
+        case OP.MULT: write(u.p1a, u.p1i, Number(read(u.p2a,u.p2i)) * Number(read(u.p3a,u.p3i))); break;
+        case OP.DIV:  write(u.p1a, u.p1i, Number(read(u.p2a,u.p2i)) / Number(read(u.p3a,u.p3i))); break;
+        case OP.MOD:  write(u.p1a, u.p1i, Number(read(u.p2a,u.p2i)) % Number(read(u.p3a,u.p3i))); break;
+        case OP.INVERT: write(u.p1a, u.p1i, -Number(read(u.p2a,u.p2i))); break;
+        case OP.NOT:  write(u.p1a, u.p1i, isEmpty(read(u.p2a,u.p2i))); break;
+        case OP.AND:  write(u.p1a, u.p1i, !isEmpty(read(u.p2a,u.p2i)) && !isEmpty(read(u.p3a,u.p3i))); break;
+        case OP.OR:   write(u.p1a, u.p1i, !isEmpty(read(u.p2a,u.p2i)) || !isEmpty(read(u.p3a,u.p3i))); break;
+        case OP.EQ:   write(u.p1a, u.p1i, read(u.p2a,u.p2i) == read(u.p3a,u.p3i)); break;
+        case OP.NE:   write(u.p1a, u.p1i, read(u.p2a,u.p2i) != read(u.p3a,u.p3i)); break;
+        case OP.GT:   write(u.p1a, u.p1i, Number(read(u.p2a,u.p2i)) >  Number(read(u.p3a,u.p3i))); break;
+        case OP.LS:   write(u.p1a, u.p1i, Number(read(u.p2a,u.p2i)) <  Number(read(u.p3a,u.p3i))); break;
+        case OP.GE:   write(u.p1a, u.p1i, Number(read(u.p2a,u.p2i)) >= Number(read(u.p3a,u.p3i))); break;
+        case OP.LE:   write(u.p1a, u.p1i, Number(read(u.p2a,u.p2i)) <= Number(read(u.p3a,u.p3i))); break;
+        case OP.IF:   if (isEmpty(read(u.p1a, u.p1i))) { ip = Number(u.p2i) - 1; } break;
         case OP.GOTO: ip = Number(u.p1i) - 1; break;
+        case OP.CALL: {
+          // p1 = return dest; p2a = module (0 = this client module only);
+          // p2i = callee entry IP; p3a = param count; p3i = callee var count.
+          // The next p3a opcodes are OPER_SET/SETREF/SETCONST binding each arg.
+          if (Number(u.p2a) !== 0)
+            throw new OESVMUnsupported('cross-module call (server/common module)');
+          var retA = u.p1a, retI = u.p1i;
+          var calleeEntry = Number(u.p2i), pcount = Number(u.p3a), vcount = Number(u.p3i);
+          var cf = newFrame(vcount);
+          for (var pi = 0; pi < pcount; pi++) {
+            ip++;
+            var su = this.code[ip];
+            var sbase = Number(su.op) % OPER_END_PLUS_1;
+            if (sbase === OP.SETCONST) {
+              if (Number(su.p1i) >= 0) cf[pi] = this.consts[Number(su.p1i)];   // default/omitted → leave undefined
+            } else {                    // OPER_SET / OPER_SETREF — arg source is p1
+              cf[pi] = read(su.p1a, su.p1i);
+            }
+          }
+          write(retA, retI, this.execFrom(calleeEntry, cf));
+          break;
+        }
         case OP.RET:
-          if (Number(u.p1i) !== DEF_VAR_NORET) ret = readLocal(u.p1a, u.p1i);
+          if (Number(u.p1i) !== DEF_VAR_NORET) ret = read(u.p1a, u.p1i);
           return ret;
         case OP.ENDFUNC: case OP.END: return ret;
         default:
-          throw new OESVMUnsupported('opcode ' + base + ' not implemented (client VM 5a)');
+          throw new OESVMUnsupported('opcode ' + base + ' not implemented (client VM)');
       }
       ip++;
     }

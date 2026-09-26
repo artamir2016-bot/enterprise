@@ -643,6 +643,23 @@ TEST(ClientBytecodeDump, DISABLED_ArithFn) {
 	DumpClientBytecodeJSON(cc.m_cByteCode);
 }
 
+// DISABLED dumper — an intra-module CALL (Outer calls Inner), for extending the VM
+// with OPER_CALL. Run: --gtest_also_run_disabled_tests --gtest_filter=*ClientBytecodeDump.DISABLED_CallFn*
+TEST(ClientBytecodeDump, DISABLED_CallFn) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("&AtClient\n")
+		wxT("Function Inner(y)\n")
+		wxT("  Return y * 2;\n")
+		wxT("EndFunction\n")
+		wxT("&AtClient\n")
+		wxT("Function Outer(x)\n")
+		wxT("  Return Inner(x) + 1;\n")
+		wxT("EndFunction\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+	DumpClientBytecodeJSON(cc.m_cByteCode);
+}
+
 TEST(CompilerAOT, ExecEnvRoundTrips) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	const wxString src =
