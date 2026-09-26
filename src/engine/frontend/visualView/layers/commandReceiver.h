@@ -50,6 +50,13 @@ public:
 	struct ibCommandSubItem { ibCommandDescription desc; wxString caption; wxBitmap icon; };
 	bool ResolveSubCommands(const ibCommandDescription& desc, std::vector<ibCommandSubItem>& out) const;
 
+	// Managed-form client/server split (Inc 5a). Resolve `desc` to its leaf form
+	// command and return the NAME of the procedure its Action fires — but ONLY when
+	// that procedure is CLIENT-env in the gate form's module (so the browser VM can
+	// run it in-page). Empty when the leaf is not a form command, has no Action, or
+	// the handler is Server-env (→ the button POSTs /action as today).
+	wxString ResolveClientHandlerName(const ibCommandDescription& desc) const;
+
 	// The form gate the walk starts from (also the ExecuteParameters a command handler receives) — supplied by the
 	// projection that IS-A door: a button -> GetOwnerForm(), the command bar -> its owner frame's form. Public so a
 	// caller holding a door can reach its form WITHOUT knowing the concrete projection (the command-source picker).

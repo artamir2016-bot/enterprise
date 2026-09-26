@@ -12,6 +12,8 @@
 #include "backend/typeDescription.h"                // ibTypeDescription::ContainType / GetClsidList (command parameter type)
 #include "backend/compiler/value.h"                 // ibValue (the resolved command parameter)
 #include "backend/backend_command.h"              // ibBackendCommandSender::ResolveCommandPath — the SERVER walk (starts on the form)
+#include "backend/compiler/procUnit.h"              // ibProcUnit::GetByteCode — Inc 5a client-handler env lookup
+#include "backend/compiler/byteCode.h"              // ibByteCode / ibExecEnv
 #include "frontend/visualView/layers/commandBar.h" // GatherFormCommands / ibCommandSourceEntry — reliable fallback for WalkCommand
 #ifndef OES_USE_WEB
 #include <wx/window.h>                              // wxWindow::FindFocus — the active control for a table-row parameter
@@ -145,6 +147,42 @@ bool ibFrontendCommandReceiver::ExecuteValueByPath(const ibCommandDescription& d
 		return true;
 	}
 	return false;
+}
+
+// Managed-form client/server split (Inc 5a) — the CLIENT-env handler name behind a
+// command, or empty. Mirrors ExecuteValueByPath's walk to the form-command leaf, but
+// instead of firing it, reads its Action procedure name and returns it ONLY when that
+// procedure is Client-env in the gate form's module bytecode. Empty otherwise → the
+// projection dispatches to the server as today.
+wxString ibFrontendCommandReceiver::ResolveClientHandlerName(const ibCommandDescription& desc) const
+{
+	ibValueForm* const gate = GetCommandGateForm();
+	if (gate == nullptr || !desc.IsOk())
+		return wxEmptyString;
+
+	ibValue start;
+	start = static_cast<const ibValue*>(gate);
+	ibValue leaf;
+	if (!ibBackendCommandSender::ResolveCommandPath(start, desc.GetPath(), 0, leaf))
+		return wxEmptyString;
+
+	ibFormCommandValue* fc = nullptr;
+	if (!(leaf.ConvertToValue(fc) && fc != nullptr))
+		return wxEmptyString;   // not a form command (a config command / standard action) — server path
+
+	const wxString name = fc->GetProcedure();
+	if (name.IsEmpty())
+		return wxEmptyString;   // placeholder Action, nothing to run
+
+	// Env gate: the handler must be a CLIENT function in the form's own module.
+	std::shared_ptr<ibProcUnit> pu = gate->GetProcUnit();
+	const ibByteCode* bc = pu ? pu->GetByteCode() : nullptr;
+	if (bc == nullptr)
+		return wxEmptyString;
+	for (const auto& fn : bc->m_listFunc)
+		if (fn.m_strRealName.IsSameAs(name, false))
+			return (fn.m_execEnv == ibExecEnv::Client) ? name : wxEmptyString;
+	return wxEmptyString;   // not found in this module (an inherited / server proc)
 }
 
 // The READ twin — start the SAME walk, then read the resolved leaf's own default look (caption + icon + modifies

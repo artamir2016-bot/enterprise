@@ -288,6 +288,10 @@ public:
 	void SetRepresentation(int r)               { m_representation = r; }
 	void SetHasPicture(bool v)                  { m_hasPicture     = v; }
 	void SetPictureDataUri(const wxString& uri) { m_pictureDataUri = uri; }
+	// Managed-form split (Inc 5a): the name of the CLIENT-env form-module procedure
+	// this button's command fires, when there is one. Empty otherwise. The browser
+	// (OES.ClientVM) runs it in-page instead of POSTing /action; empty → POST as today.
+	void SetClientHandler(const wxString& name) { m_clientHandler = name; }
 
 	virtual nlohmann::json ToJSON() const override {
 		auto node = ibWebWindow::ToJSON();
@@ -295,6 +299,8 @@ public:
 		node["hasPicture"]     = m_hasPicture;
 		if (!m_pictureDataUri.IsEmpty())
 			node["picture"] = m_pictureDataUri;
+		if (!m_clientHandler.IsEmpty())
+			node["clientHandler"] = std::string(m_clientHandler.utf8_str());
 		return node;
 	}
 
@@ -302,6 +308,7 @@ private:
 	int      m_representation = 3;   // default PictureAndText
 	bool     m_hasPicture     = false;
 	wxString m_pictureDataUri;
+	wxString m_clientHandler;        // Client-env handler proc name (Inc 5a), empty = server dispatch
 };
 
 class ibWebCheckBox : public ibWebWindow {

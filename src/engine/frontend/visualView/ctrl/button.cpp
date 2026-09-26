@@ -95,6 +95,10 @@ void ibValueButton::Update(wxObject* wxobject, ibVisualHost* visualHost)
 	button->SetRepresentation(static_cast<int>(rep));
 	button->SetHasPicture(hasPic);
 	button->SetPictureDataUri(pictureUri);
+	// Inc 5a: if this button's command fires a CLIENT-env handler, name it so the
+	// browser VM runs it in-page (OES.ClientVM). Empty → the browser POSTs /action.
+	if (cmdResolved)
+		button->SetClientHandler(ResolveClientHandlerName(cmdDesc));
 #else
 	ibControlButton* button = static_cast<ibControlButton*>(wxobject);
 	if (button != nullptr) {

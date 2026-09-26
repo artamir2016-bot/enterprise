@@ -5,6 +5,9 @@
      client falls back to the English defaults further down, so a client served
      by anything else still works. -->
 <!--OES_I18N-->
+<!-- OES_CLIENTVM — the server inlines webClient/clientvm.js (OES.ClientVM) here.
+     Left as a plain comment, the client just POSTs every action to the server. -->
+<!--OES_CLIENTVM-->
 <style>
 /* Window chrome: title bar + status bar wrap the sidebar+main area.
    Body is flex-column so the middle row stretches; titlebar / statusbar
@@ -455,6 +458,38 @@ window.OES = window.OES || {};
 const L = window.OES.L || (window.OES.L = {});
 
 const API=location.pathname.replace(/\/$/,'');
+
+// ---- Managed-form client/server split (Inc 5a): run &НаКлиенте handlers in-page ----
+// OES.ClientVM is inlined by the server (webClient/clientvm.js) at <!--OES_CLIENTVM-->.
+// On each form render we fetch the active form's CLIENT bytecode; a button whose
+// server-emitted `clientHandler` is a Client-env proc runs through the VM instead of
+// POSTing /action. Anything the VM can't do (unsupported opcode, extern/context,
+// server call) throws → the caller falls back to the server POST, so coverage gaps
+// never break a form.
+OES.vm = null;
+OES.loadClientVM = async function(){
+  if(!(OES.ClientVM && OES.ClientVM.ClientVM)){ OES.vm=null; return; }
+  try{
+    const r = await netFetch(API+'/client-bytecode',{credentials:'same-origin'});
+    if(!r || !r.ok){ OES.vm=null; return; }
+    OES.vm = new OES.ClientVM.ClientVM(await r.json());
+  }catch(e){ OES.vm=null; }
+};
+OES.tryClientHandler = function(name){
+  if(!name || !OES.vm || !OES.vm.hasClientFn(name)) return false;
+  try{
+    OES.vm.call(name, []);
+    if(OES.log) OES.log('[client] '+name+'()');
+    return true;                       // ran in-page, no server round-trip
+  }catch(e){
+    if(e && e.name==='OESVMUnsupported'){
+      if(OES.debug) OES.debug('[client→server] '+name+': '+e.message);
+      return false;                    // fall back to server /action
+    }
+    if(OES.error) OES.error('[client] '+name+': '+((e&&e.message)||e));
+    return false;
+  }
+};
 
 // Tab-close cleanup: on pagehide fire a sendBeacon to /logout so the
 // server DELETEs the session row immediately instead of waiting for the
@@ -1651,6 +1686,8 @@ class Button extends BaseControl{
     if(wantText) el.appendChild(document.createTextNode(node.label||''));
     if(node.id){
       el.onclick=async()=>{
+        // Inc 5a: a Client-env handler runs in-page; unsupported → server POST.
+        if(node.clientHandler && OES.tryClientHandler && OES.tryClientHandler(node.clientHandler)) return;
         const r=await netFetch(API+'/action/'+node.id,{method:'POST',credentials:'same-origin'});
         if(r.ok){
           const tree=await r.json();
@@ -2141,6 +2178,8 @@ function renderCommandBar(commands){
 
 function render(node){
   if(!node||typeof node!=='object') return document.createTextNode('');
+  // Root form host → (re)load the active form's client bytecode for the VM (Inc 5a).
+  if(node.type==='host' && OES.loadClientVM) OES.loadClientVM();
   const ctrl=renderers[node.type]||fallback;
   const el=ctrl.render(node);
   ctrl.applyCommon(el,node);

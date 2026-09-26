@@ -144,6 +144,51 @@ std::string LoadClient()
 	return std::string();
 }
 
+// Load a sibling web file BY LEAF NAME (e.g. "clientvm.js") the same way the
+// client is found — beside the binary (web/<leaf>), then up the dev tree
+// (webClient/<leaf>). No pack tier: the pack carries only client.html; auxiliary
+// scripts ride beside it or in the source tree. Empty when absent.
+std::string LoadNamedWebFile(const char* leaf)
+{
+	wxFileName exeFile(wxStandardPaths::Get().GetExecutablePath());
+	const wxString exeDir = exeFile.GetPath();
+
+	const wxString besidePath = exeDir + wxFILE_SEP_PATH + wxT("web")
+		+ wxFILE_SEP_PATH + wxString::FromUTF8(leaf);
+	if (wxFileName::FileExists(besidePath)) {
+		const std::string beside = ReadWholeFile(besidePath);
+		if (!beside.empty()) return beside;
+	}
+
+	wxFileName walk(exeDir, wxEmptyString);
+	for (int i = 0; i < 6; ++i) {
+		const wxString candidate = walk.GetPath() + wxFILE_SEP_PATH
+			+ wxT("webClient") + wxFILE_SEP_PATH + wxString::FromUTF8(leaf);
+		if (wxFileName::FileExists(candidate)) {
+			const std::string dev = ReadWholeFile(candidate);
+			if (!dev.empty()) return dev;
+		}
+		if (walk.GetDirCount() == 0) break;
+		walk.RemoveLastDir();
+	}
+	return std::string();
+}
+
+// Inline OES.ClientVM (webClient/clientvm.js) into the page at the
+// <!--OES_CLIENTVM--> marker (Inc 5a). Inlining — not a <script src> + a new route
+// — keeps the client one served document and the file one edited/tested (node
+// self-test). Absent marker or file → the page keeps working (server dispatch).
+const char* const kClientVMMarker = "<!--OES_CLIENTVM-->";
+std::string WithClientVM(std::string html)
+{
+	const std::size_t at = html.find(kClientVMMarker);
+	if (at == std::string::npos)
+		return html;
+	const std::string vm = LoadNamedWebFile("clientvm.js");
+	std::string block = "<script>\n" + vm + "\n</script>";
+	return html.replace(at, std::strlen(kClientVMMarker), block);
+}
+
 // ---------------------------------------------------------------------------
 //  Captions — translated HERE, so the client never carries a second catalog
 // ---------------------------------------------------------------------------
@@ -253,7 +298,7 @@ extern "C" WFRONTEND_API const char* wfrontendClientHTML()
 	static std::string    s_client;
 
 	std::call_once(s_once, [] {
-		s_client = WithCaptions(LoadClient());
+		s_client = WithClientVM(WithCaptions(LoadClient()));
 	});
 
 	return s_client.empty() ? kMissingClient : s_client.c_str();
