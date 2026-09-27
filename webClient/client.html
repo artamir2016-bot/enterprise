@@ -474,9 +474,22 @@ OES.loadClientVM = async function(){
     const r = await netFetch(API+'/client-bytecode',{credentials:'same-origin'});
     if(!r || !r.ok){ OES.vm=null; return; }
     const j = await r.json();
-    OES.vm = new OES.ClientVM.ClientVM(j);
+    // 5c: inject the server-hop transport — a Client→Server proc call POSTs
+    // /srv-call with the proc name, its args, and the form-context snapshot;
+    // the server runs the &НаСервере proc and returns { ret, context }.
+    OES.vm = new OES.ClientVM.ClientVM(j, { transport: OES.srvCall });
     OES.vmBindings = j.formCtx || null;   // name↔controlId map; values read from DOM at call time
   }catch(e){ OES.vm=null; OES.vmBindings=null; }
+};
+// 5c transport: ship a Client→Server proc call, return { ret, context }.
+OES.srvCall = async function(proc, args, context){
+  const r = await netFetch(API+'/srv-call',{
+    method:'POST', credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ proc:proc, args:args, context:context })
+  });
+  if(!r || !r.ok) throw new Error('srv-call '+proc+' failed');
+  return await r.json();
 };
 // Read the current value shown by a control (its input/textarea) from the DOM.
 OES.readCtrlValue = function(cid){
@@ -498,16 +511,19 @@ OES.buildFormCtxSpec = function(){
   });
   return { attrs:attrs, object:object, objectName:b.objectName||null };
 };
-OES.tryClientHandler = function(name){
+// ASYNC (5c): the handler may hop to the server mid-run, so this awaits the VM.
+// Resolves true when the handler ran in-page (incl. any server hops); false to
+// fall back to the plain /action POST (unknown/unsupported).
+OES.tryClientHandler = async function(name){
   if(!name || !OES.vm || !OES.vm.hasClientFn(name)) return false;
   try{
     OES.vm.bindContext(OES.buildFormCtxSpec());   // 5b: seed context from live DOM
-    OES.vm.call(name, []);
-    // Push client-only mutations back into the DOM (re-render bound controls).
+    await OES.vm.call(name, []);
+    // Push mutations (client edits + server-returned context) back into the DOM.
     const muts = OES.vm.mutations ? OES.vm.mutations() : {};
     let n=0; for(const cid in muts){ OES.writeCtrlValue(cid, muts[cid]); n++; }
     if(OES.log) OES.log('[client] '+name+'()'+(n?(' → '+n+' control(s) updated'):''));
-    return true;                       // ran in-page, no server round-trip
+    return true;                       // ran in-page (possibly via a server hop)
   }catch(e){
     if(e && e.name==='OESVMUnsupported'){
       if(OES.debug) OES.debug('[client→server] '+name+': '+e.message);
@@ -1713,8 +1729,9 @@ class Button extends BaseControl{
     if(wantText) el.appendChild(document.createTextNode(node.label||''));
     if(node.id){
       el.onclick=async()=>{
-        // Inc 5a: a Client-env handler runs in-page; unsupported → server POST.
-        if(node.clientHandler && OES.tryClientHandler && OES.tryClientHandler(node.clientHandler)) return;
+        // Inc 5a/5c: a Client-env handler runs in-page (awaiting any server
+        // hop); unsupported → server POST.
+        if(node.clientHandler && OES.tryClientHandler && await OES.tryClientHandler(node.clientHandler)) return;
         const r=await netFetch(API+'/action/'+node.id,{method:'POST',credentials:'same-origin'});
         if(r.ok){
           const tree=await r.json();

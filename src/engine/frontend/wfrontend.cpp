@@ -55,6 +55,7 @@
 #include "visualView/ctrl/typeControl.h"      // ibTypeControlFactory — GetSourceDesc (5b form-context bindings)
 #include "visualView/ctrl/formAttribute.h"    // ibFormAttributeValue — GetName/GetId
 #include "backend/sourceDescription.h"        // ibSourceHop / ibSourceDescription — control binding path
+#include "backend/fnumber.h"                  // ibNumber — exact value from JS number (5c server call)
 
 namespace {
 
@@ -272,6 +273,7 @@ public:
 	// Client bytecode of the active form (managed-form split, Inc 5a): the
 	// Client-env functions + code/const/vars as JSON the browser VM runs.
 	std::string FormClientBytecode(const std::string& id);
+	std::string ServerCall(const std::string& id, const std::string& body);
 
 	// Borrow the session's ibWebApplication for the duration of a
 	// blocking operation (SSE wait). Returns null if id is unknown or
@@ -1366,16 +1368,33 @@ std::string FormClientBytecodeInSession(ibWebSession* session)
 
 		nlohmann::json root;
 
-		// Functions — CLIENT-env only (the browser never runs server code).
+		// Functions — ALL of them, each tagged with its execution env. The client
+		// VM runs Client-env bodies in-page and turns a call to a Server-env proc
+		// into an HTTP hop (Inc 5c); it needs to SEE the server functions (by
+		// name + entry) to route calls, even though it never executes their tape.
+		auto envName = [](ibExecEnv e) -> const char* {
+			switch (e) {
+			case ibExecEnv::Client:               return "client";
+			case ibExecEnv::Server:               return "server";
+			case ibExecEnv::ServerNoContext:      return "servernocontext";
+			case ibExecEnv::ClientServerNoContext:return "clientservernocontext";
+			default:                              return "unspecified";
+			}
+		};
 		auto fns = nlohmann::json::array();
 		for (const auto& fn : bc->m_listFunc) {
-			if (fn.m_execEnv != ibExecEnv::Client)
+			// Only MODULE-defined procs (entry >= 0). Entries with m_lCodeLine < 0
+			// are bound context methods (the ~200 global system functions) — not
+			// code on this tape, and not something the client VM ever calls by
+			// entry; emitting them only bloats the payload.
+			if (fn.m_lCodeLine < 0)
 				continue;
 			nlohmann::json jf = {
 				{ "name",     std::string(fn.m_strRealName.utf8_str()) },
 				{ "entry",    (long long)fn.m_lCodeLine },
 				{ "isFunc",   fn.m_bCodeRet },
 				{ "varCount", (long long)fn.m_lVarCount },
+				{ "env",      envName(fn.m_execEnv) },
 			};
 			auto params = nlohmann::json::array();
 			for (const auto& p : fn.m_listParam)
@@ -1465,6 +1484,108 @@ std::string FormClientBytecodeInSession(ibWebSession* session)
 		return root.dump(2);
 	}).get();
 }
+
+// ---- Inc 5c: Client→Server proc hop -------------------------------------
+// A JSON value the client sent for a form field / arg → an ibValue. Numbers and
+// numeric strings become exact ibNumber; other strings stay strings.
+static ibValue JsonToIbValue(const nlohmann::json& j)
+{
+	if (j.is_number())  return ibValue(ibNumber(wxString::FromUTF8(j.dump().c_str())));
+	if (j.is_boolean()) return ibValue(j.get<bool>());
+	if (j.is_string()) {
+		wxString s = wxString::FromUTF8(j.get<std::string>().c_str());
+		double d = 0.0;
+		if (!s.IsEmpty() && s.ToCDouble(&d)) return ibValue(ibNumber(s));
+		return ibValue(s);
+	}
+	return ibValue();
+}
+
+std::string ServerCallInSession(ibWebSession* session, const std::string& body)
+{
+	if (session == nullptr || !session->IsAuthenticated()) return "{}";
+	ibWebApplication* app = session->App();
+	if (app == nullptr) return "{}";
+
+	nlohmann::json req;
+	try { req = nlohmann::json::parse(body); }
+	catch (...) { return "{}"; }
+
+	return app->RunOnWorker([app, req]() -> std::string {
+		ibVisualHostClient* host = app->GetActiveHost();
+		if (host == nullptr) return "{}";
+		ibValueForm* form = host->GetValueForm();
+		if (form == nullptr) return "{}";
+
+		const std::string proc = req.value("proc", std::string());
+		if (proc.empty()) return "{}";
+
+		// The form's bound controls are the context we round-trip: each names an
+		// attribute (form scope) or an Объект field (main-object scope). We resolve
+		// a { name -> (scope, binding path) } table once, then apply the incoming
+		// values through the form's own path setter and read them back the same way
+		// — no direct source poking, exactly the Inc 5b binding taxonomy.
+		ibFormAttributeValue* mainAttr = form->GetMainAttribute();
+		const ibMetaID mainId = (mainAttr != nullptr) ? mainAttr->GetId() : (ibMetaID)wxNOT_FOUND;
+		struct Bound { wxString name; bool object; ibSourceDescription desc; };
+		std::vector<Bound> bounds;
+		for (ibValueControl* ctrl : form->GetControlList()) {
+			auto* factory = dynamic_cast<ibTypeControlFactory*>(ctrl);
+			if (factory == nullptr) continue;
+			const ibSourceDescription& desc = factory->GetSourceDesc();
+			const std::vector<ibSourceHop>& path = desc.GetPath();
+			if (path.empty()) continue;
+			if (path.size() >= 2 && path.front().m_id == mainId) {
+				auto* fld = activeMetaData->FindAnyObjectByFilter<ibValueMetaObject, ibMetaID>(path[1].m_id, true);
+				if (fld != nullptr) bounds.push_back({ fld->GetName(), true, desc });
+			}
+			else if (path.size() == 1 && path.front().m_id != mainId) {
+				ibFormAttributeValue* av = form->FindAttributeById(path.front().m_id);
+				if (av != nullptr) bounds.push_back({ av->GetName(), false, desc });
+			}
+		}
+
+		// 1) Apply the incoming form context (the client's latest edits).
+		auto ctxIn = req.find("context");
+		if (ctxIn != req.end() && ctxIn->is_object()) {
+			for (const Bound& b : bounds) {
+				auto bucket = ctxIn->find(b.object ? "object" : "attrs");
+				if (bucket == ctxIn->end() || !bucket->is_object()) continue;
+				auto it = bucket->find(std::string(b.name.utf8_str()));
+				if (it != bucket->end())
+					form->SetValueByAttributePath(b.desc, JsonToIbValue(it.value()));
+			}
+		}
+
+		// 2) Run the named form-module procedure/function on the worker.
+		std::vector<ibValue> argVals;
+		auto argsIn = req.find("args");
+		if (argsIn != req.end() && argsIn->is_array())
+			for (const auto& a : *argsIn) argVals.push_back(JsonToIbValue(a));
+		std::vector<ibValue*> argPtrs;
+		for (auto& v : argVals) argPtrs.push_back(&v);
+		ibValue ret;
+		std::shared_ptr<ibProcUnit> pu = form->GetProcUnit();
+		if (pu != nullptr)
+			pu->CallAsFunc(wxString::FromUTF8(proc.c_str()), ret,
+				argPtrs.empty() ? nullptr : argPtrs.data(), (long)argPtrs.size());
+
+		// 3) Read the (possibly mutated) context back out, by binding name.
+		nlohmann::json outAttrs = nlohmann::json::object();
+		nlohmann::json outObj   = nlohmann::json::object();
+		for (const Bound& b : bounds) {
+			ibValue v;
+			if (!form->GetValueByAttributePath(b.desc, v)) continue;
+			(b.object ? outObj : outAttrs)[std::string(b.name.utf8_str())] =
+				std::string(v.GetString().utf8_str());
+		}
+
+		nlohmann::json resp;
+		resp["ret"] = std::string(ret.GetString().utf8_str());
+		resp["context"] = { { "attrs", std::move(outAttrs) }, { "object", std::move(outObj) } };
+		return resp.dump(2);
+	}).get();
+}
 } // namespace
 
 std::string SessionManager::FormClientBytecode(const std::string& id)
@@ -1485,6 +1606,27 @@ WFRONTEND_API std::string wfrontendFormClientBytecode(const std::string& session
 {
 	Sessions().Touch(sessionId);
 	return Sessions().FormClientBytecode(sessionId);
+}
+
+std::string SessionManager::ServerCall(const std::string& id, const std::string& body)
+{
+	std::shared_ptr<ibWebSession> keeper;
+	ibWebSession* s = nullptr;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_sessions.find(id);
+		if (it == m_sessions.end()) return "{}";
+		keeper = it->second;
+		s = keeper.get();
+	}
+	return ServerCallInSession(s, body);
+}
+
+WFRONTEND_API std::string wfrontendServerCall(const std::string& sessionId,
+	const std::string& body)
+{
+	Sessions().Touch(sessionId);
+	return Sessions().ServerCall(sessionId, body);
 }
 
 namespace {

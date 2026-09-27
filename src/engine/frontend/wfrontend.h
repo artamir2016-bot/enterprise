@@ -247,6 +247,14 @@ WFRONTEND_API std::string wfrontendFireFormCommand(const std::string& sessionId,
 // invalid session / no active form. Read-only projection, cacheable by the client.
 WFRONTEND_API std::string wfrontendFormClientBytecode(const std::string& sessionId);
 
+// Managed-form client/server split (Inc 5c): a Client→Server proc hop. `body` is
+// JSON { proc, args:[...], context:{ attrs:{name:val}, object:{name:val} } }. The
+// active form's incoming context is applied, the named form-module proc runs on
+// the session worker, and the mutated context + return value are returned as JSON
+// { ret, context:{ attrs, object } }. "{}" on invalid session / no active form.
+WFRONTEND_API std::string wfrontendServerCall(const std::string& sessionId,
+	const std::string& body);
+
 // Generic kind-aware dispatcher. Routes the `kind` string into
 // ibWebWindow::HandleRequest on the target control. Textctrl side
 // buttons use "buttonSelect"/"buttonOpen"/"buttonClear"; callers can

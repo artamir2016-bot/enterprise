@@ -127,13 +127,35 @@
   };
 
   // A loaded program: functions by name + the shared code / const tables +
-  // (5b) the form context proxies.
-  function ClientVM(json) {
+  // (5b) the form context proxies + (5c) the server-hop transport.
+  //   opts.transport(procName, args, contextSnapshot) -> Promise<{ret, context}>
+  //     is called when a Client handler invokes a Server-env proc (Inc 5c).
+  //     Absent (node / client-only) → the hop throws OESVMUnsupported and the
+  //     caller falls back to the plain server /action dispatch.
+  function ClientVM(json, opts) {
+    opts = opts || {};
     this.code = json.code || [];
     this.consts = (json.consts || []).map(decodeConst);
-    this.fns = {};
-    (json.functions || []).forEach(function (f) { this.fns[f.name] = f; }, this);
+    this.fns = {};        // name -> descriptor
+    this.fnByEntry = {};  // entry IP -> descriptor (routes OPER_CALL by target)
+    (json.functions || []).forEach(function (f) {
+      this.fns[f.name] = f;
+      this.fnByEntry[Number(f.entry)] = f;
+    }, this);
     this.ctx = new FormContext(json.formCtx);
+    this.transport = opts.transport || null;
+  }
+
+  // A function's env is a lowercase string the server stamps: "client",
+  // "server", "servernocontext", "clientservernocontext", "unspecified".
+  function isServerEnv(fn) {
+    if (!fn || !fn.env) return false;
+    return fn.env.indexOf('server') === 0;   // server / servernocontext
+  }
+  function isClientEnv(fn) {
+    // Unspecified in a form module defaults to Client (1C rule); the server
+    // already resolved that, so treat only an explicit server env as non-client.
+    return !!fn && !isServerEnv(fn);
   }
 
   // Const pool entry → JS value. ibValueTypes: 1=BOOL 2=NUMBER 3=DATE 4=STRING
@@ -150,18 +172,60 @@
     return v === undefined || v === null || v === 0 || v === false || v === '';
   }
 
-  ClientVM.prototype.hasClientFn = function (name) { return !!this.fns[name]; };
+  // A name the browser may run in-page: present AND client-env.
+  ClientVM.prototype.hasClientFn = function (name) { return isClientEnv(this.fns[name]); };
 
   // Run a client function by name. `args` seed the leading local slots (params).
+  // ASYNC (Inc 5c): a server-env call mid-handler awaits an HTTP round-trip, so
+  // the whole executor is promise-based; callers await call().
   ClientVM.prototype.call = function (name, args) {
     var fn = this.fns[name];
-    if (!fn) throw new OESVMUnsupported('no client function ' + name);
+    if (!fn) return Promise.reject(new OESVMUnsupported('no client function ' + name));
     var frame = newFrame(Number(fn.varCount) || 0);
     args = args || [];
     for (var a = 0; a < args.length && a < frame.length; a++) frame[a] = args[a];
     this._budget = GUARD_MAX;               // shared across the whole call tree
     this.ctx.dirty = {};                    // reset the re-render set for this run
     return this.execFrom(Number(fn.entry), frame);
+  };
+
+  // A snapshot of the client form context, by NAME, for a server hop.
+  ClientVM.prototype.contextSnapshot = function () {
+    var snap = { attrs: {}, object: {} };
+    for (var a in this.ctx.attrs)  snap.attrs[a]  = this.ctx.attrs[a].value;
+    for (var o in this.ctx.object) snap.object[o] = this.ctx.object[o].value;
+    return snap;
+  };
+
+  // Apply a server-returned context back onto the client cells (by name), and
+  // record the touched controls for re-render.
+  ClientVM.prototype.applyContext = function (context) {
+    if (!context) return;
+    var self = this;
+    ['attrs', 'object'].forEach(function (bucket) {
+      var incoming = context[bucket] || {};
+      var cells = self.ctx[bucket];
+      for (var name in incoming) {
+        if (Object.prototype.hasOwnProperty.call(cells, name)) {
+          cells[name].value = num(incoming[name]);
+          self.ctx.markDirty(cells[name]);
+        }
+      }
+    });
+  };
+
+  // Perform a Client→Server call: ship the proc name, its args, and the current
+  // form context; apply the server's mutated context; return the proc's result.
+  ClientVM.prototype.serverHop = function (procName, args) {
+    if (!this.transport)
+      return Promise.reject(new OESVMUnsupported('server call "' + procName + '" (no transport)'));
+    var self = this;
+    return Promise.resolve(this.transport(procName, args, this.contextSnapshot()))
+      .then(function (resp) {
+        resp = resp || {};
+        self.applyContext(resp.context);
+        return num(resp.ret);
+      });
   };
 
   // (Re)bind the form context from a spec — the browser calls this right
@@ -179,9 +243,10 @@
   var GUARD_MAX = 1000000;   // runaway backstop across the whole call tree
 
   // Execute the tape from `entryIp` over `frame` (the function's local slots),
-  // returning the RET value. Recurses for OPER_CALL. Throws OESVMUnsupported for
-  // anything outside the subset so the caller falls back to the server.
-  ClientVM.prototype.execFrom = function (entryIp, frame) {
+  // returning the RET value. Recurses for OPER_CALL (client target) or awaits a
+  // server hop (Server-env target, Inc 5c) — hence async. Throws OESVMUnsupported
+  // for anything outside the subset so the caller falls back to the server.
+  ClientVM.prototype.execFrom = async function (entryIp, frame) {
     var self = this;
     function read(arrA, idx) {
       var a = Number(arrA);
@@ -254,11 +319,11 @@
         case OP.IF:   if (isEmpty(read(u.p1a, u.p1i))) { ip = Number(u.p2i) - 1; } break;
         case OP.GOTO: ip = Number(u.p1i) - 1; break;
         case OP.CALL: {
-          // p1 = return dest; p2a = module (0 = this client module only);
-          // p2i = callee entry IP; p3a = param count; p3i = callee var count.
-          // The next p3a opcodes are OPER_SET/SETREF/SETCONST binding each arg.
+          // p1 = return dest; p2a = module (0 = this module); p2i = callee entry
+          // IP; p3a = param count; p3i = callee var count. The next p3a opcodes
+          // are OPER_SET/SETREF/SETCONST binding each arg into the callee frame.
           if (Number(u.p2a) !== 0)
-            throw new OESVMUnsupported('cross-module call (server/common module)');
+            throw new OESVMUnsupported('cross-module call (common/server module)');
           var retA = u.p1a, retI = u.p1i;
           var calleeEntry = Number(u.p2i), pcount = Number(u.p3a), vcount = Number(u.p3i);
           var cf = newFrame(vcount);
@@ -272,7 +337,17 @@
               cf[pi] = read(su.p1a, su.p1i);
             }
           }
-          write(retA, retI, this.execFrom(calleeEntry, cf));
+          // Route by the callee's env: a Server-env proc runs on the server via
+          // an HTTP hop that ships + returns the form context (Inc 5c); a
+          // client proc runs in-page (recurse). Unknown target with no client
+          // body would just fall through to a local exec of shared tape — the
+          // fnByEntry lookup lets us tell them apart.
+          var callee = this.fnByEntry[calleeEntry];
+          if (isServerEnv(callee)) {
+            write(retA, retI, await this.serverHop(callee.name, cf.slice(0, pcount)));
+          } else {
+            write(retA, retI, await this.execFrom(calleeEntry, cf));
+          }
           break;
         }
         // MEMBER read: dest = p1, base = p2, prop = consts[p3i].

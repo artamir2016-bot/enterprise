@@ -827,6 +827,18 @@ int main(int argc, char** argv)
 			"application/json; charset=utf-8");
 	});
 
+	// POST /srv-call — a Client→Server proc hop (managed-form split, Inc 5c).
+	// Body JSON { proc, args:[...], context:{attrs,object} }: the VM ships the
+	// form context + the server proc's args, the server applies the context,
+	// runs the &НаСервере proc on the session worker, and returns its result +
+	// the mutated context, which the browser applies and re-renders.
+	svr.Post(prefix + "/srv-call", [](const httplib::Request& req, httplib::Response& res) {
+		std::string id;
+		if (!RequireSessionId(req, res, id)) return;
+		res.set_content(wfrontendServerCall(id, req.body),
+			"application/json; charset=utf-8");
+	});
+
 	// GET /debug-status — process-wide debug flag (was --debug on?) +
 	// per-session paused flag (is the session currently parked at a
 	// breakpoint?). Client polls this on its live tick to render the
