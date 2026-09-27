@@ -35,6 +35,17 @@
     NEXT_ITER:18, MOD:19, INVERT:20, ITER:21, GT:22, EQ:23, LS:24, GE:25,
     LE:26, NE:27, TRY:28, RAISE:29, RAISE_T:30, FUNC:31, ENDFUNC:32,
     CALL:37, SET:38, SETREF:39, SETCONST:40,
+    // Member / bound-variable access (codeDef.h ordinals). SET_A/GET_A are
+    // dotted-member get/set on an object base; the SCOPE / CONTEXT / EXTERN
+    // family are the form-module's bound-variable handles (ЭтаФорма scope,
+    // ThisObject/ThisForm context, export externs) — all resolved the same
+    // parent + property-name way (procUnit.cpp: OPER_SET_SCOPE shares the
+    // OPER_SET_A body, OPER_GET_SCOPE the OPER_GET_A body). Inc 5b binds
+    // these to the client-side form context so &НаКлиенте edits
+    // Объект.Реквизит and form attributes without a server hop.
+    SET_A:52, GET_A:53,
+    GET_EXTERN:68, SET_EXTERN:69, GET_SCOPE:70, SET_SCOPE:71,
+    GET_CONTEXT:72, SET_CONTEXT:73,
     END:74
   };
 
@@ -50,12 +61,79 @@
   function OESVMUnsupported(msg) { this.name = 'OESVMUnsupported'; this.message = msg; }
   OESVMUnsupported.prototype = Object.create(Error.prototype);
 
-  // A loaded program: functions by name + the shared code / const tables.
+  // ---------------------------------------------------------------------------
+  // Form context (Inc 5b). The server ships a `formCtx` block next to the
+  // bytecode describing the mutable state a &НаКлиенте handler can touch:
+  //   { attrs:  [ {name, value, controlId} ],           // form attributes (ЭтаФорма.<name>)
+  //     objectName: "Объект",                            // the main-object handle name
+  //     object: [ {name, value, controlId} ] }           // its fields (Объект.<name>)
+  // The VM binds two proxies over it — the FORM SCOPE (resolves attribute
+  // names + the object handle) and the OBJECT (resolves the object's fields) —
+  // and records every write so the caller can push it back into the DOM
+  // (dirty controls) with no server round-trip.
+  // ---------------------------------------------------------------------------
+  function num(v) { return v === '' || v === undefined || v === null ? 0 : (isNaN(Number(v)) ? v : Number(v)); }
+
+  function FormContext(spec) {
+    spec = spec || {};
+    this.objectName = spec.objectName || null;
+    this.attrs = {};       // name -> { value, controlId }
+    this.object = {};      // name -> { value, controlId }
+    this.dirty = {};       // controlId -> new value (what to re-render)
+    (spec.attrs || []).forEach(function (a) {
+      this.attrs[a.name] = { value: num(a.value), controlId: a.controlId };
+    }, this);
+    (spec.object || []).forEach(function (f) {
+      this.object[f.name] = { value: num(f.value), controlId: f.controlId };
+    }, this);
+    this.objekt = new ObjektProxy(this);
+    this.scope  = new FormScopeProxy(this);
+  }
+  FormContext.prototype.markDirty = function (cell) {
+    if (cell && cell.controlId !== undefined && cell.controlId !== null)
+      this.dirty[cell.controlId] = cell.value;
+  };
+
+  // The form scope (ЭтаФорма): a property is either the main-object handle
+  // (returns the object proxy) or a form attribute (returns/sets its value).
+  function FormScopeProxy(ctx) { this.__ctx = ctx; this.__isProxy = true; }
+  FormScopeProxy.prototype.get = function (prop) {
+    var ctx = this.__ctx;
+    if (prop === ctx.objectName) return ctx.objekt;
+    if (Object.prototype.hasOwnProperty.call(ctx.attrs, prop)) return ctx.attrs[prop].value;
+    throw new OESVMUnsupported('form scope has no client member "' + prop + '"');
+  };
+  FormScopeProxy.prototype.set = function (prop, val) {
+    var ctx = this.__ctx;
+    if (Object.prototype.hasOwnProperty.call(ctx.attrs, prop)) {
+      var cell = ctx.attrs[prop]; cell.value = val; ctx.markDirty(cell); return;
+    }
+    throw new OESVMUnsupported('cannot set form scope member "' + prop + '" on the client');
+  };
+
+  // The main object (Объект): its fields are the object's attributes.
+  function ObjektProxy(ctx) { this.__ctx = ctx; this.__isProxy = true; }
+  ObjektProxy.prototype.get = function (prop) {
+    var ctx = this.__ctx;
+    if (Object.prototype.hasOwnProperty.call(ctx.object, prop)) return ctx.object[prop].value;
+    throw new OESVMUnsupported('object has no client field "' + prop + '"');
+  };
+  ObjektProxy.prototype.set = function (prop, val) {
+    var ctx = this.__ctx;
+    if (Object.prototype.hasOwnProperty.call(ctx.object, prop)) {
+      var cell = ctx.object[prop]; cell.value = val; ctx.markDirty(cell); return;
+    }
+    throw new OESVMUnsupported('cannot set object field "' + prop + '" on the client');
+  };
+
+  // A loaded program: functions by name + the shared code / const tables +
+  // (5b) the form context proxies.
   function ClientVM(json) {
     this.code = json.code || [];
     this.consts = (json.consts || []).map(decodeConst);
     this.fns = {};
     (json.functions || []).forEach(function (f) { this.fns[f.name] = f; }, this);
+    this.ctx = new FormContext(json.formCtx);
   }
 
   // Const pool entry → JS value. ibValueTypes: 1=BOOL 2=NUMBER 3=DATE 4=STRING
@@ -82,8 +160,20 @@
     args = args || [];
     for (var a = 0; a < args.length && a < frame.length; a++) frame[a] = args[a];
     this._budget = GUARD_MAX;               // shared across the whole call tree
+    this.ctx.dirty = {};                    // reset the re-render set for this run
     return this.execFrom(Number(fn.entry), frame);
   };
+
+  // (Re)bind the form context from a spec — the browser calls this right
+  // before call() with values read live from the DOM inputs, so a handler
+  // sees the user's latest edits (Inc 5b).
+  ClientVM.prototype.bindContext = function (spec) { this.ctx = new FormContext(spec); };
+
+  // Controls the last call() mutated: { controlId: newValue }. The browser
+  // side writes these back into the DOM inputs to re-render (Inc 5b), so a
+  // client handler's effect on Объект.Реквизит / form attributes is visible
+  // with no server round-trip.
+  ClientVM.prototype.mutations = function () { return this.ctx.dirty; };
 
   function newFrame(n) { var f = new Array(n); for (var k = 0; k < n; k++) f[k] = undefined; return f; }
   var GUARD_MAX = 1000000;   // runaway backstop across the whole call tree
@@ -102,6 +192,27 @@
     function write(arrA, idx, val) {
       if (Number(arrA) <= 0) { frame[idx] = val; return; }
       throw new OESVMUnsupported('cross-frame write (extern/context/module)');
+    }
+    // The BASE of a member / scope / context access. A local slot may hold a
+    // proxy (e.g. the object handle fetched via GET_SCOPE); an outer-frame
+    // operand (array > 0) is the form's bound scope — ЭтаФорма — which is the
+    // only outer handle the client models (Inc 5b). Anything else the member
+    // resolution below rejects, so the caller falls back to the server.
+    function resolveBase(arrA, idx) {
+      if (Number(arrA) <= 0) return frame[idx];
+      return self.ctx.scope;
+    }
+    // Resolve `.prop` on a base that is either a form-context proxy or a plain
+    // JS object. A non-object base means the client can't model it → server.
+    function memberGet(bse, prop) {
+      if (bse && bse.__isProxy) return bse.get(prop);
+      if (bse && typeof bse === 'object') return bse[prop];
+      throw new OESVMUnsupported('member get on non-object base');
+    }
+    function memberSet(bse, prop, val) {
+      if (bse && bse.__isProxy) { bse.set(prop, val); return; }
+      if (bse && typeof bse === 'object') { bse[prop] = val; return; }
+      throw new OESVMUnsupported('member set on non-object base');
     }
 
     var ip = entryIp, ret;
@@ -164,6 +275,39 @@
           write(retA, retI, this.execFrom(calleeEntry, cf));
           break;
         }
+        // MEMBER read: dest = p1, base = p2, prop = consts[p3i].
+        // (procUnit.cpp: OPER_GET_SCOPE shares the OPER_GET_A body — parent +
+        //  property-name resolve. A bare form attribute `Сумма` compiles to
+        //  GET_SCOPE(ЭтаФорма, "Сумма"); `Объект.Цена` to GET_A(Объект, "Цена").)
+        case OP.GET_A:
+        case OP.GET_SCOPE: {
+          var gbase = resolveBase(u.p2a, u.p2i);
+          var gprop = this.consts[Number(u.p3i)];
+          write(u.p1a, u.p1i, memberGet(gbase, gprop));
+          break;
+        }
+        // MEMBER write: base = p1, prop = consts[p2i], src = p3.
+        // (OPER_SET_SCOPE shares the OPER_SET_A body.)
+        case OP.SET_A:
+        case OP.SET_SCOPE: {
+          var sbaseV = resolveBase(u.p1a, u.p1i);
+          var sprop = this.consts[Number(u.p2i)];
+          memberSet(sbaseV, sprop, read(u.p3a, u.p3i));
+          break;
+        }
+        // HANDLE copy: dest = p1, source handle = p2 (a bound context/export
+        // slot). procUnit copies the staged handle value out to the dest temp;
+        // here the only client-modelled handle is the form scope.
+        case OP.GET_CONTEXT:
+        case OP.GET_EXTERN:
+          write(u.p1a, u.p1i, resolveBase(u.p2a, u.p2i));
+          break;
+        // SLOT copy back to a handle: dest slot = p1, source = p3 (rare —
+        // handles are read-only in practice; kept for completeness).
+        case OP.SET_CONTEXT:
+        case OP.SET_EXTERN:
+          write(u.p1a, u.p1i, read(u.p3a, u.p3i));
+          break;
         case OP.RET:
           if (Number(u.p1i) !== DEF_VAR_NORET) ret = read(u.p1a, u.p1i);
           return ret;

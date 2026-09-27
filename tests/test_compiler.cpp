@@ -660,6 +660,22 @@ TEST(ClientBytecodeDump, DISABLED_CallFn) {
 	DumpClientBytecodeJSON(cc.m_cByteCode);
 }
 
+// DISABLED dumper — member get/set on an object base, for extending the VM with
+// OPER_GET_A / OPER_SET_A (client form-context binding, Inc 5b). The base is a
+// parameter (a local slot) so the standalone compiler resolves it; the member-access
+// opcode encoding is identical when the base is a context/extern binding.
+// Run: --gtest_also_run_disabled_tests --gtest_filter=*ClientBytecodeDump.DISABLED_MemberFn*
+TEST(ClientBytecodeDump, DISABLED_MemberFn) {
+	ibCompileCode cc(wxT("test"), wxT("memory"), false);
+	const wxString src =
+		wxT("&AtClient\n")
+		wxT("Procedure Edit(Obj)\n")
+		wxT("  Obj.Price = Obj.Price + 100;\n")
+		wxT("EndProcedure\n");
+	ASSERT_TRUE(TryCompile(cc, src));
+	DumpClientBytecodeJSON(cc.m_cByteCode);
+}
+
 TEST(CompilerAOT, ExecEnvRoundTrips) {
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	const wxString src =

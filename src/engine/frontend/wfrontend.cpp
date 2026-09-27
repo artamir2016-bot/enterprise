@@ -52,6 +52,9 @@
 #include "visualView/visualHostClient.h"
 #include "visualView/ctrl/sizer.h"
 #include "visualView/ctrl/widgets.h"
+#include "visualView/ctrl/typeControl.h"      // ibTypeControlFactory — GetSourceDesc (5b form-context bindings)
+#include "visualView/ctrl/formAttribute.h"    // ibFormAttributeValue — GetName/GetId
+#include "backend/sourceDescription.h"        // ibSourceHop / ibSourceDescription — control binding path
 
 namespace {
 
@@ -1416,6 +1419,47 @@ std::string FormClientBytecodeInSession(ibWebSession* session)
 			                 { "kind", (int)v.m_kind },
 			                 { "slot", (long long)(long)v } });
 		root["vars"] = std::move(vars);
+
+		// Inc 5b — form-context bindings the client VM writes back. For each
+		// SOURCE-bound control, emit the attribute/object-field NAME it displays
+		// and its controlId, so the browser can seed OES.ClientVM's form context
+		// and re-render the right input after a client-only mutation. The value
+		// itself is read client-side from the live DOM (no need to marshal it
+		// here). Path head == the form's MAIN attribute id → the control shows a
+		// field of Объект (path[1] names the field); a length-1 path on any other
+		// attribute id → a plain form attribute.
+		{
+			nlohmann::json fctx;
+			auto binds = nlohmann::json::array();
+			ibFormAttributeValue* mainAttr = form->GetMainAttribute();
+			const ibMetaID mainId = (mainAttr != nullptr) ? mainAttr->GetId() : (ibMetaID)wxNOT_FOUND;
+			if (mainAttr != nullptr)
+				fctx["objectName"] = std::string(mainAttr->GetName().utf8_str());
+			for (ibValueControl* ctrl : form->GetControlList()) {
+				auto* factory = dynamic_cast<ibTypeControlFactory*>(ctrl);
+				if (factory == nullptr) continue;
+				const std::vector<ibSourceHop>& path = factory->GetSourceDesc().GetPath();
+				if (path.empty()) continue;
+				const int cid = (int)ctrl->GetControlID();
+				if (cid == 0) continue;
+				if (path.size() >= 2 && path.front().m_id == mainId) {
+					// Objekt.<field> — resolve the field name from metadata.
+					auto* fld = activeMetaData->FindAnyObjectByFilter<ibValueMetaObject, ibMetaID>(path[1].m_id, true /*child filter — attributes are nested*/);
+					if (fld != nullptr)
+						binds.push_back({ { "name", std::string(fld->GetName().utf8_str()) },
+						                  { "controlId", cid }, { "scope", "object" } });
+				}
+				else if (path.size() == 1 && path.front().m_id != mainId) {
+					// Plain form attribute (ЭтаФорма.<name>).
+					ibFormAttributeValue* av = form->FindAttributeById(path.front().m_id);
+					if (av != nullptr)
+						binds.push_back({ { "name", std::string(av->GetName().utf8_str()) },
+						                  { "controlId", cid }, { "scope", "form" } });
+				}
+			}
+			fctx["bindings"] = std::move(binds);
+			root["formCtx"] = std::move(fctx);
+		}
 
 		root["startModule"] = (long long)bc->m_lStartModule;
 		return root.dump(2);
