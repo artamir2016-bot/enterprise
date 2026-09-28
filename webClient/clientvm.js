@@ -64,8 +64,18 @@
   // Declarator opcodes carried on the tape — no runtime effect (frame is pre-sized).
   var DECLARATOR = { 33:1 /*FUNC_PARAM*/, 34:1 /*FUNC_LOCAL*/, 35:1 /*CTX_BEGIN*/, 36:1 /*CTX_END*/ };
 
+  // Recoverable: the VM can't model something, but NOTHING observable has
+  // happened yet (client mutations are held back until success, and no server
+  // hop has fired) — the caller safely re-runs the whole handler on the server.
   function OESVMUnsupported(msg) { this.name = 'OESVMUnsupported'; this.message = msg; }
   OESVMUnsupported.prototype = Object.create(Error.prototype);
+
+  // NON-recoverable (Inc 5e): the VM hit something it can't model AFTER a server
+  // hop already committed server-side state. Re-running the whole handler on the
+  // server would double that hop, so the caller must NOT fall back — it surfaces
+  // the error instead. Carries the original message.
+  function OESVMHalt(msg) { this.name = 'OESVMHalt'; this.message = msg; }
+  OESVMHalt.prototype = Object.create(Error.prototype);
 
   // ---------------------------------------------------------------------------
   // Form context (Inc 5b). The server ships a `formCtx` block next to the
@@ -201,7 +211,15 @@
     this._budget = GUARD_MAX;               // shared across the whole call tree
     this.ctx.dirty = {};                    // reset the re-render set for this run
     this.messages = [];                     // reset the message log for this run
-    return this.invokeClientFn(fn, args || []);
+    this.hopped = false;                    // 5e: has a server hop committed yet?
+    var self = this;
+    return this.invokeClientFn(fn, args || []).catch(function (e) {
+      // 5e: an unsupported op AFTER a server hop cannot fall back to a full
+      // server re-run (it would double the hop) — escalate to a halt.
+      if (e && e.name === 'OESVMUnsupported' && self.hopped)
+        throw new OESVMHalt(e.message);
+      throw e;
+    });
   };
 
   // Enter a client function with `args` seeding the leading (parameter) slots.
@@ -255,6 +273,7 @@
     if (!this.transport)
       return Promise.reject(new OESVMUnsupported('server call "' + procName + '" (no transport)'));
     var self = this;
+    this.hopped = true;   // 5e: from here on, a fallback would double this hop
     return Promise.resolve(this.transport(procName, args, this.contextSnapshot()))
       .then(function (resp) {
         resp = resp || {};
@@ -464,7 +483,7 @@
     return ret;
   };
 
-  var api = { ClientVM: ClientVM, OESVMUnsupported: OESVMUnsupported, OP: OP };
+  var api = { ClientVM: ClientVM, OESVMUnsupported: OESVMUnsupported, OESVMHalt: OESVMHalt, OP: OP };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;   // node self-test
   root.OES = root.OES || {};
   root.OES.ClientVM = api;                                                     // browser

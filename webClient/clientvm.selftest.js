@@ -200,5 +200,36 @@ var srvProg = {
   check('ЭтаФорма.method: Сумма+1',  md.ctx.attrs['Сумма'].value, 11);
   check('dirties control 3',         md.mutations()[3], 11);
 
+  // 5e — fallback safety. A handler that hits an unsupported opcode.
+  //   BEFORE any server hop → OESVMUnsupported (caller safely re-runs on server).
+  //   AFTER a server hop     → OESVMHalt (caller must NOT re-run; would double the hop).
+  // OPER_NEW(64) is not implemented by the VM → throws 'opcode ... not implemented'.
+  function halterProg(withHopFirst) {
+    var code = [
+      {op:31,p1a:0,p1i:0,p2a:0,p2i:0,p3a:0,p3i:2,p4a:0,p4i:0},   // 0 FUNC H (varCount2)
+    ];
+    if (withHopFirst) {
+      code.push({op:37,p1a:-3,p1i:1,p2a:0,p2i:9,p3a:0,p3i:2,p4a:0,p4i:0}); // CALL server proc @9, 0 args
+    }
+    code.push({op:64,p1a:0,p1i:0,p2a:0,p2i:0,p3a:0,p3i:0,p4a:0,p4i:0});     // OPER_NEW — unsupported in the VM
+    code.push({op:74,p1a:0,p1i:0,p2a:0,p2i:0,p3a:0,p3i:0,p4a:0,p4i:0});     // END
+    return {
+      functions: [
+        { name:'H', entry:0, isFunc:false, varCount:2, params:0, env:'client' },
+        { name:'Srv', entry:9, isFunc:true, varCount:1, params:0, env:'server' }
+      ],
+      code: code, consts: []
+    };
+  }
+  async function expectThrow(label, machine, fn, wantName) {
+    try { await machine.call(fn, []); check(label, 'no-throw', wantName); }
+    catch (e) { check(label, e && e.name, wantName); }
+  }
+  var noHop = new vm.ClientVM(halterProg(false));
+  await expectThrow('unsupported before hop → OESVMUnsupported', noHop, 'H', 'OESVMUnsupported');
+  var afterHop = new vm.ClientVM(halterProg(true),
+    { transport: function () { return Promise.resolve({ ret: 0, context: null }); } });
+  await expectThrow('unsupported after hop → OESVMHalt', afterHop, 'H', 'OESVMHalt');
+
   process.exit(fail ? 1 : 0);
 })();

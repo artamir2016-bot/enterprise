@@ -531,8 +531,16 @@ OES.tryClientHandler = async function(name){
     return true;                       // ran in-page (possibly via a server hop)
   }catch(e){
     if(e && e.name==='OESVMUnsupported'){
+      // Nothing observable happened yet (client mutations held back, no server
+      // hop) — safe to run the whole handler on the server.
       if(OES.debug) OES.debug('[client→server] '+name+': '+e.message);
       return false;                    // fall back to server /action
+    }
+    if(e && e.name==='OESVMHalt'){
+      // 5e: a server hop already committed; a full server re-run would double
+      // it. Do NOT fall back — surface the error and consider the click handled.
+      if(OES.error) OES.error('[client] '+name+': остановлено после серверного вызова: '+e.message);
+      return true;
     }
     if(OES.error) OES.error('[client] '+name+': '+((e&&e.message)||e));
     return false;
