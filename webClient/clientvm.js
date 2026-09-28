@@ -44,6 +44,12 @@
     // these to the client-side form context so &НаКлиенте edits
     // Объект.Реквизит and form attributes without a server hop.
     SET_A:52, GET_A:53,
+    // OPER_CALL_METHOD (55): a per-object method call dispatched by NAME. dest=p1,
+    // receiver=p2, p3a=arg count, p3i=method-name const index; the next p3a ops
+    // are SET/SETCONST binding args (same as OPER_CALL). Inc 5d uses it for client
+    // system functions (Сообщить(...) on the system context) and for a form's own
+    // exported client proc (ЭтаФорма.МетодКлиента(...)).
+    CALL_METHOD:55,
     GET_EXTERN:68, SET_EXTERN:69, GET_SCOPE:70, SET_SCOPE:71,
     GET_CONTEXT:72, SET_CONTEXT:73,
     END:74
@@ -144,7 +150,18 @@
     }, this);
     this.ctx = new FormContext(json.formCtx);
     this.transport = opts.transport || null;
+    this.onMessage = opts.onMessage || null;   // 5d: Сообщить/Message sink
+    this.messages = [];                         // every message the run emitted
   }
+
+  // Inc 5d — client-side system functions. A bare Сообщить("...") compiles to a
+  // method call on the system context; the browser shows it in the message area.
+  // Names not here throw OESVMUnsupported → the handler falls back to the server.
+  var CLIENT_SYSFUNCS = {
+    'Сообщить': 'message', 'Message': 'message',
+    'Оповестить': 'message', 'ShowUserNotification': 'message'
+  };
+  function toText(v) { return (v === undefined || v === null) ? '' : String(v); }
 
   // A function's env is a lowercase string the server stamps: "client",
   // "server", "servernocontext", "clientservernocontext", "unspecified".
@@ -181,12 +198,30 @@
   ClientVM.prototype.call = function (name, args) {
     var fn = this.fns[name];
     if (!fn) return Promise.reject(new OESVMUnsupported('no client function ' + name));
-    var frame = newFrame(Number(fn.varCount) || 0);
-    args = args || [];
-    for (var a = 0; a < args.length && a < frame.length; a++) frame[a] = args[a];
     this._budget = GUARD_MAX;               // shared across the whole call tree
     this.ctx.dirty = {};                    // reset the re-render set for this run
+    this.messages = [];                     // reset the message log for this run
+    return this.invokeClientFn(fn, args || []);
+  };
+
+  // Enter a client function with `args` seeding the leading (parameter) slots.
+  ClientVM.prototype.invokeClientFn = function (fn, args) {
+    var frame = newFrame(Number(fn.varCount) || 0);
+    for (var a = 0; a < args.length && a < frame.length; a++) frame[a] = args[a];
     return this.execFrom(Number(fn.entry), frame);
+  };
+
+  // A client-side system function (Сообщить/Message/…). Returns undefined; a name
+  // outside the small supported set throws → server fallback.
+  ClientVM.prototype.callSysFunc = function (name, args) {
+    var kind = CLIENT_SYSFUNCS[name];
+    if (kind === 'message') {
+      var text = toText(args[0]);
+      this.messages.push(text);
+      if (this.onMessage) this.onMessage(text);
+      return undefined;
+    }
+    throw new OESVMUnsupported('client system function "' + name + '"');
   };
 
   // A snapshot of the client form context, by NAME, for a server hop.
@@ -347,6 +382,40 @@
             write(retA, retI, await this.serverHop(callee.name, cf.slice(0, pcount)));
           } else {
             write(retA, retI, await this.execFrom(calleeEntry, cf));
+          }
+          break;
+        }
+        case OP.CALL_METHOD: {
+          // dest=p1, receiver=p2, p3a=arg count, p3i=method-name const index; the
+          // next p3a ops bind args (SET/SETCONST), exactly like OPER_CALL.
+          var mRetA = u.p1a, mRetI = u.p1i;
+          var receiver = resolveBase(u.p2a, u.p2i);
+          var mName = this.consts[Number(u.p3i)];
+          var margc = Number(u.p3a);
+          var margs = [];
+          for (var mi = 0; mi < margc; mi++) {
+            ip++;
+            var msu = this.code[ip];
+            var msbase = Number(msu.op) % OPER_END_PLUS_1;
+            if (msbase === OP.SETCONST) {
+              margs.push(Number(msu.p1i) >= 0 ? this.consts[Number(msu.p1i)] : undefined);
+            } else {
+              margs.push(read(msu.p1a, msu.p1i));
+            }
+          }
+          if (CLIENT_SYSFUNCS[mName]) {
+            // A client system function (Сообщить/…) — receiver is the system
+            // context; dispatch by name regardless of it.
+            write(mRetA, mRetI, this.callSysFunc(mName, margs));
+          } else if (receiver === self.ctx.scope) {
+            // ЭтаФорма.<Метод>() — the form's own exported proc. Route by env:
+            // a client proc runs in-page, a server proc hops.
+            var fm = this.fns[mName];
+            if (isServerEnv(fm))      write(mRetA, mRetI, await this.serverHop(mName, margs));
+            else if (isClientEnv(fm)) write(mRetA, mRetI, await this.invokeClientFn(fm, margs));
+            else throw new OESVMUnsupported('form has no client method "' + mName + '"');
+          } else {
+            throw new OESVMUnsupported('method call "' + mName + '" on unmodelled receiver');
           }
           break;
         }

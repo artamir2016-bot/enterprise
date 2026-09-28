@@ -160,5 +160,45 @@ var srvProg = {
   check('Сумма = 2*10 + 5 = 25',    ms.ctx.attrs['Сумма'].value, 25);
   check('Сумма dirties control 3',  ms.mutations()[3], 25);
 
+  // 5d — client system function (Сообщить) + ЭтаФорма.<клиентский метод>().  REAL
+  // bytecode dumped from the microclient list form:
+  //   &НаКлиенте Процедура ПересчитатьКлиент(Команда)  Сумма = Сумма + 1;
+  //   &НаКлиенте Процедура ТестКлиент(Команда)
+  //       Сообщить("Привет из клиента");  ЭтаФорма.ПересчитатьКлиент(Команда);
+  var sysProg = {
+    functions: [
+      { name:'ПересчитатьКлиент', entry:0, isFunc:false, varCount:3, params:1, env:'client' },
+      { name:'ТестКлиент',        entry:6, isFunc:false, varCount:4, params:1, env:'client' }
+    ],
+    code: [
+      {op:31,p1a:0,p1i:0,p2a:0,p2i:0,p3a:1,p3i:3,p4a:0,p4i:0},      // 0 FUNC ПересчитатьКлиент
+      {op:33,p1a:0,p1i:0,p2a:-1,p2i:-1,p3a:0,p3i:0,p4a:0,p4i:0},    // 1 FUNC_PARAM
+      {op:70,p1a:-3,p1i:1,p2a:1,p2i:18,p3a:0,p3i:0,p4a:0,p4i:0},    // 2 GET_SCOPE slot1 = scope."Сумма"
+      {op:1, p1a:-3,p1i:2,p2a:-3,p2i:1,p3a:1000,p3i:1,p4a:0,p4i:0}, // 3 ADD slot2 = slot1 + const[1](1)
+      {op:71,p1a:1,p1i:18,p2a:0,p2i:0,p3a:-3,p3i:2,p4a:0,p4i:0},    // 4 SET_SCOPE scope."Сумма" = slot2
+      {op:32,p1a:0,p1i:0,p2a:0,p2i:0,p3a:0,p3i:0,p4a:0,p4i:0},      // 5 ENDFUNC
+      {op:31,p1a:0,p1i:0,p2a:0,p2i:0,p3a:1,p3i:4,p4a:0,p4i:0},      // 6 FUNC ТестКлиент
+      {op:33,p1a:0,p1i:0,p2a:-1,p2i:-1,p3a:0,p3i:0,p4a:0,p4i:0},    // 7 FUNC_PARAM Команда
+      {op:55,p1a:-3,p1i:1,p2a:1,p2i:16,p3a:1,p3i:2,p4a:0,p4i:0},    // 8 CALL_METHOD Сообщить, 1 arg
+      {op:38,p1a:1000,p1i:3,p2a:0,p2i:0,p3a:0,p3i:0,p4a:0,p4i:0},   // 9 SET arg0 = const[3]
+      {op:72,p1a:-3,p1i:2,p2a:1,p2i:18,p3a:0,p3i:0,p4a:0,p4i:0},    // 10 GET_CONTEXT slot2 = ЭтаФорма
+      {op:55,p1a:-3,p1i:3,p2a:-3,p2i:2,p3a:1,p3i:4,p4a:0,p4i:0},    // 11 CALL_METHOD slot2.ПересчитатьКлиент, 1 arg
+      {op:38,p1a:0,p1i:0,p2a:0,p2i:0,p3a:0,p3i:0,p4a:0,p4i:0},      // 12 SET arg0 = Команда (slot0)
+      {op:32,p1a:0,p1i:0,p2a:0,p2i:0,p3a:0,p3i:0,p4a:0,p4i:0},      // 13 ENDFUNC
+      {op:74,p1a:0,p1i:0,p2a:0,p2i:0,p3a:0,p3i:0,p4a:0,p4i:0}       // 14 END
+    ],
+    consts: [ {type:4,value:'Сумма'}, {type:2,value:'1'}, {type:4,value:'Сообщить'},
+              {type:4,value:'Привет из клиента'}, {type:4,value:'ПересчитатьКлиент'} ],
+    formCtx: { attrs: [ { name:'Сумма', value:'10', controlId: 3 } ], objectName:null, object: [] }
+  };
+  var seen = [];
+  var md = new vm.ClientVM(sysProg, { onMessage: function (t) { seen.push(t); } });
+  await md.call('ТестКлиент', [null]);
+  check('Сообщить fired once',       md.messages.length, 1);
+  check('Сообщить text',             md.messages[0], 'Привет из клиента');
+  check('onMessage sink got it',     seen[0], 'Привет из клиента');
+  check('ЭтаФорма.method: Сумма+1',  md.ctx.attrs['Сумма'].value, 11);
+  check('dirties control 3',         md.mutations()[3], 11);
+
   process.exit(fail ? 1 : 0);
 })();

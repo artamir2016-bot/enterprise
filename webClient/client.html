@@ -477,7 +477,12 @@ OES.loadClientVM = async function(){
     // 5c: inject the server-hop transport — a Client→Server proc call POSTs
     // /srv-call with the proc name, its args, and the form-context snapshot;
     // the server runs the &НаСервере proc and returns { ret, context }.
-    OES.vm = new OES.ClientVM.ClientVM(j, { transport: OES.srvCall });
+    OES.vm = new OES.ClientVM.ClientVM(j, {
+      transport: OES.srvCall,
+      // 5d: client-side Сообщить/Message land in the same output strip as
+      // server-side messages.
+      onMessage: function(t){ if(OES.output) OES.output(t, ''); }
+    });
     OES.vmBindings = j.formCtx || null;   // name↔controlId map; values read from DOM at call time
   }catch(e){ OES.vm=null; OES.vmBindings=null; }
 };
