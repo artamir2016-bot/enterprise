@@ -839,6 +839,23 @@ int main(int argc, char** argv)
 			"application/json; charset=utf-8");
 	});
 
+	// GET /job/<id> — poll a promoted (background) server call for its result;
+	// POST /job/<id>/cancel — request its cooperative interrupt. Async server
+	// calls, Inc 1. Both read the global job registry, NOT the session worker, so
+	// they stay responsive while that worker is busy running the promoted proc.
+	svr.Get(prefix + R"(/job/([\w-]+))", [](const httplib::Request& req, httplib::Response& res) {
+		std::string id;
+		if (!RequireSessionId(req, res, id)) return;
+		res.set_content(wfrontendServerCallPoll(id, req.matches[1].str()),
+			"application/json; charset=utf-8");
+	});
+	svr.Post(prefix + R"(/job/([\w-]+)/cancel)", [](const httplib::Request& req, httplib::Response& res) {
+		std::string id;
+		if (!RequireSessionId(req, res, id)) return;
+		res.set_content(wfrontendServerCallCancel(id, req.matches[1].str()),
+			"application/json; charset=utf-8");
+	});
+
 	// POST /profile/start — begin the statement-level execution trace for this
 	// session; GET /profile/stop — end it and return the trace as JSON (execution
 	// profiler, Inc 2). Both hop through the session worker.

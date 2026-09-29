@@ -255,6 +255,16 @@ WFRONTEND_API std::string wfrontendFormClientBytecode(const std::string& session
 WFRONTEND_API std::string wfrontendServerCall(const std::string& sessionId,
 	const std::string& body);
 
+// Async server calls (Inc 1): when a server proc runs past the grace window it is
+// promoted to a background job and wfrontendServerCall returns { pending, jobId }.
+// The browser then polls Poll(jobId) → the final { ret, context } once ready (else
+// { pending }), and may Cancel(jobId) to request a cooperative interrupt. Both are
+// keyed by the global jobId and never touch the (busy) session worker.
+WFRONTEND_API std::string wfrontendServerCallPoll(const std::string& sessionId,
+	const std::string& jobId);
+WFRONTEND_API std::string wfrontendServerCallCancel(const std::string& sessionId,
+	const std::string& jobId);
+
 // Execution profiler (Inc 2) — the web toggle. Start begins collecting the
 // statement trace on the session's worker; Stop ends it and returns the trace as
 // JSON { rows:[{seq,depth,module,func,line,opcode}], count, truncated }. Both run

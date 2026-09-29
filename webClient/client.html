@@ -490,6 +490,12 @@ OES.loadClientVM = async function(){
   }catch(e){ OES.vm=null; OES.vmBindings=null; }
 };
 // 5c transport: ship a Client→Server proc call, return { ret, context }.
+// Async-jobs Inc 1: the server may answer immediately (fast proc — { ret, context })
+// or, if the proc runs past the server's grace window, answer { pending, jobId }.
+// On pending we enter a busy-lock overlay with a live Cancel, poll GET /job/<id>
+// (a worker-free read, so it stays responsive while the session worker is busy),
+// and resolve with the final { ret, context } — or reject on cancel/error. The VM
+// (clientvm.js serverHop) is agnostic: it always sees { ret, context } or a throw.
 OES.srvCall = async function(proc, args, context){
   const r = await netFetch(API+'/srv-call',{
     method:'POST', credentials:'same-origin',
@@ -497,7 +503,57 @@ OES.srvCall = async function(proc, args, context){
     body: JSON.stringify({ proc:proc, args:args, context:context })
   });
   if(!r || !r.ok) throw new Error('srv-call '+proc+' failed');
-  return await r.json();
+  let j = await r.json();
+  if(!j || !j.pending) return j;                 // fast path — unchanged
+  const jobId = j.jobId;
+  OES.showBusy(proc, jobId);
+  try {
+    for(;;){
+      await new Promise(function(res){ setTimeout(res, 300); });
+      const pr = await netFetch(API+'/job/'+encodeURIComponent(jobId),{
+        method:'GET', credentials:'same-origin' });
+      if(!pr || !pr.ok) throw new Error('job poll failed');
+      const pj = await pr.json();
+      if(pj.canceled) throw new Error('Прервано пользователем');
+      if(pj.error)    throw new Error(pj.error);
+      if(pj.pending)  continue;
+      return pj;                                 // { ret, context }
+    }
+  } finally { OES.hideBusy(); }
+};
+
+// Busy-lock overlay: covers the viewport (disabling form input) while a server
+// proc runs in the background, showing the activity + a Cancel button. Cancel
+// POSTs /job/<id>/cancel → the server flips the session's cooperative interrupt
+// flag, which the interpreter polls (procUnit.cpp) and turns into an interrupt.
+OES.showBusy = function(proc, jobId){
+  OES.hideBusy();
+  const ov = document.createElement('div');
+  ov.id = 'oesBusyOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.18);'+
+    'display:flex;align-items:center;justify-content:center;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border:1px solid #c9c9c9;border-radius:6px;'+
+    'padding:18px 22px;min-width:280px;box-shadow:0 6px 24px rgba(0,0,0,0.25);'+
+    'font:13px sans-serif;text-align:center;';
+  const msg = document.createElement('div');
+  msg.id = 'oesBusyMsg';
+  msg.textContent = 'Выполняется…';
+  msg.style.cssText = 'margin-bottom:14px;color:#333;';
+  const btn = document.createElement('button');
+  btn.textContent = 'Отмена';
+  btn.style.cssText = 'padding:5px 18px;cursor:pointer;';
+  btn.onclick = async function(){
+    btn.disabled = true; msg.textContent = 'Прерывание…';
+    try { await netFetch(API+'/job/'+encodeURIComponent(jobId)+'/cancel',
+      {method:'POST', credentials:'same-origin'}); } catch(e){}
+  };
+  box.appendChild(msg); box.appendChild(btn); ov.appendChild(box);
+  document.body.appendChild(ov);
+};
+OES.hideBusy = function(){
+  const ov = document.getElementById('oesBusyOverlay');
+  if(ov && ov.parentNode) ov.parentNode.removeChild(ov);
 };
 
 // ---- Execution profiler toggle (Inc 2) --------------------------------------

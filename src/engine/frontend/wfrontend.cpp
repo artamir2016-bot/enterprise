@@ -1504,17 +1504,12 @@ static ibValue JsonToIbValue(const nlohmann::json& j)
 	return ibValue();
 }
 
-std::string ServerCallInSession(ibWebSession* session, const std::string& body)
+// One client→server call, executed on the session worker. Factored out of the
+// route so BOTH the fast (inline) and the promoted (background) paths run the
+// exact same body — the only difference is who waits for it.
+std::string ComputeServerCall(ibWebApplication* app, const nlohmann::json& req)
 {
-	if (session == nullptr || !session->IsAuthenticated()) return "{}";
-	ibWebApplication* app = session->App();
-	if (app == nullptr) return "{}";
-
-	nlohmann::json req;
-	try { req = nlohmann::json::parse(body); }
-	catch (...) { return "{}"; }
-
-	return app->RunOnWorker([app, req]() -> std::string {
+	{
 		ibVisualHostClient* host = app->GetActiveHost();
 		if (host == nullptr) return "{}";
 		ibValueForm* form = host->GetValueForm();
@@ -1587,7 +1582,139 @@ std::string ServerCallInSession(ibWebSession* session, const std::string& body)
 		resp["ret"] = std::string(ret.GetString().utf8_str());
 		resp["context"] = { { "attrs", std::move(outAttrs) }, { "object", std::move(outObj) } };
 		return resp.dump(2);
-	}).get();
+	}
+}
+
+// ── Async server calls, Increment 1 — threshold-promoted background jobs ─────────
+// A client→server call runs on the session worker. We wait a short grace window on
+// the HTTP thread: a fast proc returns its result inline (zero regression). A slow
+// one is left running and we hand the client a { pending, jobId }; the browser then
+// busy-locks the form and polls GET /job/<id> (a worker-free read) until the worker
+// deposits the result — or cancels it via POST /job/<id>/cancel, which flips the
+// session's cooperative interrupt flag that the interpreter already polls.
+
+// How long the HTTP handler waits before promoting a call to a background job.
+constexpr int kServerCallGraceMs = 150;
+
+struct PendingServerCall {
+	std::mutex               m;
+	std::condition_variable  cv;
+	bool                     done = false;
+	std::string              result;      // final JSON: { ret, context } | { canceled } | { error }
+	ibSession*               session = nullptr;   // for cancel (RequestCancel is a plain atomic store)
+};
+
+std::mutex g_serverJobsMtx;
+std::unordered_map<std::string, std::shared_ptr<PendingServerCall>> g_serverJobs;
+
+std::string ServerCallInSession(ibWebSession* session, const std::string& body)
+{
+	if (session == nullptr || !session->IsAuthenticated()) return "{}";
+	ibWebApplication* app = session->App();
+	if (app == nullptr) return "{}";
+
+	nlohmann::json req;
+	try { req = nlohmann::json::parse(body); }
+	catch (...) { return "{}"; }
+
+	auto job = std::make_shared<PendingServerCall>();
+	job->session = app->GetSessionContext();
+
+	static std::atomic<uint64_t> s_jobCounter{ 0 };
+	const std::string jobId = "job" + std::to_string(s_jobCounter.fetch_add(1, std::memory_order_relaxed) + 1);
+
+	// Submit onto the session worker; we intentionally DROP the future — the job
+	// slot (not the future) is how the result is delivered, so the call survives
+	// past this HTTP handler's return.
+	app->RunOnWorker([app, req, job]() -> std::string {
+		// Hygiene: clear a possibly-stale interrupt flag from a cancel that landed
+		// after a previous call had already finished, so it can't abort this one.
+		if (job->session != nullptr) job->session->ClearCancel();
+		std::string resp;
+		try { resp = ComputeServerCall(app, req); }
+		catch (const ibBackendInterruptException&) { resp = R"({"canceled":true})"; }
+		catch (const ibBackendException& e)         { resp = ExceptionToJson(e); }
+		catch (...)                                 { resp = R"({"error":"unknown exception"})"; }
+		{
+			std::lock_guard<std::mutex> lk(job->m);
+			job->result = std::move(resp);
+			job->done   = true;
+		}
+		job->cv.notify_all();
+		app->MarkDirty();   // wake SSE subscribers so the rest of the UI refreshes
+		return std::string();
+	});
+
+	// Grace window: block briefly for the common fast call.
+	{
+		std::unique_lock<std::mutex> lk(job->m);
+		job->cv.wait_for(lk, std::chrono::milliseconds(kServerCallGraceMs),
+			[&]{ return job->done; });
+		if (job->done)
+			return job->result;   // fast path — inline, nothing registered
+	}
+
+	// Promote: the proc is still running. Register the slot for later retrieval
+	// and hand the client a pending handle.
+	{
+		std::lock_guard<std::mutex> lk(g_serverJobsMtx);
+		g_serverJobs[jobId] = job;
+	}
+	nlohmann::json pending = { { "pending", true }, { "jobId", jobId } };
+	return pending.dump(2);
+}
+
+// GET /job/<id> — poll a promoted call. Returns the final JSON once ready (and
+// forgets the slot), else { pending }. A pure registry read — never touches the
+// session worker, so it stays live while that worker is busy running the proc.
+std::string ServerCallPoll(const std::string& jobId)
+{
+	std::shared_ptr<PendingServerCall> job;
+	{
+		std::lock_guard<std::mutex> lk(g_serverJobsMtx);
+		auto it = g_serverJobs.find(jobId);
+		if (it != g_serverJobs.end()) job = it->second;
+	}
+	if (job == nullptr)
+		return R"({"error":"unknown job"})";
+	{
+		std::lock_guard<std::mutex> lk(job->m);
+		if (!job->done)
+			return R"({"pending":true})";
+	}
+	std::string result;
+	{
+		std::lock_guard<std::mutex> lk(job->m);
+		result = job->result;
+	}
+	{
+		std::lock_guard<std::mutex> lk(g_serverJobsMtx);
+		g_serverJobs.erase(jobId);
+	}
+	return result;
+}
+
+// POST /job/<id>/cancel — request cooperative interrupt of a promoted call. The
+// interpreter polls the session flag (~every 1024 opcodes) and throws
+// ibBackendInterruptException, which the worker turns into { canceled }.
+std::string ServerCallCancel(const std::string& jobId)
+{
+	std::shared_ptr<PendingServerCall> job;
+	{
+		std::lock_guard<std::mutex> lk(g_serverJobsMtx);
+		auto it = g_serverJobs.find(jobId);
+		if (it != g_serverJobs.end()) job = it->second;
+	}
+	if (job == nullptr)
+		return R"({"error":"unknown job"})";
+	bool active = false;
+	{
+		std::lock_guard<std::mutex> lk(job->m);
+		active = !job->done;
+	}
+	if (active && job->session != nullptr)
+		job->session->RequestCancel();
+	return R"({"canceling":true})";
 }
 } // namespace
 
@@ -1630,6 +1757,24 @@ WFRONTEND_API std::string wfrontendServerCall(const std::string& sessionId,
 {
 	Sessions().Touch(sessionId);
 	return Sessions().ServerCall(sessionId, body);
+}
+
+// Async server calls (Inc 1): poll / cancel a promoted background call. The job
+// registry is keyed globally by jobId (unique per process), so these bypass the
+// session lookup AND the session worker — a promoted call that's occupying the
+// worker cannot starve its own poll/cancel.
+WFRONTEND_API std::string wfrontendServerCallPoll(const std::string& sessionId,
+	const std::string& jobId)
+{
+	Sessions().Touch(sessionId);
+	return ServerCallPoll(jobId);
+}
+
+WFRONTEND_API std::string wfrontendServerCallCancel(const std::string& sessionId,
+	const std::string& jobId)
+{
+	Sessions().Touch(sessionId);
+	return ServerCallCancel(jobId);
 }
 
 // ---- Inc 2: execution profiler web toggle -------------------------------
