@@ -710,7 +710,7 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 		case enCommitTransaction: CommitTransaction(); return true;
 		case enRollBackTransaction: RollBackTransaction(); return true;
 			//--- Profiler: begin collecting the statement trace on this thread.
-		case enStartPerfMeasure: execTracer->StartThisThread(); return true;
+		case enStartPerfMeasure: execTracer->Start(); return true;
 		}
 	}
 	else
