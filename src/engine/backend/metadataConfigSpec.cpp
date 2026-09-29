@@ -555,16 +555,45 @@ void BuildControlNode(ibDataNode& parent, const json& c, const AttrMaps& maps,
 // without it the controls cannot resolve their field types and DON'T RENDER in the form
 // editor (only unbound labels show). Typed to the owning object (object_to_clsid), so a
 // control's {mainAttr, attrId} path resolves attrId as a field of the object.
-void EmitMainAttribute(ibDataNode& attrs, ibMetaID ownerMetaID, const ibMetaData* metaData) {
+void EmitMainAttribute(ibDataNode& attrs, ibMetaID ownerMetaID, const ibMetaData* metaData, bool asList) {
 	ibDataNode& a = attrs.AddChild(kFormAttrClsid, kFormMainAttrId);   // one attribute, id 1
 	a.SetValue(wxT("AttributeId"), (s32)kFormMainAttrId);
 	a.SetValue(wxT("Main"), true);
-	a.SetProp<wxString>(wxT("Name"), wxT("Object"));                   // ThisForm.Object (id is what bindings use)
+	// A LIST form's main attribute IS the dynamic list of the owner (a table source), so a tablebox bound
+	// single-hop to it reports IsMainSourceBound() — which is what makes the form a real list AND surfaces
+	// the standard list command bar (Create / Copy / … via the command provider). An OBJECT form's main is
+	// the object itself. Both are reachable under Object / List / Объект / Список aliases at run time.
+	a.SetProp<wxString>(wxT("Name"), asList ? wxT("List") : wxT("Object"));
 	ibTypeDescription td;
-	td.SetDefaultMetaType(object_to_clsid(ownerMetaID));              // the object type — its fields are the object's attributes
+	td.SetDefaultMetaType(asList ? list_to_clsid(ownerMetaID)         // the dynamic list — its columns are the object's attributes
+	                             : object_to_clsid(ownerMetaID));     // the object type — its fields are the object's attributes
 	ibDataValue typeVal;
 	ibTypeDescriptionMemory::WriteNode(typeVal, td, metaData);
 	a.SetProperty(wxT("Type"), typeVal);
+}
+
+// Synthesize the DEFAULT list tablebox for a `type:"list"` form that declares no table of its own — the
+// list's main data view. Its Source is a SINGLE hop to the form's main attribute (the dynamic list, id 1),
+// so ibValueModelTableBox::IsMainSourceBound() is true: the form's command provider resolves to it and the
+// standard list bar appears. One column per owner attribute (Code / Description / user attributes), each a
+// two-hop {mainList, attrId} binding — the same shape a field uses to reach an object attribute.
+void SynthesizeListTable(ibDataNode& root, const AttrMaps& maps, int& nextId) {
+	ibDataNode& si = AddSizerItem(root, nextId, Layout::Container);   // fill the form cell
+	const int tblId = nextId++;
+	ibDataNode& tbl = si.AddChild(kCtrlTable, tblId);
+	tbl.SetValue(wxT("ControlId"), (s32)tblId);
+	tbl.SetValue(wxT("Name"), wxString(wxT("List")));
+	tbl.SetValue(wxT("Expanded"), true);
+	tbl.SetProperty(wxT("Source"), MakeSource({ (ibSourceId)kFormMainAttrId }));   // single hop → main = IsMainSourceBound
+	for (const auto& kv : maps.attrs) {
+		const int colId = nextId++;
+		ibDataNode& col = tbl.AddChild(kCtrlColumn, colId);
+		col.SetValue(wxT("ControlId"), (s32)colId);
+		col.SetValue(wxT("Name"), kv.first);
+		col.SetValue(wxT("Expanded"), true);
+		col.SetProperty(wxT("Source"), MakeSource({ (ibSourceId)kFormMainAttrId, (ibSourceId)kv.second }));
+		col.SetProp<wxString>(wxT("Title"), kv.first);
+	}
 }
 
 // Emit the form's OWN attributes (1C form attributes: ПолеПрописи…, СуммаЧисло, …) into the
@@ -634,8 +663,13 @@ void EmitFormCommands(ibDataNode& root, const json& f, AttrMaps& maps) {
 // empty -> auto-layout, the MVP-A behaviour).
 wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const AttrMaps& ownerMaps,
                              ibMetaID ownerMetaID, const RefMap& refMap, const ibMetaData* metaData) {
+	const bool listForm = JStr(f, "type", wxT("object")).Lower() == wxT("list");
+
 	auto it = f.find("controls");
-	if (it == f.end() || !it->is_array() || it->empty())
+	const bool hasControls = (it != f.end() && it->is_array() && !it->empty());
+	// An object form with no controls falls back to auto-layout (empty blob). A LIST form still needs its
+	// main list tablebox synthesized, so we build the blob even with no declared controls.
+	if (!hasControls && !listForm)
 		return wxMemoryBuffer();
 
 	auto root = std::make_shared<ibDataNode>();
@@ -649,7 +683,7 @@ wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const Attr
 	// One "Attributes" section (Child() creates a new node per call, so build it once
 	// and share it between the main object attribute and the form's own attributes).
 	ibDataNode& attrs = root->Child(wxT("Attributes"));
-	EmitMainAttribute(attrs, ownerMetaID, metaData);      // the object the controls bind through (id 1)
+	EmitMainAttribute(attrs, ownerMetaID, metaData, listForm);   // list → dynamic list (id 1); object → the object
 	int nextAttrId = kFormMainAttrId + 1;                 // form attributes get ids after the main
 	EmitFormAttributes(attrs, f, refMap, metaData, nextAttrId, maps);
 
@@ -658,8 +692,17 @@ wxMemoryBuffer BuildFormData(const json& f, const wxString& formName, const Attr
 	EmitFormCommands(*root, f, maps);
 
 	int nextId = kFormRootId + 1;   // children start after the form
-	for (const json& c : *it)
-		BuildControlNode(*root, c, maps, nextId, /*tableId*/ 0, Host::Sizerable);
+	bool hasTable = false;
+	if (hasControls)
+		for (const json& c : *it) {
+			if (JStr(c, "kind", wxT("field")).Lower() == wxT("table"))
+				hasTable = true;
+			BuildControlNode(*root, c, maps, nextId, /*tableId*/ 0, Host::Sizerable);
+		}
+
+	// A list form with no table of its own gets the default main-list tablebox (the list + its command bar).
+	if (listForm && !hasTable)
+		SynthesizeListTable(*root, maps, nextId);
 
 	return ibValueMetaObjectFormBase::FormNodeToBlob(ibDataValue::Child(root));
 }
