@@ -389,6 +389,9 @@ body.modal-dragging,body.modal-dragging *{cursor:move !important;user-select:non
 <header id="titlebar">
   <span id="app-title">OES Enterprise</span>
   <nav id="menubar"></nav>
+  <button id="profileBtn" title="Замер производительности пользовательского кода"
+          style="margin-left:auto;margin-right:8px;"
+          onclick="OES.toggleProfile && OES.toggleProfile()">Профилировать</button>
 </header>
 <!-- app-row: middle stretchable section containing sidebar + main. -->
 <div id="app-row">
@@ -496,6 +499,70 @@ OES.srvCall = async function(proc, args, context){
   if(!r || !r.ok) throw new Error('srv-call '+proc+' failed');
   return await r.json();
 };
+
+// ---- Execution profiler toggle (Inc 2) --------------------------------------
+// «Профилировать»: turn tracing on, let the user perform an action (click a
+// form command, etc.), then turn it off to see the statement-by-statement
+// execution SEQUENCE — depth-indented so event-handler chains and non-obvious
+// flow are visible. Server-side collection is per session (keyed on the worker).
+OES.profiling = false;
+OES.toggleProfile = async function(){
+  const btn = document.getElementById('profileBtn');
+  if(!OES.profiling){
+    try{
+      const r = await netFetch(API+'/profile/start', {method:'POST', credentials:'same-origin'});
+      if(!r || !r.ok){ if(OES.error) OES.error('[profiler] старт не удался'); return; }
+      OES.profiling = true;
+      if(btn){ btn.textContent='Остановить замер'; btn.style.background='#e2c04a'; }
+      if(OES.log) OES.log('[profiler] замер включён — выполните действие, затем остановите');
+    }catch(e){ if(OES.error) OES.error('[profiler] '+((e&&e.message)||e)); }
+  } else {
+    try{
+      const r = await netFetch(API+'/profile/stop', {credentials:'same-origin'});
+      OES.profiling = false;
+      if(btn){ btn.textContent='Профилировать'; btn.style.background=''; }
+      const data = (r && r.ok) ? await r.json() : {rows:[],count:0};
+      OES.showProfileTable(data.rows || []);
+      if(OES.log) OES.log('[profiler] строк трейса: '+(data.count||0));
+    }catch(e){ if(OES.error) OES.error('[profiler] '+((e&&e.message)||e)); }
+  }
+};
+// Render the trace as a table in a modal overlay. Rows are indented by call
+// depth (Глубина) so the call/handler chain reads at a glance.
+OES.showProfileTable = function(rows){
+  let ov = document.getElementById('profileOverlay');
+  if(ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'profileOverlay';
+  ov.style.cssText = 'position:fixed;inset:5% 8%;background:#fff;border:1px solid #b9c4d0;'+
+    'box-shadow:0 8px 40px rgba(0,0,0,.25);z-index:9999;display:flex;flex-direction:column;';
+  const hdr = document.createElement('div');
+  hdr.style.cssText='padding:8px 12px;background:#3F5C77;color:#fff;display:flex;align-items:center;';
+  hdr.innerHTML = '<b>Замер производительности — последовательность выполнения ('+rows.length+' строк)</b>';
+  const close = document.createElement('button');
+  close.textContent='✕'; close.style.cssText='margin-left:auto;';
+  close.onclick=()=>ov.remove();
+  hdr.appendChild(close);
+  ov.appendChild(hdr);
+  const wrap = document.createElement('div');
+  wrap.style.cssText='overflow:auto;flex:1;';
+  const t = document.createElement('table');
+  t.style.cssText='border-collapse:collapse;width:100%;font:12px/1.4 Consolas,monospace;';
+  t.innerHTML = '<thead><tr>'+
+    ['№','Глубина','Модуль','Процедура','Строка','Опкод'].map(h=>
+      '<th style="position:sticky;top:0;background:#eef2f6;border:1px solid #d5dde5;padding:2px 8px;text-align:left;">'+h+'</th>').join('')+
+    '</tr></thead>';
+  const tb = document.createElement('tbody');
+  const td = (v,extra)=>'<td style="border:1px solid #eef2f6;padding:1px 8px;'+(extra||'')+'">'+v+'</td>';
+  rows.forEach(r=>{
+    const pad = 'padding-left:'+(8 + (r.depth||0)*16)+'px;';
+    tb.insertAdjacentHTML('beforeend','<tr>'+
+      td(r.seq)+ td(r.depth)+ td(r.module||'', pad)+ td(r.func||'')+ td(r.line)+ td(r.opcode)+ '</tr>');
+  });
+  t.appendChild(tb); wrap.appendChild(t); ov.appendChild(wrap);
+  document.body.appendChild(ov);
+};
+
 // Read the current value shown by a control (its input/textarea) from the DOM.
 OES.readCtrlValue = function(cid){
   const el = main.querySelector('[data-ctrl-id="'+cid+'"] input, [data-ctrl-id="'+cid+'"] textarea');

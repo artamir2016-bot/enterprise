@@ -53,12 +53,12 @@ TEST(ExecTracer, RecordsExecutionSequenceWithDepth) {
 	ibProcUnit pu;
 	pu.Execute(cc.m_cByteCode);            // init the module (declare functions)
 
-	execTracer->StartThisThread();
+	execTracer->Start();
 	ibValue ret;
 	ibValue arg(21);
 	pu.CallAsFunc(wxT("Outer"), ret, arg);  // Inner(21)=42, +1 = 43
-	std::vector<ibExecTracer::ibTraceRow> rows = execTracer->SnapshotThisThread();
-	execTracer->StopThisThread();
+	std::vector<ibExecTracer::ibTraceRow> rows = execTracer->Snapshot();
+	execTracer->Stop();
 
 	EXPECT_EQ(ret.GetInteger(), 43);
 	ASSERT_GT(rows.size(), 0u);
@@ -85,7 +85,7 @@ TEST(ExecTracer, RecordsExecutionSequenceWithDepth) {
 // collected while code runs (the thread-local buffer may still hold a prior run's
 // rows — Stop does not clear — so we assert the count does not GROW).
 TEST(ExecTracer, DisabledCollectsNothingNew) {
-	execTracer->StopThisThread();   // ensure this thread is not collecting
+	execTracer->Stop();   // ensure this thread is not collecting
 	ibCompileCode cc(wxT("test"), wxT("memory"), false);
 	ASSERT_TRUE(CompileOk(cc, wxT("Function F(x) Public\n  Return x + 1;\nEndFunction\n")));
 
@@ -93,9 +93,9 @@ TEST(ExecTracer, DisabledCollectsNothingNew) {
 	pu.Execute(cc.m_cByteCode);
 	ibValue ret, arg(1);
 
-	const size_t before = execTracer->SnapshotThisThread().size();
+	const size_t before = execTracer->Snapshot().size();
 	pu.CallAsFunc(wxT("F"), ret, arg);      // runs with tracer OFF
-	const size_t after = execTracer->SnapshotThisThread().size();
+	const size_t after = execTracer->Snapshot().size();
 	EXPECT_EQ(after, before);
 }
 
@@ -107,15 +107,15 @@ TEST(ExecTracer, StartClearsPreviousRun) {
 	pu.Execute(cc.m_cByteCode);
 	ibValue ret, arg(1);
 
-	execTracer->StartThisThread();
+	execTracer->Start();
 	pu.CallAsFunc(wxT("G"), ret, arg);
-	const size_t first = execTracer->SnapshotThisThread().size();
+	const size_t first = execTracer->Snapshot().size();
 	EXPECT_GT(first, 0u);
 
-	execTracer->StartThisThread();          // clears
-	EXPECT_EQ(execTracer->SnapshotThisThread().size(), 0u);
+	execTracer->Start();          // clears
+	EXPECT_EQ(execTracer->Snapshot().size(), 0u);
 	pu.CallAsFunc(wxT("G"), ret, arg);
-	const size_t second = execTracer->SnapshotThisThread().size();
-	execTracer->StopThisThread();
+	const size_t second = execTracer->Snapshot().size();
+	execTracer->Stop();
 	EXPECT_EQ(second, first);               // same code → same number of statements
 }

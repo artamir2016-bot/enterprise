@@ -839,6 +839,20 @@ int main(int argc, char** argv)
 			"application/json; charset=utf-8");
 	});
 
+	// POST /profile/start — begin the statement-level execution trace for this
+	// session; GET /profile/stop — end it and return the trace as JSON (execution
+	// profiler, Inc 2). Both hop through the session worker.
+	svr.Post(prefix + "/profile/start", [](const httplib::Request& req, httplib::Response& res) {
+		std::string id;
+		if (!RequireSessionId(req, res, id)) return;
+		res.set_content(wfrontendProfileStart(id), "application/json; charset=utf-8");
+	});
+	svr.Get(prefix + "/profile/stop", [](const httplib::Request& req, httplib::Response& res) {
+		std::string id;
+		if (!RequireSessionId(req, res, id)) return;
+		res.set_content(wfrontendProfileStop(id), "application/json; charset=utf-8");
+	});
+
 	// GET /debug-status — process-wide debug flag (was --debug on?) +
 	// per-session paused flag (is the session currently parked at a
 	// breakpoint?). Client polls this on its live tick to render the

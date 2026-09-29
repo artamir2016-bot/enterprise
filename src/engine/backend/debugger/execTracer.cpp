@@ -4,31 +4,18 @@
 
 #include "execTracer.h"
 
-#include <vector>
-#include <cstdint>
 #include <chrono>
 
 #include "backend/compiler/codeDef.h"          // OPER_* — steppable-opcode filter
 #include "backend/compiler/byteCode.h"         // ibByteUnit / ibByteCode::ibByteFunction
 #include "backend/compiler/procContext.h"      // ibRunContext (m_currentFunction)
 #include "backend/compiler/procUnitState.h"    // ibProcUnitState::GetCountRunContext
-#include "backend/session/session.h"           // ibSession::GetPUState
+#include "backend/session/session.h"           // ibSession::Current / GetPUState
 #include "backend/compiler/value.h"            // ibValue + g_value*CLSID
 #include "backend/backend_type.h"              // ibTypeDescription
 #include "backend/system/value/valueTable.h"   // ibValueModelTable (ТаблицаЗначений)
 
 namespace {
-
-// Per worker-thread collector — each session runs on its own thread, so this
-// keeps sessions from mixing traces with no locking on the interpreter path.
-// Rows are the presentation-neutral ibExecTracer::ibTraceRow (+ a wall-clock
-// enter stamp kept in a parallel vector for later self/total timing).
-thread_local bool                                  ts_traceActive = false;
-thread_local std::vector<ibExecTracer::ibTraceRow> ts_buffer;
-thread_local std::vector<std::chrono::steady_clock::time_point> ts_enter;
-thread_local std::uint64_t                         ts_seq = 0;
-
-constexpr std::size_t kCap = 2000000;   // runaway backstop (~ bounded memory)
 
 // Same set the debugger stops on (debugServer.cpp): frame markers, param-binding
 // and tape declarators carry no user-visible source position, so we don't record
@@ -47,6 +34,16 @@ inline bool IsSteppableOpcode(short oper)
 	}
 }
 
+constexpr std::size_t kCap = 2000000;   // runaway backstop (~ bounded memory)
+
+// Sessionless fallback collector (unit tests, bare interpreter, or any run with
+// no bound session). Plus the per-thread cache of the resolved SESSION collector
+// (owned by the tracer's map) so the hot path skips the map lock while the
+// session on this thread stays the same.
+thread_local ibExecTracer::Collector ts_sessionless;
+thread_local const ibSession*        ts_cacheSess = nullptr;
+thread_local ibExecTracer::Collector* ts_cachePtr = nullptr;
+
 } // namespace
 
 ibExecTracer* ibExecTracer::Get()
@@ -55,44 +52,69 @@ ibExecTracer* ibExecTracer::Get()
 	return &s_instance;
 }
 
-void ibExecTracer::StartThisThread()
+ibExecTracer::Collector* ibExecTracer::CurrentCollector(bool createForSession)
 {
-	ts_buffer.clear();
-	ts_buffer.reserve(1u << 16);
-	ts_enter.clear();
-	ts_enter.reserve(1u << 16);
-	ts_seq = 0;
-	if (!ts_traceActive) {
-		ts_traceActive = true;
-		m_activeThreads.fetch_add(1, std::memory_order_relaxed);
+	ibSession* s = ibSession::Current();
+	if (s == nullptr)
+		return &ts_sessionless;
+
+	if (s == ts_cacheSess && ts_cachePtr != nullptr)
+		return ts_cachePtr;
+
+	std::lock_guard<std::mutex> lock(m_mtx);
+	Collector* c = nullptr;
+	if (createForSession) {
+		c = &m_bySession[s];   // unordered_map element pointers are stable across insert
+	} else {
+		auto it = m_bySession.find(s);
+		c = (it != m_bySession.end()) ? &it->second : nullptr;
 	}
+	ts_cacheSess = s;
+	ts_cachePtr  = c;
+	return c;
+}
+
+void ibExecTracer::Start()
+{
+	Collector* c = CurrentCollector(/*createForSession*/true);
+	if (c == nullptr) return;
+	if (!c->active) {
+		c->active = true;
+		m_activeCount.fetch_add(1, std::memory_order_relaxed);
+	}
+	c->rows.clear();
+	c->rows.reserve(1u << 16);
+	c->seq = 0;
 	m_enabledGlobal.store(true, std::memory_order_relaxed);
 }
 
-void ibExecTracer::StopThisThread()
+void ibExecTracer::Stop()
 {
-	if (!ts_traceActive)
-		return;
-	ts_traceActive = false;
-	// Clear the global gate once the last collecting thread stops.
-	if (m_activeThreads.fetch_sub(1, std::memory_order_relaxed) <= 1)
+	Collector* c = CurrentCollector(/*createForSession*/false);
+	if (c == nullptr || !c->active) return;
+	c->active = false;
+	if (m_activeCount.fetch_sub(1, std::memory_order_relaxed) <= 1)
 		m_enabledGlobal.store(false, std::memory_order_relaxed);
 }
 
 void ibExecTracer::Record(ibRunContext* runContext, const ibByteUnit& code, long& tracePrevLine)
 {
-	if (!ts_traceActive)
-		return;
 	if (!IsSteppableOpcode(code.m_numOper))
 		return;
 	if (static_cast<long>(code.m_numLine) == tracePrevLine)
 		return;
 	tracePrevLine = static_cast<long>(code.m_numLine);
-	if (ts_buffer.size() >= kCap)
-		return;   // truncated — surfaced by the row count vs. seq gap
+	if (code.m_numLine < 0)
+		return;
 
-	ibExecTracer::ibTraceRow r;
-	r.seq    = ts_seq++;
+	Collector* c = CurrentCollector(/*createForSession*/false);
+	if (c == nullptr || !c->active)
+		return;
+	if (c->rows.size() >= kCap)
+		return;   // truncated
+
+	ibTraceRow r;
+	r.seq    = c->seq++;
 	ibProcUnitState* st = ibSession::GetPUState();
 	r.depth  = st != nullptr ? static_cast<int>(st->GetCountRunContext()) : 0;
 	r.line   = static_cast<int>(code.m_numLine);
@@ -102,18 +124,34 @@ void ibExecTracer::Record(ibRunContext* runContext, const ibByteUnit& code, long
 	r.func   = (runContext != nullptr && runContext->m_currentFunction != nullptr)
 		? runContext->m_currentFunction->m_strRealName
 		: wxString();
-	ts_buffer.push_back(std::move(r));
-	ts_enter.push_back(std::chrono::steady_clock::now());
+	c->rows.push_back(std::move(r));
 }
 
-std::vector<ibExecTracer::ibTraceRow> ibExecTracer::SnapshotThisThread() const
+std::vector<ibExecTracer::ibTraceRow> ibExecTracer::Snapshot() const
 {
-	return ts_buffer;   // a copy of the calling thread's collected rows
+	// const, but CurrentCollector mutates the cache / map — cast away for the
+	// read (the returned vector is a copy).
+	Collector* c = const_cast<ibExecTracer*>(this)->CurrentCollector(false);
+	return c != nullptr ? c->rows : std::vector<ibTraceRow>{};
+}
+
+void ibExecTracer::DropSession(const ibSession* session)
+{
+	std::lock_guard<std::mutex> lock(m_mtx);
+	auto it = m_bySession.find(session);
+	if (it == m_bySession.end()) return;
+	if (it->second.active)
+		m_activeCount.fetch_sub(1, std::memory_order_relaxed);
+	m_bySession.erase(it);
+	// Clear this thread's cache if it pointed at the erased entry (best-effort;
+	// other threads re-resolve on their next access — see the note in DropSession).
+	if (ts_cacheSess == session) { ts_cacheSess = nullptr; ts_cachePtr = nullptr; }
 }
 
 ibValue ibExecTracer::BuildResultTable()
 {
-	StopThisThread();
+	std::vector<ibTraceRow> rows = Snapshot();
+	Stop();
 
 	ibValueModelTable* table = new ibValueModelTable();
 	ibValueModelTable::ibValueModelColumnCollection* cols = table->GetColumnCollection();
@@ -125,7 +163,7 @@ ibValue ibExecTracer::BuildResultTable()
 	};
 
 	// All columns are supplied; the VIEW (a table box on a form) hides the ones
-	// the user does not want. `Код` (source line text) lands in a later increment.
+	// the user does not want.
 	const unsigned int cSeq    = addCol(wxT("НомерСтроки"),  g_valueNumberCLSID, _("#"));
 	const unsigned int cDepth  = addCol(wxT("Глубина"),      g_valueNumberCLSID, _("Depth"));
 	const unsigned int cModule = addCol(wxT("Модуль"),       g_valueStringCLSID, _("Module"));
@@ -134,19 +172,16 @@ ibValue ibExecTracer::BuildResultTable()
 	const unsigned int cCode   = addCol(wxT("Код"),          g_valueStringCLSID, _("Code"));
 	const unsigned int cOp     = addCol(wxT("Опкод"),        g_valueNumberCLSID, _("Opcode"));
 
-	for (const ibExecTracer::ibTraceRow& r : ts_buffer) {
+	for (const ibTraceRow& r : rows) {
 		ibValueModelTable::ibValueModelTableReturnLine* line = table->GetRowAt(table->AppendRow());
 		line->SetValueByMetaID(cSeq,    ibValue(static_cast<signed int>(r.seq)));
 		line->SetValueByMetaID(cDepth,  ibValue(static_cast<signed int>(r.depth)));
 		line->SetValueByMetaID(cModule, ibValue(r.module));
 		line->SetValueByMetaID(cFunc,   ibValue(r.func));
-		line->SetValueByMetaID(cLine,   ibValue(static_cast<signed int>(r.line + 1)));   // 1-based for display
+		line->SetValueByMetaID(cLine,   ibValue(static_cast<signed int>(r.line + 1)));   // 1-based
 		line->SetValueByMetaID(cCode,   ibValue(wxString()));
 		line->SetValueByMetaID(cOp,     ibValue(static_cast<signed int>(r.opcode)));
 		wxDELETE(line);
 	}
-
-	ts_buffer.clear();
-	ts_enter.clear();
 	return table;
 }

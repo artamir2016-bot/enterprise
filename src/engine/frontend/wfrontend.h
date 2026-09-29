@@ -255,6 +255,14 @@ WFRONTEND_API std::string wfrontendFormClientBytecode(const std::string& session
 WFRONTEND_API std::string wfrontendServerCall(const std::string& sessionId,
 	const std::string& body);
 
+// Execution profiler (Inc 2) — the web toggle. Start begins collecting the
+// statement trace on the session's worker; Stop ends it and returns the trace as
+// JSON { rows:[{seq,depth,module,func,line,opcode}], count, truncated }. Both run
+// on the session worker so the per-session collector is the one the user's
+// actions (also on that worker) recorded into.
+WFRONTEND_API std::string wfrontendProfileStart(const std::string& sessionId);
+WFRONTEND_API std::string wfrontendProfileStop(const std::string& sessionId);
+
 // Generic kind-aware dispatcher. Routes the `kind` string into
 // ibWebWindow::HandleRequest on the target control. Textctrl side
 // buttons use "buttonSelect"/"buttonOpen"/"buttonClear"; callers can

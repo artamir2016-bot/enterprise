@@ -56,6 +56,7 @@
 #include "visualView/ctrl/formAttribute.h"    // ibFormAttributeValue — GetName/GetId
 #include "backend/sourceDescription.h"        // ibSourceHop / ibSourceDescription — control binding path
 #include "backend/fnumber.h"                  // ibNumber — exact value from JS number (5c server call)
+#include "backend/debugger/execTracer.h"      // execution profiler — /profile toggle (Inc 2)
 
 namespace {
 
@@ -274,6 +275,8 @@ public:
 	// Client-env functions + code/const/vars as JSON the browser VM runs.
 	std::string FormClientBytecode(const std::string& id);
 	std::string ServerCall(const std::string& id, const std::string& body);
+	std::string ProfileStart(const std::string& id);
+	std::string ProfileStop(const std::string& id);
 
 	// Borrow the session's ibWebApplication for the duration of a
 	// blocking operation (SSE wait). Returns null if id is unknown or
@@ -1627,6 +1630,87 @@ WFRONTEND_API std::string wfrontendServerCall(const std::string& sessionId,
 {
 	Sessions().Touch(sessionId);
 	return Sessions().ServerCall(sessionId, body);
+}
+
+// ---- Inc 2: execution profiler web toggle -------------------------------
+namespace {
+std::string ProfileStartInSession(ibWebSession* session)
+{
+	if (session == nullptr || !session->IsAuthenticated()) return "{}";
+	ibWebApplication* app = session->App();
+	if (app == nullptr) return "{}";
+	// Runs on the session worker (ibSessionScope binds Current()), so Start()
+	// creates THIS session's collector — the same one the user's later actions
+	// (also on this worker) record into.
+	return app->RunOnWorker([]() -> std::string {
+		execTracer->Start();
+		return std::string("{\"profiling\":true}");
+	}).get();
+}
+
+std::string ProfileStopInSession(ibWebSession* session)
+{
+	if (session == nullptr || !session->IsAuthenticated()) return "{}";
+	ibWebApplication* app = session->App();
+	if (app == nullptr) return "{}";
+	return app->RunOnWorker([]() -> std::string {
+		std::vector<ibExecTracer::ibTraceRow> rows = execTracer->Snapshot();
+		execTracer->Stop();
+		nlohmann::json root;
+		auto arr = nlohmann::json::array();
+		for (const auto& r : rows) {
+			arr.push_back({
+				{ "seq",    (long long)r.seq },
+				{ "depth",  r.depth },
+				{ "module", std::string(r.module.utf8_str()) },
+				{ "func",   std::string(r.func.utf8_str()) },
+				{ "line",   r.line + 1 },
+				{ "opcode", (int)r.opcode },
+			});
+		}
+		root["rows"]  = std::move(arr);
+		root["count"] = (long long)rows.size();
+		return root.dump(2);
+	}).get();
+}
+} // namespace
+
+std::string SessionManager::ProfileStart(const std::string& id)
+{
+	std::shared_ptr<ibWebSession> keeper;
+	ibWebSession* s = nullptr;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_sessions.find(id);
+		if (it == m_sessions.end()) return "{}";
+		keeper = it->second; s = keeper.get();
+	}
+	return ProfileStartInSession(s);
+}
+
+std::string SessionManager::ProfileStop(const std::string& id)
+{
+	std::shared_ptr<ibWebSession> keeper;
+	ibWebSession* s = nullptr;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_sessions.find(id);
+		if (it == m_sessions.end()) return "{}";
+		keeper = it->second; s = keeper.get();
+	}
+	return ProfileStopInSession(s);
+}
+
+WFRONTEND_API std::string wfrontendProfileStart(const std::string& sessionId)
+{
+	Sessions().Touch(sessionId);
+	return Sessions().ProfileStart(sessionId);
+}
+
+WFRONTEND_API std::string wfrontendProfileStop(const std::string& sessionId)
+{
+	Sessions().Touch(sessionId);
+	return Sessions().ProfileStop(sessionId);
 }
 
 namespace {
