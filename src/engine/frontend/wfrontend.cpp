@@ -1665,6 +1665,8 @@ std::string ProfileStopInSession(ibWebSession* session)
 				{ "module", std::string(r.module.utf8_str()) },
 				{ "func",   std::string(r.func.utf8_str()) },
 				{ "line",   r.line + 1 },
+				{ "self",   r.selfMs },
+				{ "total",  r.totalMs },
 				{ "opcode", (int)r.opcode },
 			});
 		}

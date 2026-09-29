@@ -58,6 +58,10 @@ public:
 		wxString      module;
 		wxString      func;
 		wxString      docPath;
+		// Timing (filled by Finalize before a Snapshot/Build reads the rows).
+		std::int64_t  tEnterNs = 0;   // steady-clock nanoseconds at record time
+		double        selfMs   = 0.0; // wall-clock gap to the next statement (own line time)
+		double        totalMs  = 0.0; // inclusive time until control returns to <= this depth
 	};
 
 	static ibExecTracer* Get();

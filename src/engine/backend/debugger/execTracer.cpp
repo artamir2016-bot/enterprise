@@ -36,6 +36,31 @@ inline bool IsSteppableOpcode(short oper)
 
 constexpr std::size_t kCap = 2000000;   // runaway backstop (~ bounded memory)
 
+inline std::int64_t NowNs()
+{
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// Fill selfMs / totalMs on a finalized copy of the rows. selfMs is the wall-clock
+// gap to the NEXT recorded statement (this line's own time); totalMs is the time
+// until control returns to a depth ≤ this row's (a call statement's inclusive
+// cost). `endNs` closes the last row. Timing is wall-clock and INCLUDES the
+// tracer's own per-line overhead, so read RELATIVE hotness, not absolute times.
+void Finalize(std::vector<ibExecTracer::ibTraceRow>& rows, std::int64_t endNs)
+{
+	const std::size_t n = rows.size();
+	for (std::size_t i = 0; i < n; ++i) {
+		const std::int64_t nextNs = (i + 1 < n) ? rows[i + 1].tEnterNs : endNs;
+		rows[i].selfMs = (nextNs - rows[i].tEnterNs) / 1e6;
+		std::int64_t retNs = endNs;
+		for (std::size_t j = i + 1; j < n; ++j) {
+			if (rows[j].depth <= rows[i].depth) { retNs = rows[j].tEnterNs; break; }
+		}
+		rows[i].totalMs = (retNs - rows[i].tEnterNs) / 1e6;
+	}
+}
+
 // Sessionless fallback collector (unit tests, bare interpreter, or any run with
 // no bound session). Plus the per-thread cache of the resolved SESSION collector
 // (owned by the tracer's map) so the hot path skips the map lock while the
@@ -124,6 +149,7 @@ void ibExecTracer::Record(ibRunContext* runContext, const ibByteUnit& code, long
 	r.func   = (runContext != nullptr && runContext->m_currentFunction != nullptr)
 		? runContext->m_currentFunction->m_strRealName
 		: wxString();
+	r.tEnterNs = NowNs();
 	c->rows.push_back(std::move(r));
 }
 
@@ -132,7 +158,10 @@ std::vector<ibExecTracer::ibTraceRow> ibExecTracer::Snapshot() const
 	// const, but CurrentCollector mutates the cache / map — cast away for the
 	// read (the returned vector is a copy).
 	Collector* c = const_cast<ibExecTracer*>(this)->CurrentCollector(false);
-	return c != nullptr ? c->rows : std::vector<ibTraceRow>{};
+	if (c == nullptr) return std::vector<ibTraceRow>{};
+	std::vector<ibTraceRow> out = c->rows;
+	Finalize(out, NowNs());   // fill self/total timing on the copy
+	return out;
 }
 
 void ibExecTracer::DropSession(const ibSession* session)
@@ -170,6 +199,8 @@ ibValue ibExecTracer::BuildResultTable()
 	const unsigned int cFunc   = addCol(wxT("Процедура"),    g_valueStringCLSID, _("Procedure"));
 	const unsigned int cLine   = addCol(wxT("СтрокаМодуля"), g_valueNumberCLSID, _("Line"));
 	const unsigned int cCode   = addCol(wxT("Код"),          g_valueStringCLSID, _("Code"));
+	const unsigned int cSelf   = addCol(wxT("ВремяСобственное"), g_valueNumberCLSID, _("Self ms"));
+	const unsigned int cTotal  = addCol(wxT("ВремяПолное"),  g_valueNumberCLSID, _("Total ms"));
 	const unsigned int cOp     = addCol(wxT("Опкод"),        g_valueNumberCLSID, _("Opcode"));
 
 	for (const ibTraceRow& r : rows) {
@@ -180,6 +211,8 @@ ibValue ibExecTracer::BuildResultTable()
 		line->SetValueByMetaID(cFunc,   ibValue(r.func));
 		line->SetValueByMetaID(cLine,   ibValue(static_cast<signed int>(r.line + 1)));   // 1-based
 		line->SetValueByMetaID(cCode,   ibValue(wxString()));
+		line->SetValueByMetaID(cSelf,   ibValue(r.selfMs));
+		line->SetValueByMetaID(cTotal,  ibValue(r.totalMs));
 		line->SetValueByMetaID(cOp,     ibValue(static_cast<signed int>(r.opcode)));
 		wxDELETE(line);
 	}

@@ -549,15 +549,18 @@ OES.showProfileTable = function(rows){
   const t = document.createElement('table');
   t.style.cssText='border-collapse:collapse;width:100%;font:12px/1.4 Consolas,monospace;';
   t.innerHTML = '<thead><tr>'+
-    ['№','Глубина','Модуль','Процедура','Строка','Опкод'].map(h=>
+    ['№','Глубина','Модуль','Процедура','Строка','Собств.,мс','Полное,мс','Опкод'].map(h=>
       '<th style="position:sticky;top:0;background:#eef2f6;border:1px solid #d5dde5;padding:2px 8px;text-align:left;">'+h+'</th>').join('')+
     '</tr></thead>';
   const tb = document.createElement('tbody');
   const td = (v,extra)=>'<td style="border:1px solid #eef2f6;padding:1px 8px;'+(extra||'')+'">'+v+'</td>';
+  const ms = v => (v===undefined||v===null) ? '' : Number(v).toFixed(3);
   rows.forEach(r=>{
     const pad = 'padding-left:'+(8 + (r.depth||0)*16)+'px;';
-    tb.insertAdjacentHTML('beforeend','<tr>'+
-      td(r.seq)+ td(r.depth)+ td(r.module||'', pad)+ td(r.func||'')+ td(r.line)+ td(r.opcode)+ '</tr>');
+    const hot = (r.total>=1) ? 'background:#fdecea;' : '';   // highlight ≥1 ms rows
+    tb.insertAdjacentHTML('beforeend','<tr style="'+hot+'">'+
+      td(r.seq)+ td(r.depth)+ td(r.module||'', pad)+ td(r.func||'')+ td(r.line)+
+      td(ms(r.self),'text-align:right;')+ td(ms(r.total),'text-align:right;')+ td(r.opcode)+ '</tr>');
   });
   t.appendChild(tb); wrap.appendChild(t); ov.appendChild(wrap);
   document.body.appendChild(ov);
