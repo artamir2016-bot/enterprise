@@ -952,11 +952,59 @@ void ibValueModelTableBox::OnPropertyCreated(ibProperty* /*property*/) {}
 bool ibValueModelTableBox::OnPropertyChanging(ibProperty* /*property*/, const wxVariant& /*newValue*/) { return true; }
 void ibValueModelTableBox::OnPropertyChanged(ibProperty* /*property*/, const wxVariant& /*oldValue*/, const wxVariant& /*newValue*/) {}
 
-ibValueModelTableBox::ibStandardCommandSet ibValueModelTableBox::GetStandardCommands(const ibFormID& /*formType*/)
+// WEB command interface. The desktop path (tableBoxAction.cpp) also folds in the
+// view-state band (Filter / ViewMode / Select) whose handlers drive the live wx
+// control — that control does not exist on web, so this build surfaces the bound
+// MODEL's OWN command set only (Add / Copy / Edit / Delete / MarkAsDelete, + AddFolder
+// for a hierarchy). Those are exactly the 1C list buttons (Создать / Скопировать /
+// Изменить / Удалить / Пометить на удаление) and they dispatch through the metadata-
+// blind model->CallAsCommand — no widget needed. The form wraps this with its chrome
+// (formAction.cpp) and the web host serialises it into node["commands"].
+ibValueModelTableBox::ibStandardCommandSet ibValueModelTableBox::GetStandardCommands(const ibFormID& formType)
 {
-	return ibStandardCommandSet();
+	// Resolve the model: the created one, or (unbound path) the bound form-attribute's model.
+	ibValuePtr<ibValueModel> resolved;
+	ibValueModel* model = m_tableModel;
+	if (model == nullptr && !m_propertySource->IsEmptyProperty() && m_formOwner != nullptr &&
+		m_formOwner->GetValueByAttributePath(m_propertySource->GetValueAsSourceDesc(), resolved))
+		model = resolved;
+
+	if (model == nullptr)
+		return ibStandardCommandSet();
+
+	ibStandardCommandSet actionData(this);
+
+	std::vector<ibCommandItem> commands;
+	model->GetCommandCollection(formType, commands);
+	for (const ibCommandItem& c : commands) {
+		if (c.m_actionId == wxNOT_FOUND)
+			actionData.AddSeparator();
+		else
+			actionData.AddAction(c.m_name, c.m_caption, c.m_pictureDescription, c.m_pictureAndText, c.m_actionId).SetModify(c.m_modifiesData);
+	}
+	return actionData;
 }
-void ibValueModelTableBox::CallAsAction(const ibActionID& /*lNumAction*/, ibBackendValueForm* /*srcForm*/) {}
+
+void ibValueModelTableBox::CallAsAction(const ibActionID& lNumAction, ibBackendValueForm* srcForm)
+{
+	if (appData->DesignerMode())
+		return;
+
+	ibValueModel* model = m_tableModel;
+	ibValuePtr<ibValueModel> resolved;
+	if (model == nullptr && !m_propertySource->IsEmptyProperty() && m_formOwner != nullptr &&
+		m_formOwner->GetValueByAttributePath(m_propertySource->GetValueAsSourceDesc(), resolved))
+		model = resolved;
+	if (model == nullptr)
+		return;
+
+	// The web client carries the selected row's key on the command post; until that
+	// lands (Inc 2) the context is empty — a CREATE (Add / AddFolder) lands at the root,
+	// which is the headline 1C button and needs no selection. Edit / Copy / Delete /
+	// MarkAsDelete no-op without a selection rather than acting on the wrong row.
+	ibDataViewCommandContext ctx;
+	model->CallAsCommand(lNumAction, ctx, srcForm);
+}
 
 void ibValueModelTableBox::PrepareDefaultMenu(wxMenu* /*m_menu*/) {}
 void ibValueModelTableBox::ExecuteMenu(ibVisualHost* /*visualHost*/, int /*id*/) {}
