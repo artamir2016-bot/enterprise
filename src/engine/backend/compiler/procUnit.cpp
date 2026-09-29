@@ -9,6 +9,7 @@
 #include "procUnitState.h"
 
 #include "debugger/debugServer.h"
+#include "debugger/execTracer.h"
 #include "system/systemManager.h"
 #include "system/value/valueType.h"   // ibValueType — dynamic New(typeValue)
 #include "backend_type.h"             // ibTranslateRuTypeName — ru type-name → class name
@@ -820,6 +821,9 @@ void ibProcUnit::Execute(ibRunContext* pContext, ibValue* pvarRetValue, bool bDe
 	// path as named functions.
 	long lFinish = (long)m_pByteCode->m_listCode.size();
 	long lPrevLine = wxNOT_FOUND;
+	// Profiler line-change bookkeeping — SEPARATE from the debugger's lPrevLine so
+	// the two hooks never disturb each other (execTracer, Increment 1).
+	long lTracePrevLine = wxNOT_FOUND;
 
 	std::vector<ibTryLabel> tryList;
 
@@ -876,6 +880,10 @@ start_label:
 			//enter in debugger
 			if (debugServer != nullptr && !evalMode)
 				debugServer->EnterDebugger(pContext, curCode, lPrevLine);
+
+			// record the executed statement (profiler) — zero cost when off
+			if (execTracer->IsEnabled() && !evalMode)
+				execTracer->Record(pContext, curCode, lTracePrevLine);
 
 			switch (curCode.m_numOper)
 			{

@@ -5,6 +5,7 @@
 
 #include "systemManager.h"
 #include "backend/backend_form.h"
+#include "backend/debugger/execTracer.h"   // performance measurement (profiler) global funcs
 
 enum
 {
@@ -160,7 +161,12 @@ enum
 	// Ordinary-application value storage (СохранитьЗначение / ВосстановитьЗначение) — interim:
 	// save is a no-op, restore returns Undefined (a real per-user store is later work).
 	enSaveValue,
-	enRestoreValue
+	enRestoreValue,
+	// Execution profiler / tracer — Start is a proc, Stop a func returning the
+	// ТаблицаЗначений. MUST stay last, in lock-step with the AppendProc/AppendFunc
+	// registration order below (the enum value IS the method number).
+	enStartPerfMeasure,
+	enStopPerfMeasure
 };
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
@@ -316,6 +322,11 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AppendFunc(wxT("GetConnectionsLock"), wxT("GetConnectionsLock()"));
 	helper.AppendProc(wxT("SaveValue"), 2, wxT("SaveValue(key : string, value : any)"));
 	helper.AppendFunc(wxT("RestoreValue"), 1, wxT("RestoreValue(key : string)"));
+	//--- Execution profiler (statement-level tracer). Start collecting on this
+	// thread; Stop returns the trace as a ТаблицаЗначений. Order here MUST match
+	// enStartPerfMeasure / enStopPerfMeasure in the enum above.
+	helper.AppendProc(wxT("StartPerformanceMeasurement"), wxT("StartPerformanceMeasurement()"));
+	helper.AppendFunc(wxT("StopPerformanceMeasurement"), wxT("StopPerformanceMeasurement()"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -426,6 +437,9 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xB7\xD0\xBD\xD0\xB0\xD1\x87\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5\xD0\xB7\xD0\xB0\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xBE"), wxT("ValueIsFilled"));  // значениезаполнено
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBE\xD0\xBF\xD0\xB8\xD1\x81\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5\xD0\xBE\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB8"), wxT("ErrorDescription"));  // описаниеошибки
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xB2\xD0\xBE\xD0\xBF\xD1\x80\xD0\xBE\xD1\x81"), wxT("Question"));  // вопрос
+	// Execution profiler (statement-level tracer)
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9D\xD0\xB0\xD1\x87\xD0\xB0\xD1\x82\xD1\x8C\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x80\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8"), wxT("StartPerformanceMeasurement"));  // НачатьЗамерПроизводительности
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x97\xD0\xB0\xD0\xBA\xD0\xBE\xD0\xBD\xD1\x87\xD0\xB8\xD1\x82\xD1\x8C\xD0\x97\xD0\xB0\xD0\xBC\xD0\xB5\xD1\x80\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB8\xD0\xB7\xD0\xB2\xD0\xBE\xD0\xB4\xD0\xB8\xD1\x82\xD0\xB5\xD0\xBB\xD1\x8C\xD0\xBD\xD0\xBE\xD1\x81\xD1\x82\xD0\xB8"), wxT("StopPerformanceMeasurement"));  // ЗакончитьЗамерПроизводительности
 	helper.AliasMethod(wxString::FromUTF8("\xD0\xBF\xD1\x80\xD0\xB5\xD0\xB4\xD1\x83\xD0\xBF\xD1\x80\xD0\xB5\xD0\xB6\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("Alert"));  // предупреждение
 	// 1C 8.3 async warning dialog. In the imported configs it's called with a single message string
 	// (ПредупреждениеАсинх("текст")), so it maps to Alert like the sync form; the callback-first async
@@ -624,6 +638,8 @@ bool ibValueSystemFunction::CallAsFunc(const long lMethodNum, ibValue& pvarRetVa
 		case enBeginTransaction: BeginTransaction(); return true;
 		case enCommitTransaction: CommitTransaction(); return true;
 		case enRollBackTransaction: RollBackTransaction(); return true;
+			//--- Profiler: stop + return the collected trace as a ТаблицаЗначений.
+		case enStopPerfMeasure: pvarRetValue = execTracer->BuildResultTable(); return true;
 		}
 	}
 	else
@@ -693,6 +709,8 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 		case enBeginTransaction: BeginTransaction(); return true;
 		case enCommitTransaction: CommitTransaction(); return true;
 		case enRollBackTransaction: RollBackTransaction(); return true;
+			//--- Profiler: begin collecting the statement trace on this thread.
+		case enStartPerfMeasure: execTracer->StartThisThread(); return true;
 		}
 	}
 	else

@@ -37,6 +37,7 @@ add_executable(oes_tests
     test_byteCodeAOT.cpp
     test_compiler.cpp
     test_runtime.cpp
+    test_execTracer.cpp
     test_compileTree.cpp
     test_compilerContract.cpp
     test_scriptCorpus.cpp
