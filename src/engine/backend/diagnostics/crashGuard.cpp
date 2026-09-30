@@ -116,6 +116,78 @@ void LogTerminateReason(const wxString& reason)
 }
 
 #ifdef __WXMSW__
+// Write a SYMBOLISED backtrace of the faulting thread next to the minidump, so a
+// crash can be diagnosed from the log alone (no cdb / VS needed). Best-effort: any
+// dbghelp failure just yields fewer frames. Uses the same dbghelp already linked for
+// MiniDumpWriteDump. dbghelp is single-threaded — a crash filter is the one place we
+// don't contend, but guard with a flag so re-entrancy can't loop.
+void WriteCrashStack(EXCEPTION_POINTERS* ep, const wxString& stackPath)
+{
+	if (ep == nullptr || ep->ContextRecord == nullptr) return;
+
+	wxFile f(stackPath, wxFile::write);
+	if (!f.IsOpened()) return;
+
+	const HANDLE proc = ::GetCurrentProcess();
+	const HANDLE thread = ::GetCurrentThread();
+
+	::SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_DEFERRED_LOADS | SYMOPT_UNDNAME);
+	::SymInitialize(proc, nullptr, TRUE);
+
+	// Exception header — code + faulting address.
+	const EXCEPTION_RECORD* er = ep->ExceptionRecord;
+	f.Write(wxString::Format(wxT("exception 0x%08X at %p\n"),
+		er ? (unsigned)er->ExceptionCode : 0u,
+		er ? er->ExceptionAddress : nullptr));
+	if (er && er->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2) {
+		f.Write(wxString::Format(wxT("access violation %s address %p\n"),
+			er->ExceptionInformation[0] == 1 ? wxT("WRITING") : wxT("reading"),
+			(void*)er->ExceptionInformation[1]));
+	}
+
+	CONTEXT ctx = *ep->ContextRecord;   // StackWalk64 mutates the context — copy it
+	STACKFRAME64 frame = {};
+#if defined(_M_X64)
+	frame.AddrPC.Offset    = ctx.Rip; frame.AddrPC.Mode    = AddrModeFlat;
+	frame.AddrFrame.Offset = ctx.Rbp; frame.AddrFrame.Mode = AddrModeFlat;
+	frame.AddrStack.Offset = ctx.Rsp; frame.AddrStack.Mode = AddrModeFlat;
+	const DWORD machine = IMAGE_FILE_MACHINE_AMD64;
+#else
+	const DWORD machine = IMAGE_FILE_MACHINE_I386;
+#endif
+
+	alignas(SYMBOL_INFO) char symBuf[sizeof(SYMBOL_INFO) + 512] = {};
+	SYMBOL_INFO* sym = reinterpret_cast<SYMBOL_INFO*>(symBuf);
+	sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+	sym->MaxNameLen   = 511;
+
+	for (int i = 0; i < 64; ++i) {
+		if (!::StackWalk64(machine, proc, thread, &frame, &ctx,
+			nullptr, ::SymFunctionTableAccess64, ::SymGetModuleBase64, nullptr))
+			break;
+		const DWORD64 addr = frame.AddrPC.Offset;
+		if (addr == 0) break;
+
+		wxString line = wxString::Format(wxT("  #%02d 0x%016I64X"), i, addr);
+
+		DWORD64 disp = 0;
+		if (::SymFromAddr(proc, addr, &disp, sym))
+			line += wxString::Format(wxT("  %s +0x%I64X"), wxString::FromUTF8(sym->Name), disp);
+
+		IMAGEHLP_MODULE64 mod = {}; mod.SizeOfStruct = sizeof(mod);
+		if (::SymGetModuleInfo64(proc, addr, &mod))
+			line += wxString::Format(wxT("  [%s]"), wxString::FromUTF8(mod.ModuleName));
+
+		IMAGEHLP_LINE64 il = {}; il.SizeOfStruct = sizeof(il); DWORD col = 0;
+		if (::SymGetLineFromAddr64(proc, addr, &col, &il))
+			line += wxString::Format(wxT("  %s:%lu"), wxString::FromUTF8(il.FileName), il.LineNumber);
+
+		f.Write(line + wxT("\n"));
+	}
+	f.Close();
+	::SymCleanup(proc);
+}
+
 LONG WINAPI PersistentCrashDumpFilter(EXCEPTION_POINTERS* ep)
 {
 	// Persistent minidump fires before any wx-level dialog. wx wipes
@@ -140,6 +212,15 @@ LONG WINAPI PersistentCrashDumpFilter(EXCEPTION_POINTERS* ep)
 		::MiniDumpWriteDump(::GetCurrentProcess(), ::GetCurrentProcessId(),
 			hFile, type, ep ? &mei : nullptr, nullptr, nullptr);
 		::CloseHandle(hFile);
+	}
+
+	// Symbolised backtrace beside the dump — lets a crash be diagnosed from the log
+	// alone (no external debugger). Best-effort; guarded against re-entrancy.
+	static std::atomic<bool> s_inStack{ false };
+	bool expected = false;
+	if (s_inStack.compare_exchange_strong(expected, true)) {
+		WriteCrashStack(ep, MakeDumpPath(wxEmptyString, wxT("stack.txt")));
+		s_inStack.store(false);
 	}
 
 	// Chain to the previous filter (wx's, if frontend installed it).
