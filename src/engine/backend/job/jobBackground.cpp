@@ -272,7 +272,7 @@ std::shared_ptr<ibBackgroundRun> ibJobManager::StartBackground(ibBackgroundBody 
 		// policy without anyone threading it through. Set AFTER the session is
 		// registered: the registry stamps its own answer during Add (the process's
 		// web server, where there is one), and the parent is the truer one here.
-		session->SetServer(launch->m_parent.get());
+		session->SetServer(launch->m_parent);   // owning shared_ptr — no shared_from_this re-derive
 
 		// THE ONE THING THAT CANNOT BE RENTED. A session owns exactly one
 		// connection and the parent's is busy with the parent's own work, so this

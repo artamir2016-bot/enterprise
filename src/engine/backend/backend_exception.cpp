@@ -345,17 +345,28 @@ wxString ibBackendException::ProcessExceptionError(const wxString& strFileName,
 	// background run or a headless check — precisely the ones nobody watches —
 	// reported no stack at all. Walking it costs a few string formats, and only
 	// on a path that has already failed.
-	if (!isEvalMode) {
+	// Walk the interpreter run-stack ONLY for a RUNTIME error. A COMPILE diagnostic
+	// (kind == Compile, reached from DoSetError before the code ever ran) has NO live
+	// interpreter frame for this text: the per-session PU state still holds whatever
+	// run-contexts a PRIOR execution on this (pooled) worker thread left behind, and
+	// their m_lCurLine indexes a DIFFERENT, shorter bytecode. Indexing m_listCode with
+	// it then reads out of bounds — an intermittent crash (it depends on the stale
+	// state), caught here by PageHeap at the guard page. So: gate on Runtime, and
+	// bounds-check the index even there as defence.
+	if (!isEvalMode && kind == ibDiagnosticKind::Runtime) {
 		auto* puState = ibSession::GetPUState();
 		const unsigned int frameCount = puState ? puState->GetCountRunContext() : 0;
 		for (unsigned int i = 0; i < frameCount; i++) {
 			const ibRunContext* stackContext = puState->GetRunContext(i);
-			wxASSERT(stackContext);
+			if (stackContext == nullptr) continue;
 			const ibByteCode* stackByteCode = stackContext->GetByteCode();
-			wxASSERT(stackByteCode);
+			if (stackByteCode == nullptr) continue;
 			ibDiagnostic::Frame frame;
 			frame.m_module = stackByteCode->m_strModuleName;
-			frame.m_line = stackByteCode->m_listCode[stackContext->m_lCurLine].m_numLine + 1;
+			const long line = stackContext->m_lCurLine;
+			frame.m_line = (line >= 0 && (size_t)line < stackByteCode->m_listCode.size())
+				? stackByteCode->m_listCode[line].m_numLine + 1
+				: 0;
 			diagnostic.m_stack.push_back(std::move(frame));
 		}
 	}

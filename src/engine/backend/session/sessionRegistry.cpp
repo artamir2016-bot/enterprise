@@ -992,7 +992,7 @@ void ibSessionRegistry::ProcessAdd(ibRegistryRequest& req)
 			std::shared_lock<std::shared_mutex> lk(m_serverMutex);
 			srv = m_currentServer.lock();
 		}
-		if (srv) s.SetServer(srv.get());
+		if (srv) s.SetServer(srv);   // pass the owning shared_ptr — no shared_from_this re-derive
 	}
 
 	// Exclusive (monopoly) gate — if another session holds the IB in

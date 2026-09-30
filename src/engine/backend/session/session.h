@@ -329,10 +329,14 @@ public:
 	// weak_ptr so a server's premature death doesn't dangle clients;
 	// children's Server().lock() returns nullptr after the server is gone.
 	std::shared_ptr<ibSession> Server() const { return m_server.lock(); }
-	void SetServer(ibSession* server) {
-		if (server != nullptr) m_server = server->shared_from_this();
-		else                   m_server.reset();
-	}
+	// Take the OWNING shared_ptr, not a raw pointer. Callers always hold one (the
+	// registry's m_currentServer.lock(), a job's parent holder), so assigning the
+	// weak_ptr straight from it is both correct and cheap. The old raw-pointer form
+	// re-derived the owner with server->shared_from_this(), which reads the object's
+	// internal enable_shared_from_this weak-ref — and crashed (reading -1) when that
+	// ref was stale/uninitialised. Using the shared_ptr we already have removes that
+	// dependency entirely. Passing an empty shared_ptr clears the link.
+	void SetServer(const std::shared_ptr<ibSession>& server) { m_server = server; }
 
 	// Exclusive (monopoly) mode — at most one session in the registry
 	// holds it at a time. While held, every other Connect parks in
