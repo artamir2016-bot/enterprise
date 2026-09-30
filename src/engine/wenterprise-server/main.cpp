@@ -8,6 +8,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <sstream>
+#include <fstream>
 #include <vector>
 
 // wx first so its ssize_t alias is picked up before cpp-httplib's own
@@ -136,6 +138,15 @@ struct CmdArgs {
 	// URL prefix: defaults to file base name or --db name.
 	std::string urlPrefix;
 
+	// Web publication (reverse proxy). When `publish` is set the process does NOT
+	// serve — it writes the front-end web-server config that proxies to this
+	// backend and exits. `publish` ∈ { iis, apache, both }. `pubDir` is where the
+	// files land (default: current dir). `sitePath` is the PUBLIC path on the IIS /
+	// Apache site the app answers at (default: "/<urlPrefix>").
+	std::string publish;
+	std::string pubDir;
+	std::string sitePath;
+
 	// --debug flag: enables the in-process debug server so designer can
 	// attach via TCP and step through scripts running in this wes
 	// (technical session + every per-tab WebClient session). Off by
@@ -166,6 +177,9 @@ CmdArgs ParseArgs(int argc, char** argv)
 		else if (StartsWith(arg, "--ibpwd="))     a.ibPassword  = arg.substr(8);
 		else if (StartsWith(arg, "--locale="))    a.locale      = arg.substr(9);
 		else if (StartsWith(arg, "--url="))       a.urlPrefix   = arg.substr(6);
+		else if (StartsWith(arg, "--publish="))   a.publish     = arg.substr(10);
+		else if (StartsWith(arg, "--pubdir="))    a.pubDir      = arg.substr(9);
+		else if (StartsWith(arg, "--site-path=")) a.sitePath    = arg.substr(12);
 		else if (StartsWith(arg, "--manifest="))  a.manifest    = arg.substr(11);
 		else if (arg == "--debug")                a.debugEnable = true;
 		else if (arg == "--help" || arg == "-h") {
@@ -189,7 +203,13 @@ CmdArgs ParseArgs(int argc, char** argv)
 				"    --ibuser=<n>      (default 'admin')\n"
 				"    --ibpwd=<s>\n"
 				"\n"
-				"    --locale=<code>   (default 'en')\n";
+				"    --locale=<code>   (default 'en')\n"
+				"\n"
+				"  Web publication (reverse proxy — generate front-end config, then exit):\n"
+				"    --publish=<iis|apache|both>  Emit IIS web.config and/or Apache conf that\n"
+				"                                 reverse-proxy to this backend (--host/--port/--url).\n"
+				"    --pubdir=<dir>    Where to write the config (default: current directory)\n"
+				"    --site-path=<p>   Public URL path on the IIS/Apache site (default '/<url>')\n";
 			std::exit(0);
 		}
 	}
@@ -210,6 +230,117 @@ CmdArgs ParseArgs(int argc, char** argv)
 		}
 	}
 	return a;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Web publication (reverse proxy). The wes backend already serves at /w/<url>/ and
+// is proxy-aware (SSE sets X-Accel-Buffering:no). Publishing = generating the
+// front-end web-server config that reverse-proxies a PUBLIC path to this backend.
+// No transport change, no DB touched — pure text from the args.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// IIS web.config — URL Rewrite + ARR reverse proxy. Drop into the folder mapped to
+// the site/application at `sitePath`.
+std::string BuildIISConfig(const std::string& urlPrefix, const std::string& backendBase)
+{
+	std::ostringstream o;
+	o <<
+		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+		"<!-- OES web publication (reverse proxy) for base '" << urlPrefix << "'.\n"
+		"     Prerequisites on the IIS host:\n"
+		"       1. Install 'URL Rewrite' and 'Application Request Routing (ARR)'.\n"
+		"       2. Enable the ARR proxy: IIS Manager > (server node) > Application Request\n"
+		"          Routing Cache > Server Proxy Settings > check 'Enable proxy'.\n"
+		"       3. For live updates (SSE /stream): in the same Server Proxy Settings set\n"
+		"          'Response buffer threshold (KB)' = 0 so events flush immediately.\n"
+		"     Then map a site/application to this folder and browse it. -->\n"
+		"<configuration>\n"
+		"  <system.webServer>\n"
+		"    <rewrite>\n"
+		"      <rules>\n"
+		"        <rule name=\"OES-" << urlPrefix << "\" stopProcessing=\"true\">\n"
+		"          <match url=\"(.*)\" />\n"
+		"          <action type=\"Rewrite\" url=\"" << backendBase << "{R:1}\" />\n"
+		"        </rule>\n"
+		"      </rules>\n"
+		"    </rewrite>\n"
+		"    <!-- Keep the proxied SSE response unbuffered at the handler level too. -->\n"
+		"    <httpProtocol>\n"
+		"      <customHeaders><clear /></customHeaders>\n"
+		"    </httpProtocol>\n"
+		"  </system.webServer>\n"
+		"</configuration>\n";
+	return o.str();
+}
+
+// Apache config snippet — mod_proxy reverse proxy. Include from a vhost / conf.d.
+std::string BuildApacheConfig(const std::string& urlPrefix, const std::string& backendBase,
+                              const std::string& sitePath)
+{
+	// backendBase already ends with '/', sitePath is the public path (leading '/').
+	const std::string loc = sitePath.empty() ? "/" : sitePath;
+	const std::string locSlash = (loc.back() == '/') ? loc : loc + "/";
+	std::ostringstream o;
+	o <<
+		"# OES web publication (reverse proxy) for base '" << urlPrefix << "'.\n"
+		"# Prerequisites: enable mod_proxy and mod_proxy_http, e.g.\n"
+		"#   a2enmod proxy proxy_http    (Debian/Ubuntu)   then restart Apache.\n"
+		"# Include this from a <VirtualHost> (or drop into conf.d/ and reload).\n"
+		"<IfModule mod_proxy.c>\n"
+		"    ProxyRequests Off\n"
+		"    ProxyPreserveHost On\n"
+		"    # flushpackets=on streams SSE (/stream) through immediately.\n"
+		"    <Location \"" << locSlash << "\">\n"
+		"        ProxyPass         \"" << backendBase << "\" flushpackets=on\n"
+		"        ProxyPassReverse  \"" << backendBase << "\"\n"
+		"    </Location>\n"
+		"    # Send the bare app path to the trailing-slash form.\n"
+		"    RedirectMatch ^" << (locSlash.substr(0, locSlash.size() - 1)) << "$ " << locSlash << "\n"
+		"</IfModule>\n";
+	return o.str();
+}
+
+// Write `content` to `path`; report to stdout. Returns false on I/O failure.
+bool WritePublishFile(const std::string& path, const std::string& content)
+{
+	std::ofstream f(path, std::ios::binary | std::ios::trunc);
+	if (!f) { std::cerr << "  ! could not write " << path << std::endl; return false; }
+	f << content;
+	std::cout << "  wrote " << path << std::endl;
+	return true;
+}
+
+// Generate the requested publication config(s) and return a process exit code.
+int RunPublish(const CmdArgs& a)
+{
+	const std::string mode = a.publish;   // iis | apache | both
+	const std::string dir  = a.pubDir.empty() ? std::string(".") : a.pubDir;
+	// Public path on the front-end site (leading slash). Default "/<url>".
+	std::string sitePath = a.sitePath.empty() ? ("/" + a.urlPrefix) : a.sitePath;
+	if (sitePath.empty() || sitePath[0] != '/') sitePath = "/" + sitePath;
+	// Where the front-end forwards to — the local wes endpoint. 127.0.0.1 because
+	// the proxy runs on the same host; the wes bind (--host) can stay 0.0.0.0/local.
+	const std::string backendBase =
+		"http://127.0.0.1:" + std::to_string(a.port) + "/w/" + a.urlPrefix + "/";
+
+	std::cout << "OES web publication (reverse proxy)\n"
+	          << "  base url : /w/" << a.urlPrefix << "  ->  backend " << backendBase << "\n"
+	          << "  site path: " << sitePath << "\n";
+
+	bool ok = true;
+	if (mode == "iis" || mode == "both")
+		ok &= WritePublishFile(dir + "/web.config", BuildIISConfig(a.urlPrefix, backendBase));
+	if (mode == "apache" || mode == "both")
+		ok &= WritePublishFile(dir + "/oes-" + a.urlPrefix + ".conf",
+		                       BuildApacheConfig(a.urlPrefix, backendBase, sitePath));
+	if (mode != "iis" && mode != "apache" && mode != "both") {
+		std::cerr << "  ! --publish must be one of: iis | apache | both\n";
+		return 2;
+	}
+	std::cout << "  NOTE: the backend must be running (e.g. as a service):\n"
+	          << "        wenterprise-server --file=<base> --url=" << a.urlPrefix
+	          << " --port=" << a.port << " --host=127.0.0.1\n";
+	return ok ? 0 : 1;
 }
 
 std::string Field(const httplib::Request& req, const std::string& key)
@@ -369,6 +500,12 @@ int main(int argc, char** argv)
 	BuildUtf8Argv(argc, argv);
 #endif
 	const CmdArgs args = ParseArgs(argc, argv);
+
+	// Web publication: generate the reverse-proxy front-end config and exit. Pure
+	// text from the args — no wx, no backend, no DB — so it works regardless of
+	// runtime state and needs no running base.
+	if (!args.publish.empty())
+		return RunPublish(args);
 
 	// wxInitializer + wxSocketBase::Initialize + ibCrashGuard::Install
 	// in one shot. wes is headless — no wxApp, faults need the persistent
