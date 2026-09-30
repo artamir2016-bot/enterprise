@@ -53,6 +53,43 @@ cooperative interrupt.
 - Same job+cancel plumbing where the freeze is a real same-thread block; reuse
   `ibBackgroundRun` + a modal-with-cancel long-operation window.
 
+## Status (2026-09-30)
+
+- **Inc 1 — shipped & live-verified** (commit `71ba99d4`): threshold promotion,
+  busy-lock overlay «Выполняется… [Отмена]», poll, and cancel confirmed in the
+  browser (cancel interrupted a 300M-iteration server loop, UI unblocked).
+- **List-form fix — shipped** (commit `311c266f`): ordinary `type:"list"` forms now
+  get a dynamic-list main source + a synthesized tablebox, so they open, adopt a
+  tab, and surface the standard command bar. Unblocked the async test stand.
+- **Web publication — shipped** (commit `6245e2f3`): `--publish=iis|apache|both`.
+
+### Inc 2 — progress indicator (ShowStatus / Состояние): CODE COMPLETE, HELD (uncommitted WIP in a git stash)
+Implements: `ibSession::SetProgress/GetProgress/ClearProgress` (mutex + atomic, no
+DB); the `ShowStatus(text[,percent])` / `Состояние` script proc → session progress;
+`/job/<id>` poll returns `{ pending, progress:{text,percent} }`; the client overlay
+renders a progress bar (`OES.updateBusy`). Builds green. Held because of the two
+findings below.
+
+### Two findings from Inc 2 debugging
+1. **`Object 'Picture' is exist` at web config-open — ROOT-CAUSED & FIXED (in the WIP).**
+   Adding `#include "backend/session/session.h"` to `systemManager.cpp` perturbed
+   static-init and caused a duplicate metatype registration at open. Fix: call the
+   session via a forward-declared free helper `ibReportCurrentSessionProgress`
+   (defined in session.cpp) instead of including the header. With that, bases open.
+   *Lesson: do not pull session.h into systemManager.cpp.*
+2. **Pre-existing intermittent web-server crash on login/open — NEW, TOP PRIORITY.**
+   `wenterprise-server` crashes intermittently on the login → open-meta path even
+   on **HEAD with no Inc 2** (measured ~2/5 runs; no minidump ⇒ a fast-fail, i.e.
+   heap/stack corruption or a race, not a normal AV). Inc 2's `ibSession` layout
+   change (three new members) appears to **aggravate** it (~6/6), which is why Inc 2
+   is held: it must not ship until this underlying crash is fixed. This is the
+   blocker for reliable web operation AND for live web publication.
+
+**Next steps:** (a) fix the pre-existing login/open crash (run under a debugger to
+catch the fast-fail; suspect the web session/worker-pool startup or an
+uninitialized/racy field); (b) re-verify Inc 2 (progress bar) on the now-stable
+stack and commit it (`git stash pop` restores the WIP).
+
 ## Open questions (per increment)
 - Grace-window value (150 ms start; tune).
 - Delivery of the final result: dedicated `GET /job/<id>` poll vs SSE frame tagged with
