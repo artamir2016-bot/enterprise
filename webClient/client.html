@@ -516,7 +516,7 @@ OES.srvCall = async function(proc, args, context){
       const pj = await pr.json();
       if(pj.canceled) throw new Error('Прервано пользователем');
       if(pj.error)    throw new Error(pj.error);
-      if(pj.pending)  continue;
+      if(pj.pending){ if(pj.progress) OES.updateBusy(pj.progress); continue; }
       return pj;                                 // { ret, context }
     }
   } finally { OES.hideBusy(); }
@@ -540,6 +540,15 @@ OES.showBusy = function(proc, jobId){
   msg.id = 'oesBusyMsg';
   msg.textContent = 'Выполняется…';
   msg.style.cssText = 'margin-bottom:14px;color:#333;';
+  // Progress bar (hidden until ShowStatus/Состояние reports a percent ≥ 0).
+  const barWrap = document.createElement('div');
+  barWrap.id = 'oesBusyBarWrap';
+  barWrap.style.cssText = 'display:none;height:8px;background:#e6e6e6;border-radius:4px;'+
+    'margin:0 0 14px;overflow:hidden;';
+  const bar = document.createElement('div');
+  bar.id = 'oesBusyBar';
+  bar.style.cssText = 'height:100%;width:0%;background:#3f5c77;transition:width .2s;';
+  barWrap.appendChild(bar); box.appendChild(msg); box.appendChild(barWrap);
   const btn = document.createElement('button');
   btn.textContent = 'Отмена';
   btn.style.cssText = 'padding:5px 18px;cursor:pointer;';
@@ -548,8 +557,24 @@ OES.showBusy = function(proc, jobId){
     try { await netFetch(API+'/job/'+encodeURIComponent(jobId)+'/cancel',
       {method:'POST', credentials:'same-origin'}); } catch(e){}
   };
-  box.appendChild(msg); box.appendChild(btn); ov.appendChild(box);
+  box.appendChild(btn); ov.appendChild(box);   // msg + barWrap already appended above
   document.body.appendChild(ov);
+};
+// Update the overlay from a { text, percent } progress payload (1C Состояние).
+OES.updateBusy = function(p){
+  if(!p) return;
+  const msg = document.getElementById('oesBusyMsg');
+  const wrap = document.getElementById('oesBusyBarWrap');
+  const bar = document.getElementById('oesBusyBar');
+  if(msg && p.text) msg.textContent = p.text;
+  if(wrap && bar){
+    if(typeof p.percent === 'number' && p.percent >= 0){
+      wrap.style.display = 'block';
+      bar.style.width = Math.max(0, Math.min(100, p.percent)) + '%';
+    } else {
+      wrap.style.display = 'none';
+    }
+  }
 };
 OES.hideBusy = function(){
   const ov = document.getElementById('oesBusyOverlay');

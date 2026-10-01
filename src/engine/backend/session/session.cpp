@@ -673,6 +673,45 @@ void ibSession::SetActivity(const wxString& activity)
 	reg.Submit(std::move(req), ibPriority::Low);
 }
 
+// Progress channel (1C Состояние) — a guarded string + an atomic percent, read by a
+// watcher on another thread. No registry / DB, unlike SetActivity above.
+void ibSession::SetProgress(const wxString& text, double percent)
+{
+	{
+		std::lock_guard<std::mutex> lk(m_progressMtx);
+		m_progressText = text;
+	}
+	m_progressPct.store(percent, std::memory_order_release);
+}
+
+void ibSession::GetProgress(wxString& text, double& percent) const
+{
+	{
+		std::lock_guard<std::mutex> lk(m_progressMtx);
+		text = m_progressText;
+	}
+	percent = m_progressPct.load(std::memory_order_acquire);
+}
+
+void ibSession::ClearProgress()
+{
+	{
+		std::lock_guard<std::mutex> lk(m_progressMtx);
+		m_progressText.clear();
+	}
+	m_progressPct.store(-1.0, std::memory_order_release);
+}
+
+// Free helper: publish progress on the CURRENT session. Exists so a caller that only
+// needs this one action (the system-function dispatch, ShowStatus / Состояние) can use
+// a plain forward declaration instead of including the heavy session.h — pulling that
+// header into systemManager.cpp perturbed static-init and broke config open.
+void ibReportCurrentSessionProgress(const wxString& text, double percent)
+{
+	if (ibSession* s = ibSession::Current())
+		s->SetProgress(text, percent);
+}
+
 void ibSession::SetExclusive(bool on)
 {
 	// Registry runs the queue handshake + wait and gives us back the

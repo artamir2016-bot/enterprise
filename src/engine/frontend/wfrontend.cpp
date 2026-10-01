@@ -1629,7 +1629,8 @@ std::string ServerCallInSession(ibWebSession* session, const std::string& body)
 	app->RunOnWorker([app, req, job]() -> std::string {
 		// Hygiene: clear a possibly-stale interrupt flag from a cancel that landed
 		// after a previous call had already finished, so it can't abort this one.
-		if (job->session != nullptr) job->session->ClearCancel();
+		// Also reset the progress channel so the overlay starts clean.
+		if (job->session != nullptr) { job->session->ClearCancel(); job->session->ClearProgress(); }
 		std::string resp;
 		try { resp = ComputeServerCall(app, req); }
 		catch (const ibBackendInterruptException&) { resp = R"({"canceled":true})"; }
@@ -1679,8 +1680,18 @@ std::string ServerCallPoll(const std::string& jobId)
 		return R"({"error":"unknown job"})";
 	{
 		std::lock_guard<std::mutex> lk(job->m);
-		if (!job->done)
-			return R"({"pending":true})";
+		if (!job->done) {
+			// Still running — surface the proc's latest progress (1C Состояние) so the
+			// busy overlay can render text + a bar. Read straight off the session, no worker.
+			nlohmann::json p = { { "pending", true } };
+			if (job->session != nullptr) {
+				wxString ptext; double ppct = -1.0;
+				job->session->GetProgress(ptext, ppct);
+				if (!ptext.IsEmpty() || ppct >= 0.0)
+					p["progress"] = { { "text", std::string(ptext.utf8_str()) }, { "percent", ppct } };
+			}
+			return p.dump();
+		}
 	}
 	std::string result;
 	{

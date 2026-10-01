@@ -166,8 +166,16 @@ enum
 	// ТаблицаЗначений. MUST stay last, in lock-step with the AppendProc/AppendFunc
 	// registration order below (the enum value IS the method number).
 	enStartPerfMeasure,
-	enStopPerfMeasure
+	enStopPerfMeasure,
+	// Progress indicator (1C Состояние / ShowStatus) — a proc; text + optional percent.
+	// Kept last, in lock-step with the AppendProc registration order below.
+	enShowStatus
 };
+
+// Publish progress on the current session — DEFINED in session.cpp. Forward-declared
+// here (not via session.h) on purpose: including that header in this TU perturbs
+// static-init and breaks config open.
+void ibReportCurrentSessionProgress(const wxString& text, double percent);
 
 void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibValue* /*ctx*/)
 {
@@ -327,6 +335,8 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	// enStartPerfMeasure / enStopPerfMeasure in the enum above.
 	helper.AppendProc(wxT("StartPerformanceMeasurement"), wxT("StartPerformanceMeasurement()"));
 	helper.AppendFunc(wxT("StopPerformanceMeasurement"), wxT("StopPerformanceMeasurement()"));
+	//--- Progress indicator (1C Состояние). ShowStatus(text[, percent]) — variadic (-1).
+	helper.AppendProc(wxT("ShowStatus"), -1, wxT("ShowStatus(text : string, percent : number = -1)"));
 
 	// OES-RU (fork): Russian aliases for the global functions (1C names). Registered AFTER every
 	// AppendFunc so AliasMethod can resolve each target's position; each alias FindMethod's to the
@@ -335,6 +345,7 @@ void ibValueSystemFunction_BindNames(ibValue::ibMemberTable& helper, const ibVal
 	// UTF-8 byte escapes (build sets no /utf-8) via FromUTF8.
 	helper.AliasMethod(wxString::FromUTF8("\xD1\x81\xD0\xBE\xD0\xBE\xD0\xB1\xD1\x89\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Message"));  // сообщить
 	helper.AliasMethod(wxString::FromUTF8("\xD0\x9E\xD0\xBF\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x81\xD1\x82\xD0\xB8\xD1\x82\xD1\x8C"), wxT("Message"));  // Оповестить (1C Notify -> user message)
+	helper.AliasMethod(wxString::FromUTF8("\xD0\xA1\xD0\xBE\xD1\x81\xD1\x82\xD0\xBE\xD1\x8F\xD0\xBD\xD0\xB8\xD0\xB5"), wxT("ShowStatus"));  // Состояние (progress indicator)
 	// ОткрытьФорму — INTERIM alias to ShowCommonForm: unblocks imported modules and handles the common
 	// case ОткрытьФорму("ОбщаяФорма.X"); a general script form-open (any metatype form by path) is a
 	// later feature. ShowCommonForm resolves by name, so a non-common path simply finds nothing.
@@ -711,6 +722,12 @@ bool ibValueSystemFunction::CallAsProc(const long lMethodNum, ibValue** paParams
 		case enRollBackTransaction: RollBackTransaction(); return true;
 			//--- Profiler: begin collecting the statement trace on this thread.
 		case enStartPerfMeasure: execTracer->Start(); return true;
+			//--- Progress (1C Состояние): publish text + optional percent on the session.
+		case enShowStatus:
+			ibReportCurrentSessionProgress(
+				lSizeArray > 0 ? paParams[0]->GetString() : wxString(),
+				lSizeArray > 1 ? paParams[1]->GetDouble() : -1.0);
+			return true;
 		}
 	}
 	else

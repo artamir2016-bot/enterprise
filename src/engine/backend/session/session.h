@@ -432,6 +432,15 @@ public:
 	// before waiting for the workers, and the poll bails within one tick.
 	const std::atomic<bool>* CancelFlag() const { return &m_cancelRequested; }
 
+	// Lightweight PROGRESS channel for a running task — the 1C `Состояние` (ShowStatus).
+	// The script sets it; a watcher on another thread (e.g. the web /job poll) reads it
+	// WITHOUT going through the session worker. Unlike SetActivity this touches no DB and
+	// submits no task — just a guarded string + an atomic percent. percent < 0 means
+	// indeterminate. Cleared alongside the cancel flag at the start of every Execute.
+	void SetProgress(const wxString& text, double percent);
+	void GetProgress(wxString& text, double& percent) const;
+	void ClearProgress();
+
 	// Force-exit flag — "voluntary kick" of this session. The interpreter
 	// breaks out of its loop at the next iteration and the window is told
 	// hears OnClose(true) — no questions asked. Atomic +
@@ -980,6 +989,13 @@ private:
 	// atomic so set/clear from any thread is safe against the script
 	// thread's check loop in ibProcUnit::Execute.
 	std::atomic<bool>         m_cancelRequested { false };
+
+	// Progress channel — see SetProgress / GetProgress. The text is guarded by its own
+	// small mutex (kept off m_mtx to avoid coupling with the activity/identity lock); the
+	// percent is a plain atomic so a reader can sample it lock-free.
+	mutable std::mutex        m_progressMtx;
+	wxString                  m_progressText;
+	std::atomic<double>       m_progressPct { -1.0 };
 
 	// Force-exit request flag — see RequestForceExit / IsForceExit.
 	// One-shot: set once, never cleared. The script thread observes it
