@@ -1434,6 +1434,24 @@ async function openAllFunctionsDialog(){
   // overflow:auto here would create a nested scroll context and
   // sometimes clipped content; just hint width.
   body.style.cssText = 'min-width:420px';
+
+  // Live search — imported configs have hundreds of catalogs/documents, so a
+  // filter is essential. Keep a flat index of {det, items:[{row, text}]} built
+  // as the tree is created below; the input filters by case-insensitive
+  // substring over each item's label, hides non-matching rows, and collapses
+  // groups that end up empty. A trailing "nothing found" line shows on a miss.
+  const search = document.createElement('input');
+  search.type = 'text';
+  search.placeholder = (L.search || 'Search') + '…';
+  search.style.cssText = 'width:100%;box-sizing:border-box;margin:0 0 8px 0;'
+    + 'padding:6px 8px;border:1px solid #c7ccd6;border-radius:4px;font:inherit;'
+    + 'position:sticky;top:0;background:#fff;z-index:1';
+  body.appendChild(search);
+  const empty = document.createElement('div');
+  empty.textContent = L.nothingFound || 'Nothing found';
+  empty.style.cssText = 'display:none;padding:10px 4px;color:#888;font-style:italic';
+  const fnIndex = [];   // [{det, items:[{row, text}]}]
+
   for (const g of (data.groups || [])) {
     if (!g.items || g.items.length === 0) continue;
     const det = document.createElement('details');
@@ -1461,6 +1479,8 @@ async function openAllFunctionsDialog(){
     cap.textContent = g.name || '';
     sum.appendChild(cap);
     det.appendChild(sum);
+    const grpEntry = { det, items: [] };
+    fnIndex.push(grpEntry);
     for (const it of g.items) {
       const row = document.createElement('div');
       row.style.cssText = 'padding:3px 8px 3px 28px;cursor:pointer;'
@@ -1474,8 +1494,10 @@ async function openAllFunctionsDialog(){
         row.appendChild(ic);
       }
       const lbl = document.createElement('span');
-      lbl.textContent = it.synonym || it.name || '#'+it.id;
+      const itemText = it.synonym || it.name || '#'+it.id;
+      lbl.textContent = itemText;
       row.appendChild(lbl);
+      grpEntry.items.push({ row, text: itemText.toLowerCase() });
       row.onclick = async () => {
         try {
           const r = await netFetch(API+'/open-meta/'+it.id, {
@@ -1494,6 +1516,32 @@ async function openAllFunctionsDialog(){
     }
     body.appendChild(det);
   }
+  body.appendChild(empty);
+
+  // Live filter: case-insensitive substring over item labels. Empty query
+  // restores the original tree (groups expanded). On a query, groups with at
+  // least one match stay open and show only matching rows; others hide.
+  let savedOpen = null;   // remember expand state to restore when query clears
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    if (savedOpen === null) savedOpen = fnIndex.map(g => g.det.open);
+    let anyVisible = false;
+    fnIndex.forEach((g, gi) => {
+      let groupHit = false;
+      for (const it of g.items) {
+        const hit = q === '' || it.text.indexOf(q) !== -1;
+        it.row.style.display = hit ? '' : 'none';
+        if (hit) groupHit = true;
+      }
+      g.det.style.display = groupHit ? '' : 'none';
+      if (q === '') g.det.open = savedOpen[gi];
+      else if (groupHit) g.det.open = true;
+      if (groupHit) anyVisible = true;
+    });
+    if (q === '') savedOpen = null;
+    empty.style.display = anyVisible ? 'none' : '';
+  });
+
   // Suppress the native disclosure triangle inside <summary> (webkit/blink
   // needs the pseudo-element rule). Inject once into the document head.
   if (!document.getElementById('all-fn-style')){
@@ -1507,6 +1555,8 @@ async function openAllFunctionsDialog(){
     body:  body,
     buttons: [{label:L.close, onClick:(d)=>d.close()}]
   });
+  // Focus the filter so the user can type immediately.
+  setTimeout(() => { try { search.focus(); } catch(e){} }, 0);
 }
 
 async function refreshTabs(){

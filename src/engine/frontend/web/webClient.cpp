@@ -240,6 +240,8 @@ std::string TranslatedDictionary()
 		{ "cancel",          _("Cancel") },
 		{ "close",           _("Close") },
 		{ "allFunctions",    _("All functions") },
+		{ "search",          _("Search") },
+		{ "nothingFound",    _("Nothing found") },
 		{ "loading",         _("Loading...") },
 		{ "debugMode",       _("Debug mode") },
 		{ "debuggerPaused",  _("Debugger: paused") },
