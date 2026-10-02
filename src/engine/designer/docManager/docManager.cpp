@@ -15,6 +15,7 @@
 
 #include "templates/docViewModuleEditor.h"
 #include "templates/docViewFormEditor.h"
+#include "templates/docViewManagedFormEditor.h"
 #include "templates/docViewInterface.h"
 #include "templates/docViewCommonAttribute.h"
 #include "templates/docViewRole.h"
@@ -58,6 +59,8 @@ ibDocManagerDesigner::ibDocManagerDesigner()
 	AddDocTemplate(g_metaModuleCLSID, CLASSINFO(ibModuleEditDocument), CLASSINFO(ibModuleEditView));
 	AddDocTemplate(g_metaManagerCLSID, CLASSINFO(ibModuleEditDocument), CLASSINFO(ibModuleEditView));
 	AddDocTemplate(g_metaFormCLSID, CLASSINFO(ibFormEditDocument), CLASSINFO(ibFormEditView));
+	// Managed form (declarative element tree) — its own element-tree editor.
+	AddDocTemplate(g_metaManagedFormCLSID, CLASSINFO(ibManagedFormEditDocument), CLASSINFO(ibManagedFormEditView));
 	AddDocTemplate(g_metaTemplateCLSID, _("Spreadsheet document"), ibFileMask(ibFileKind::Table), ibFileExtension(ibFileKind::Table), CLASSINFO(ibSpreadsheetEditDocument), CLASSINFO(ibSpreadsheetEditView));
 }
 
