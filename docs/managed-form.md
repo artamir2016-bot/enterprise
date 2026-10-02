@@ -155,9 +155,19 @@ AOT bytecode cache relates to source).
 4. **Import.** Map 1C managed-form XML (`onec_to_spec.py` already reads the ChildItems tree) onto
    the element model, honouring ВидПоля — a managed form imports to a ManagedForm metaobject
    instead of being flattened into a synthesised control tree.
-5. **Designer editor.** The element-tree editor (add/move Group/Field, property palette). Biggest
-   UI cost; deferred — until it lands, managed forms are authored by import and edited as elements
-   via the property system.
-6. **Web + thin parity check.** Open an imported managed form on the web client end-to-end.
+5. **Designer editor — LANDED (2026-10-03).** `ibManagedFormEditor` registered for
+   `g_metaManagedFormCLSID` (designer/win/editor/managedFormEditor/, docView in
+   docManager/templates/docViewManagedFormEditor). An element-tree `wxTreeCtrl` over a working
+   copy; toolbar + context menu add **all** node kinds (Group / Field / Table / Column / Button /
+   Pages / Page / Decoration) with containment rules (Column only in a Table, Page only in a Pages
+   group); the selected node edits in the shared objectInspector via `ibManagedElementProperty`,
+   with **DataPath a dropdown** of the owner's attributes + Section.Column (not free text);
+   **undo/redo** (snapshot stack, toolbar + Ctrl+Z/Y); **Test form** compiles + ShowForm()s a live
+   preview. Every edit flushes to the metaobject (`MarkDirty` → `SetElementTree`) so a config
+   save/Update persists it. Verified live (no computer-use) via `tools/oes_testrunner/gui_probe.py`.
+6. **Web + thin parity check — LANDED (2026-10-03).** Round-trip verified: an edit in the designer
+   persisted via Update database configuration survives a reopen; the managed ItemForm renders on
+   `wenterprise-server` as `textctrl "Price"` / `textctrl "Note"` / `checkbox "Active"` inside the
+   MainGroup box — compiled at runtime from the element tree (`GET /form/<id>`).
 
 Increments 1–3 are backend-only and testable without a GUI, which is why they come first.

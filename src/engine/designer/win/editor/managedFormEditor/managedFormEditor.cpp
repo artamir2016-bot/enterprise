@@ -366,7 +366,7 @@ ibManagedElement* ibManagedFormEditor::AddElement(ibManagedNodeKind kind)
 	}
 
 	RebuildTree();
-	m_document->Modify(true);
+	MarkDirty();
 	return created;
 }
 
@@ -386,7 +386,7 @@ void ibManagedFormEditor::MoveSelected(int dir)
 	PushUndoSnapshot();
 	std::swap(parent->children[idx], parent->children[newIdx]);
 	RebuildTree();
-	m_document->Modify(true);
+	MarkDirty();
 }
 
 void ibManagedFormEditor::OnAddElement(wxCommandEvent& event)
@@ -397,7 +397,7 @@ void ibManagedFormEditor::OnAddElement(wxCommandEvent& event)
 		// "Add pages" creates a Group that presents as a notebook.
 		created->representation = ibGroupRepresentation::Pages;
 		RebuildTree();
-		m_document->Modify(true);
+		MarkDirty();
 	}
 }
 
@@ -416,12 +416,20 @@ void ibManagedFormEditor::OnDelete(wxCommandEvent&)
 	ClearSelectionBinding();
 	parent->children.erase(parent->children.begin() + idx);
 	RebuildTree();
-	m_document->Modify(true);
+	MarkDirty();
 }
 
 void ibManagedFormEditor::OnMoveUp(wxCommandEvent&)   { MoveSelected(-1); }
 void ibManagedFormEditor::OnMoveDown(wxCommandEvent&) { MoveSelected(+1); }
 void ibManagedFormEditor::OnTestForm(wxCommandEvent&) { PreviewForm(); }
+
+void ibManagedFormEditor::MarkDirty()
+{
+	if (m_managed != nullptr)
+		m_managed->SetElementTree(m_root, m_attrs);   // keep the metaobject in sync with the edit
+	if (m_document != nullptr)
+		m_document->Modify(true);
+}
 
 void ibManagedFormEditor::ClearSelectionBinding()
 {
@@ -452,7 +460,7 @@ void ibManagedFormEditor::Undo()
 	m_undo.pop_back();
 	RebuildTree();
 	if (m_document != nullptr)
-		m_document->Modify(true);
+		MarkDirty();
 }
 
 void ibManagedFormEditor::Redo()
@@ -467,7 +475,7 @@ void ibManagedFormEditor::Redo()
 	m_redo.pop_back();
 	RebuildTree();
 	if (m_document != nullptr)
-		m_document->Modify(true);
+		MarkDirty();
 }
 
 void ibManagedFormEditor::OnUndo(wxCommandEvent&) { Undo(); }
@@ -546,7 +554,7 @@ void ibManagedFormEditor::OnElementChanged(ibManagedElement* element)
 		while (ch.IsOk()) { stack.push_back(ch); ch = m_tree->GetNextChild(item, c2); }
 	}
 	if (m_document != nullptr)
-		m_document->Modify(true);
+		MarkDirty();
 }
 
 std::vector<wxString> ibManagedFormEditor::AvailableBindings() const

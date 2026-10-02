@@ -103,6 +103,11 @@ private:
 	// containment rules (Column only inside a Table, Page only inside a Pages group,
 	// everything else inside a Group/Page/root). Returns the created node (stable until the
 	// next structural edit), or nullptr + a status message if the kind cannot be placed.
+	// Flush the working copy onto the metaobject AND mark the document modified. Called after
+	// every edit so the in-memory metaobject always reflects the tree — a config save / update
+	// then persists it without depending on the editor-doc save firing first.
+	void MarkDirty();
+
 	ibManagedElement* AddElement(ibManagedNodeKind kind);
 	// Resolve where a new node of `kind` goes: the container vector to push into. Returns
 	// nullptr with a reason if the current selection forbids it.
