@@ -356,7 +356,9 @@ public:
 	// global modules from root, compile a clean baseline, then re-add them one at a time and keep only
 	// those that compile. Isolates a single broken global (imported module with an unresolvable name)
 	// so it fails only at call, not at every form open. Called from CreateMainModule's catch.
-	void RecompileIsolatingBrokenGlobals();
+	// cfgMd5 (when non-empty) is the configuration digest to record the ejected set under, so later
+	// sessions skip this per-broken-module recompile loop and strip the known-broken globals upfront.
+	void RecompileIsolatingBrokenGlobals(const wxString& cfgMd5 = wxEmptyString);
 
 	ibValueModuleUnit* FindCommonModule(const ibValueMetaObjectCommonModule* commonModule) const override;
 

@@ -7,11 +7,43 @@
 #include "globalContextManager.h"
 
 #include <algorithm>   // std::remove — global-isolation ejection
+#include <mutex>
+#include <map>
+#include <set>
 
 #include "backend/appData.h"
 #include "backend/session/session.h"
 #include "backend/session/sessionRegistry.h"
 #include "backend/metadataConfiguration.h"
+
+namespace {
+// Process-wide cache of global common modules that genuinely cannot compile, keyed by the
+// configuration digest. RecompileIsolatingBrokenGlobals does ONE full root recompile per broken
+// module, and CreateMainModule runs it on every session login — on an imported config with a
+// handful of broken globals that is seconds, every login. The broken set is deterministic for a
+// given configuration, so the FIRST session records it here and every later session strips those
+// modules upfront and compiles once. Keyed by config MD5 so a reload (new digest) starts fresh.
+// Guarded because sessions compile concurrently on their own worker threads.
+std::mutex                             g_brokenGlobalsMtx;
+std::map<wxString, std::set<wxString>> g_brokenGlobalsByConfig;   // cfgMd5 -> module full names
+
+bool BrokenGlobalsLookup(const wxString& cfgMd5, std::set<wxString>& out)
+{
+	if (cfgMd5.IsEmpty()) return false;
+	std::lock_guard<std::mutex> lk(g_brokenGlobalsMtx);
+	auto it = g_brokenGlobalsByConfig.find(cfgMd5);
+	if (it == g_brokenGlobalsByConfig.end()) return false;
+	out = it->second;
+	return true;
+}
+
+void BrokenGlobalsStore(const wxString& cfgMd5, std::set<wxString> names)
+{
+	if (cfgMd5.IsEmpty()) return;
+	std::lock_guard<std::mutex> lk(g_brokenGlobalsMtx);
+	g_brokenGlobalsByConfig[cfgMd5] = std::move(names);
+}
+} // namespace
 
 #define objectManager wxT("Manager")
 #define objectMetadataManager wxT("Metadata")
@@ -205,8 +237,12 @@ bool ibValueModuleRuntimeManager::RuntimeUnregisterCommonModule(ibValueMetaObjec
 	return true;
 }
 
-void ibValueModuleRuntimeManager::RecompileIsolatingBrokenGlobals()
+void ibValueModuleRuntimeManager::RecompileIsolatingBrokenGlobals(const wxString& cfgMd5)
 {
+	// Names of the globals ejected here — recorded under the config digest so later sessions skip
+	// the recompile loop below. An EMPTY set is still recorded (by the caller) for a clean config.
+	std::set<wxString> ejected;
+
 	ibCompileModule* cm = GetCompileModule();
 	if (cm == nullptr)
 		return;
@@ -276,17 +312,24 @@ void ibValueModuleRuntimeManager::RecompileIsolatingBrokenGlobals()
 			// Unattributable — cannot isolate further without risking a good module. Remove the
 			// remaining candidates wholesale so root still compiles, and report.
 			wxLogError(_("Runtime global isolation: unattributable compile error: %s"), why);
-			for (ibValueRuntimeModuleUnit* g : present)
+			for (ibValueRuntimeModuleUnit* g : present) {
 				cm->RemoveModule(g->GetCompileModule());
+				ejected.insert(g->GetModuleFullName());
+			}
 			present.clear();
 			break;
 		}
 		cm->RemoveModule(offender->GetCompileModule());
 		present.erase(std::remove(present.begin(), present.end(), offender), present.end());
+		ejected.insert(offender->GetModuleFullName());
 		wxLogError(_("Global common module '%s' skipped: %s"), offender->GetModuleName(), why);
 	}
 	// Recompile the final accepted set so root reflects exactly the kept globals.
 	try { Compile(); } catch (...) {}
+
+	// Record the ejected set so every later session for this configuration strips these globals
+	// upfront and compiles ONCE, instead of re-running this per-broken-module recompile loop.
+	BrokenGlobalsStore(cfgMd5, std::move(ejected));
 }
 
 //**********************************************************************
@@ -489,8 +532,30 @@ bool ibValueModuleManagerRuntimeConfiguration::CreateMainModule()
 		// failing to open. Catch EVERYTHING — an imperfectly translated import can throw a
 		// non-ibBackendException, which previously escaped to std::terminate (process exit 255) and made
 		// a single bad common module take the entire enterprise down at startup.
+		//
+		// FAST PATH: the isolation recovery below does one full root recompile per broken global and
+		// runs on EVERY login. The broken set is fixed for a configuration, so once a prior session has
+		// recorded it (keyed by config digest) we strip those globals upfront here and the single
+		// Compile() below succeeds — no isolation loop. The clean path (no broken globals) records an
+		// empty set so it, too, skips straight through on every later session.
+		auto* cfgMeta = m_metaManager ? m_metaManager->GetMetaData() : nullptr;
+		const wxString cfgMd5 = cfgMeta ? cfgMeta->GetConfigMD5() : wxString();
+		std::set<wxString> knownBroken;
+		const bool haveCache = BrokenGlobalsLookup(cfgMd5, knownBroken);
+		if (haveCache && !knownBroken.empty()) {
+			if (ibCompileModule* cm = GetCompileModule()) {
+				for (auto& mv : m_listCommonModuleManager) {
+					if (mv && mv->IsGlobalModule() && mv->GetCompileModule() != nullptr
+						&& knownBroken.count(mv->GetModuleFullName()))
+						cm->RemoveModule(mv->GetCompileModule());
+				}
+			}
+		}
+
+		bool compiledClean = false;
 		try {
 			Compile();
+			compiledClean = true;
 		}
 		catch (const ibBackendException& err) {
 			wxLogError(wxT("%s"), err.GetErrorDescription());
@@ -502,16 +567,22 @@ bool ibValueModuleManagerRuntimeConfiguration::CreateMainModule()
 			// ONE AT A TIME and keep only those that compile. The broken module is left out — its names
 			// resolve nowhere and fail at call, exactly as intended, while the rest of the configuration
 			// (and its forms) runs. Only pays this cost on the failure path; the clean path is one Compile.
-			RecompileIsolatingBrokenGlobals();
+			RecompileIsolatingBrokenGlobals(cfgMd5);
 		}
 		catch (const std::exception& err) {
 			wxLogError(_("Global module init failed: %s"), wxString::FromUTF8(err.what()));
-			RecompileIsolatingBrokenGlobals();
+			RecompileIsolatingBrokenGlobals(cfgMd5);
 		}
 		catch (...) {
 			wxLogError(_("Global module init failed (unknown error)"));
-			RecompileIsolatingBrokenGlobals();
+			RecompileIsolatingBrokenGlobals(cfgMd5);
 		}
+
+		// Clean compile with no cache record yet (a config with no broken globals, or the first
+		// session's fast-path strip succeeding): record an EMPTY set so every later session skips the
+		// lookup-miss path and compiles once. If isolation ran above it already stored the real set.
+		if (compiledClean && !haveCache)
+			BrokenGlobalsStore(cfgMd5, {});
 	}
 
 	// Setup common modules. A single module that fails to compile (e.g. an imperfectly
