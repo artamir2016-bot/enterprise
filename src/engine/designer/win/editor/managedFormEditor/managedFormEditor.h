@@ -46,6 +46,11 @@ public:
 	// node + mark modified. (No preview recompile here — preview is on demand.)
 	void OnElementChanged(ibManagedElement* element);
 
+	// The binding targets the owner object offers: attribute names + "Section.Column"
+	// paths (mirrors the owner walk in CompileElementsToFormData). Drives the DataPath
+	// picker in the property adapter. Empty when there is no resolvable owner.
+	std::vector<wxString> AvailableBindings() const;
+
 private:
 
 	// Tree item payload: a raw pointer into the working copy's element tree.
@@ -66,11 +71,13 @@ private:
 	// Locate a node's parent vector + index by pointer identity. Returns false for the root.
 	bool FindParent(ibManagedElement& root, const ibManagedElement* target,
 		ibManagedElement*& outParent, size_t& outIndex) const;
+	// The nearest ancestor-or-self of `node` whose kind is `kind` (nullptr if none).
+	ibManagedElement* FindAncestorOfKind(ibManagedElement* node, ibManagedNodeKind kind) const;
 	wxString UniqueName(const wxString& base) const;
+	static wxString NamePrefixFor(ibManagedNodeKind kind);
 
 	// Toolbar / context handlers.
-	void OnAddGroup(wxCommandEvent& event);
-	void OnAddField(wxCommandEvent& event);
+	void OnAddElement(wxCommandEvent& event);   // all Add-* buttons/menu items map here
 	void OnDelete(wxCommandEvent& event);
 	void OnMoveUp(wxCommandEvent& event);
 	void OnMoveDown(wxCommandEvent& event);
@@ -79,7 +86,14 @@ private:
 	void OnTreeSelChanged(wxTreeEvent& event);
 	void OnTreeContextMenu(wxTreeEvent& event);
 
-	void AddElement(ibManagedNodeKind kind);
+	// Add a node of `kind` at the right place for the current selection, honouring the
+	// containment rules (Column only inside a Table, Page only inside a Pages group,
+	// everything else inside a Group/Page/root). Returns the created node (stable until the
+	// next structural edit), or nullptr + a status message if the kind cannot be placed.
+	ibManagedElement* AddElement(ibManagedNodeKind kind);
+	// Resolve where a new node of `kind` goes: the container vector to push into. Returns
+	// nullptr with a reason if the current selection forbids it.
+	ibManagedElement* ResolveInsertParent(ibManagedNodeKind kind, wxString& reason) const;
 	void MoveSelected(int dir);   // -1 up, +1 down
 	void PreviewForm();
 

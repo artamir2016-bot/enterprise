@@ -4,15 +4,30 @@
 #include <wx/sizer.h>
 #include <wx/button.h>
 #include <wx/menu.h>
+#include <wx/statline.h>
+#include <wx/log.h>
+
+#include "backend/metaCollection/genericData.h"                   // ibValueMetaObjectGenericData
+#include "backend/metaCollection/attribute/metaAttributeObject.h" // ibValueMetaObjectAttribute
+#include "backend/metaCollection/partial/commonObject.h"          // hierarchy ref Code/Description
+#include "backend/metaCollection/metaObject.h"                    // g_metaTableRefCLSID
 
 #include "frontend/docView/docView.h"
 #include "frontend/mainFrame/objinspect/objinspect.h"
 #include "frontend/visualView/ctrl/form.h"
 #include "backend/metaCollection/metaFormObject.h"
 
+// The Add-* command ids are CONTIGUOUS so one handler can map id -> node kind by offset.
 enum {
 	ID_MFE_ADD_GROUP = wxID_HIGHEST + 5100,
 	ID_MFE_ADD_FIELD,
+	ID_MFE_ADD_TABLE,
+	ID_MFE_ADD_COLUMN,
+	ID_MFE_ADD_BUTTON,
+	ID_MFE_ADD_PAGES,     // a Group whose representation is Pages (a notebook)
+	ID_MFE_ADD_PAGE,      // a Page inside a Pages group
+	ID_MFE_ADD_DECOR,
+	ID_MFE_ADD__LAST = ID_MFE_ADD_DECOR,
 	ID_MFE_DELETE,
 	ID_MFE_UP,
 	ID_MFE_DOWN,
@@ -21,20 +36,36 @@ enum {
 };
 
 wxBEGIN_EVENT_TABLE(ibManagedFormEditor, wxPanel)
-EVT_BUTTON(ID_MFE_ADD_GROUP, ibManagedFormEditor::OnAddGroup)
-EVT_BUTTON(ID_MFE_ADD_FIELD, ibManagedFormEditor::OnAddField)
 EVT_BUTTON(ID_MFE_DELETE,    ibManagedFormEditor::OnDelete)
 EVT_BUTTON(ID_MFE_UP,        ibManagedFormEditor::OnMoveUp)
 EVT_BUTTON(ID_MFE_DOWN,      ibManagedFormEditor::OnMoveDown)
 EVT_BUTTON(ID_MFE_TEST,      ibManagedFormEditor::OnTestForm)
-EVT_MENU(ID_MFE_ADD_GROUP,   ibManagedFormEditor::OnAddGroup)
-EVT_MENU(ID_MFE_ADD_FIELD,   ibManagedFormEditor::OnAddField)
 EVT_MENU(ID_MFE_DELETE,      ibManagedFormEditor::OnDelete)
 EVT_MENU(ID_MFE_UP,          ibManagedFormEditor::OnMoveUp)
 EVT_MENU(ID_MFE_DOWN,        ibManagedFormEditor::OnMoveDown)
+// Every Add-* id (buttons AND menu items) funnels into OnAddElement.
+EVT_COMMAND_RANGE(ID_MFE_ADD_GROUP, ID_MFE_ADD__LAST, wxEVT_BUTTON, ibManagedFormEditor::OnAddElement)
+EVT_COMMAND_RANGE(ID_MFE_ADD_GROUP, ID_MFE_ADD__LAST, wxEVT_MENU,   ibManagedFormEditor::OnAddElement)
 EVT_TREE_SEL_CHANGED(ID_MFE_TREE, ibManagedFormEditor::OnTreeSelChanged)
 EVT_TREE_ITEM_MENU(ID_MFE_TREE,   ibManagedFormEditor::OnTreeContextMenu)
 wxEND_EVENT_TABLE()
+
+// Map an Add-* command id to the node kind it creates. ID_MFE_ADD_PAGES maps to Group
+// (the caller stamps representation = Pages).
+static ibManagedNodeKind KindForAddId(int id)
+{
+	switch (id) {
+	case ID_MFE_ADD_GROUP:  return ibManagedNodeKind::Group;
+	case ID_MFE_ADD_FIELD:  return ibManagedNodeKind::Field;
+	case ID_MFE_ADD_TABLE:  return ibManagedNodeKind::Table;
+	case ID_MFE_ADD_COLUMN: return ibManagedNodeKind::Column;
+	case ID_MFE_ADD_BUTTON: return ibManagedNodeKind::Button;
+	case ID_MFE_ADD_PAGES:  return ibManagedNodeKind::Group;   // representation stamped by caller
+	case ID_MFE_ADD_PAGE:   return ibManagedNodeKind::Page;
+	case ID_MFE_ADD_DECOR:  return ibManagedNodeKind::Decoration;
+	default:                return ibManagedNodeKind::Group;
+	}
+}
 
 ibManagedFormEditor::ibManagedFormEditor(ibMetaDocument* document, wxWindow* parent, wxWindowID id)
 	: wxPanel(parent, id), m_document(document)
@@ -63,14 +94,19 @@ ibManagedFormEditor::~ibManagedFormEditor()
 
 void ibManagedFormEditor::BuildToolbar(wxSizer* sizer)
 {
+	// Common kinds on the toolbar; the full set (Column / Pages / Page / Decoration) lives
+	// in the tree context menu so the bar stays readable.
 	wxBoxSizer* bar = new wxBoxSizer(wxHORIZONTAL);
-	bar->Add(new wxButton(this, ID_MFE_ADD_GROUP, _("Add group")), 0, wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_ADD_FIELD, _("Add field")), 0, wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_DELETE,    _("Delete")),    0, wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_UP,        _("Up")),        0, wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_DOWN,      _("Down")),      0, wxALL, 2);
+	bar->Add(new wxButton(this, ID_MFE_ADD_GROUP,  _("Add group")),  0, wxALL, 2);
+	bar->Add(new wxButton(this, ID_MFE_ADD_FIELD,  _("Add field")),  0, wxALL, 2);
+	bar->Add(new wxButton(this, ID_MFE_ADD_TABLE,  _("Add table")),  0, wxALL, 2);
+	bar->Add(new wxButton(this, ID_MFE_ADD_BUTTON, _("Add button")), 0, wxALL, 2);
+	bar->Add(new wxStaticLine(this, wxID_ANY, wxDefaultPosition, wxSize(2, -1), wxLI_VERTICAL), 0, wxEXPAND | wxALL, 2);
+	bar->Add(new wxButton(this, ID_MFE_DELETE,     _("Delete")),     0, wxALL, 2);
+	bar->Add(new wxButton(this, ID_MFE_UP,         _("Up")),         0, wxALL, 2);
+	bar->Add(new wxButton(this, ID_MFE_DOWN,       _("Down")),       0, wxALL, 2);
 	bar->AddStretchSpacer(1);
-	bar->Add(new wxButton(this, ID_MFE_TEST,      _("Test form")), 0, wxALL, 2);
+	bar->Add(new wxButton(this, ID_MFE_TEST,       _("Test form")),  0, wxALL, 2);
 	sizer->Add(bar, 0, wxEXPAND);
 }
 
@@ -185,34 +221,128 @@ wxString ibManagedFormEditor::UniqueName(const wxString& base) const
 	return wxString::Format(wxT("%s%d"), base, maxN + 1);
 }
 
-void ibManagedFormEditor::AddElement(ibManagedNodeKind kind)
+wxString ibManagedFormEditor::NamePrefixFor(ibManagedNodeKind kind)
+{
+	switch (kind) {
+	case ibManagedNodeKind::Group:      return wxT("Group");
+	case ibManagedNodeKind::Page:       return wxT("Page");
+	case ibManagedNodeKind::Field:      return wxT("Field");
+	case ibManagedNodeKind::Table:      return wxT("Table");
+	case ibManagedNodeKind::Column:     return wxT("Column");
+	case ibManagedNodeKind::Button:     return wxT("Button");
+	case ibManagedNodeKind::Decoration: return wxT("Decoration");
+	default:                            return wxT("Element");
+	}
+}
+
+ibManagedElement* ibManagedFormEditor::FindAncestorOfKind(ibManagedElement* node, ibManagedNodeKind kind) const
+{
+	// The element tree is a value tree (no parent pointers), so walk from the root to the
+	// node, remembering the last ancestor of `kind`. node itself counts.
+	if (node == nullptr)
+		return nullptr;
+	if (node->kind == kind)
+		return node;
+	// Search path root -> node.
+	struct Walk {
+		static ibManagedElement* find(ibManagedElement& cur, const ibManagedElement* target,
+			ibManagedNodeKind kind, ibManagedElement* lastMatch) {
+			for (ibManagedElement& ch : cur.children) {
+				ibManagedElement* lm = (ch.kind == kind) ? &ch : lastMatch;
+				if (&ch == target)
+					return lm;
+				if (ibManagedElement* r = find(ch, target, kind, lm))
+					return r;
+			}
+			return nullptr;
+		}
+	};
+	return Walk::find(const_cast<ibManagedElement&>(m_root), node, kind, nullptr);
+}
+
+ibManagedElement* ibManagedFormEditor::ResolveInsertParent(ibManagedNodeKind kind, wxString& reason) const
+{
+	ibManagedElement* sel = SelectedElement();
+
+	// A Column lives only inside a Table — anchor on the selected Table (or its enclosing one).
+	if (kind == ibManagedNodeKind::Column) {
+		ibManagedElement* table = FindAncestorOfKind(sel, ibManagedNodeKind::Table);
+		if (table == nullptr) {
+			reason = _("A column can be added only inside a table. Select a table first.");
+			return nullptr;
+		}
+		return table;
+	}
+
+	// A Page lives only inside a Pages group (a Group with representation == Pages).
+	if (kind == ibManagedNodeKind::Page) {
+		for (ibManagedElement* n = sel; ; ) {
+			ibManagedElement* grp = FindAncestorOfKind(n, ibManagedNodeKind::Group);
+			if (grp == nullptr)
+				break;
+			if (grp->representation == ibGroupRepresentation::Pages)
+				return grp;
+			// keep climbing: look above this group
+			ibManagedElement* parent = nullptr; size_t idx = 0;
+			if (!FindParent(const_cast<ibManagedElement&>(m_root), grp, parent, idx) || parent == &m_root)
+				break;
+			n = parent;
+		}
+		reason = _("A page can be added only inside a Pages group. Select a Pages group first.");
+		return nullptr;
+	}
+
+	// Everything else (Group / Field / Table / Button / Decoration) goes into the selected
+	// container, or as a sibling of the selected leaf, or at the top level. A Column cannot
+	// be a sibling of a plain leaf — but non-Column kinds may. Reject placing a non-Column
+	// directly inside a Table (tables hold columns only).
+	if (sel != nullptr && (sel->kind == ibManagedNodeKind::Group || sel->kind == ibManagedNodeKind::Page))
+		return sel;
+	if (sel != nullptr) {
+		ibManagedElement* parent = nullptr; size_t idx = 0;
+		if (FindParent(const_cast<ibManagedElement&>(m_root), sel, parent, idx)) {
+			if (parent->kind == ibManagedNodeKind::Table) {
+				reason = _("A table can contain only columns.");
+				return nullptr;
+			}
+			return parent;
+		}
+	}
+	return const_cast<ibManagedElement*>(&m_root);
+}
+
+ibManagedElement* ibManagedFormEditor::AddElement(ibManagedNodeKind kind)
 {
 	if (!IsEditable())
-		return;
+		return nullptr;
+
+	wxString reason;
+	ibManagedElement* parent = ResolveInsertParent(kind, reason);
+	if (parent == nullptr) {
+		if (!reason.IsEmpty())
+			wxLogStatus(wxT("%s"), reason);
+		return nullptr;
+	}
 
 	ibManagedElement node(kind);
-	node.name = UniqueName(kind == ibManagedNodeKind::Group ? wxT("Group") : wxT("Field"));
+	node.name = UniqueName(NamePrefixFor(kind));
 
+	// Insert after the selection when it is a sibling in the same parent, else append.
+	ibManagedElement* created = nullptr;
 	ibManagedElement* sel = SelectedElement();
-	if (sel != nullptr && (sel->kind == ibManagedNodeKind::Group || sel->kind == ibManagedNodeKind::Page)) {
-		// Add as last child of the selected container.
-		sel->children.push_back(node);
-	}
-	else if (sel != nullptr) {
-		// Add as sibling after the selected leaf.
-		ibManagedElement* parent = nullptr; size_t idx = 0;
-		if (FindParent(m_root, sel, parent, idx))
-			parent->children.insert(parent->children.begin() + idx + 1, node);
-		else
-			m_root.children.push_back(node);
+	ibManagedElement* selParent = nullptr; size_t selIdx = 0;
+	if (sel != nullptr && sel != parent && FindParent(m_root, sel, selParent, selIdx) && selParent == parent) {
+		auto it = parent->children.insert(parent->children.begin() + selIdx + 1, node);
+		created = &(*it);
 	}
 	else {
-		// Nothing selected → top level.
-		m_root.children.push_back(node);
+		parent->children.push_back(node);
+		created = &parent->children.back();
 	}
 
 	RebuildTree();
 	m_document->Modify(true);
+	return created;
 }
 
 void ibManagedFormEditor::MoveSelected(int dir)
@@ -233,8 +363,17 @@ void ibManagedFormEditor::MoveSelected(int dir)
 	m_document->Modify(true);
 }
 
-void ibManagedFormEditor::OnAddGroup(wxCommandEvent&) { AddElement(ibManagedNodeKind::Group); }
-void ibManagedFormEditor::OnAddField(wxCommandEvent&) { AddElement(ibManagedNodeKind::Field); }
+void ibManagedFormEditor::OnAddElement(wxCommandEvent& event)
+{
+	const ibManagedNodeKind kind = KindForAddId(event.GetId());
+	ibManagedElement* created = AddElement(kind);
+	if (created != nullptr && event.GetId() == ID_MFE_ADD_PAGES) {
+		// "Add pages" creates a Group that presents as a notebook.
+		created->representation = ibGroupRepresentation::Pages;
+		RebuildTree();
+		m_document->Modify(true);
+	}
+}
 
 void ibManagedFormEditor::OnDelete(wxCommandEvent&)
 {
@@ -279,20 +418,30 @@ void ibManagedFormEditor::OnTreeContextMenu(wxTreeEvent& event)
 	if (event.GetItem().IsOk())
 		m_tree->SelectItem(event.GetItem());
 
+	const bool editable = IsEditable();
+	const bool hasSel = SelectedElement() != nullptr;
+
+	wxMenu* add = new wxMenu();
+	add->Append(ID_MFE_ADD_GROUP,  _("Group"));
+	add->Append(ID_MFE_ADD_PAGES,  _("Pages (notebook)"));
+	add->Append(ID_MFE_ADD_PAGE,   _("Page"));
+	add->Append(ID_MFE_ADD_FIELD,  _("Field"));
+	add->Append(ID_MFE_ADD_TABLE,  _("Table"));
+	add->Append(ID_MFE_ADD_COLUMN, _("Column"));
+	add->Append(ID_MFE_ADD_BUTTON, _("Button"));
+	add->Append(ID_MFE_ADD_DECOR,  _("Decoration"));
+	for (int id = ID_MFE_ADD_GROUP; id <= ID_MFE_ADD__LAST; ++id)
+		add->Enable(id, editable);
+
 	wxMenu menu;
-	menu.Append(ID_MFE_ADD_GROUP, _("Add group"));
-	menu.Append(ID_MFE_ADD_FIELD, _("Add field"));
+	menu.AppendSubMenu(add, _("Add"));
 	menu.AppendSeparator();
 	menu.Append(ID_MFE_DELETE, _("Delete"));
 	menu.Append(ID_MFE_UP,     _("Move up"));
 	menu.Append(ID_MFE_DOWN,   _("Move down"));
-
-	const bool editable = IsEditable();
-	menu.Enable(ID_MFE_ADD_GROUP, editable);
-	menu.Enable(ID_MFE_ADD_FIELD, editable);
-	menu.Enable(ID_MFE_DELETE, editable && SelectedElement() != nullptr);
-	menu.Enable(ID_MFE_UP,     editable && SelectedElement() != nullptr);
-	menu.Enable(ID_MFE_DOWN,   editable && SelectedElement() != nullptr);
+	menu.Enable(ID_MFE_DELETE, editable && hasSel);
+	menu.Enable(ID_MFE_UP,     editable && hasSel);
+	menu.Enable(ID_MFE_DOWN,   editable && hasSel);
 
 	PopupMenu(&menu);
 }
@@ -323,6 +472,40 @@ void ibManagedFormEditor::OnElementChanged(ibManagedElement* element)
 	}
 	if (m_document != nullptr)
 		m_document->Modify(true);
+}
+
+std::vector<wxString> ibManagedFormEditor::AvailableBindings() const
+{
+	// The owner object's attributes + "Section.Column" paths — the same set the compiler's
+	// resolver accepts (see CompileElementsToFormData). An object managed form binds through
+	// the owner; a managed form with no business owner offers nothing.
+	std::vector<wxString> out;
+	const auto* owner = m_managed != nullptr
+		? dynamic_cast<const ibValueMetaObjectGenericData*>(m_managed->GetParent())
+		: nullptr;
+	if (owner == nullptr)
+		return out;
+
+	// Predefined Code / Description of a hierarchy reference are real attributes.
+	if (auto* h = dynamic_cast<const ibValueMetaObjectRecordDataHierarchyMutableRef*>(owner)) {
+		if (h->GetDataCode() != nullptr)        out.push_back(wxT("Code"));
+		if (h->GetDataDescription() != nullptr) out.push_back(wxT("Description"));
+	}
+	for (unsigned int i = 0; i < owner->GetChildCount(); ++i) {
+		ibValueMetaObject* child = owner->GetChild(i);
+		if (child == nullptr)
+			continue;
+		if (dynamic_cast<ibValueMetaObjectAttribute*>(child) != nullptr) {
+			out.push_back(child->GetName());
+		}
+		else if (child->GetClassType() == g_metaTableRefCLSID) {
+			const wxString section = child->GetName();
+			for (unsigned int j = 0; j < child->GetChildCount(); ++j)
+				if (dynamic_cast<ibValueMetaObjectAttribute*>(child->GetChild(j)) != nullptr)
+					out.push_back(section + wxT(".") + child->GetChild(j)->GetName());
+		}
+	}
+	return out;
 }
 
 void ibManagedFormEditor::PreviewForm()

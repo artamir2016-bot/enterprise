@@ -16,6 +16,8 @@
 #include "backend/propertyManager/property/propertyList.h"
 #include "backend/managedForm/managedElement.h"
 
+#include <vector>
+
 class ibManagedFormEditor;
 
 class ibManagedElementProperty : public ibPropertyObject {
@@ -37,16 +39,26 @@ public:
 	bool FillViewKind(ibPropertyList* prop);
 	bool FillLayout(ibPropertyList* prop);
 	bool FillRepresentation(ibPropertyList* prop);
+	// Fills the DataPath dropdown from the owner object's attributes (editor->AvailableBindings),
+	// id == index into m_bindings; id -1 = "(not bound)". A current path absent from the owner
+	// set is appended so it still shows and round-trips.
+	bool FillBindings(ibPropertyList* prop);
 
 private:
+
+	// Resolve the long id a bindings-list item carries to the dataPath string it represents.
+	wxString BindingNameForId(long id) const;
 
 	ibManagedElement*    m_element;
 	ibManagedFormEditor* m_editor;
 
+	// The binding targets offered to the DataPath list, in list order (id == index).
+	std::vector<wxString> m_bindings;
+
 	ibPropertyCategory* m_cat          = nullptr;
 	ibPropertyString*   m_propName     = nullptr;
 	ibPropertyString*   m_propTitle    = nullptr;
-	ibPropertyString*   m_propDataPath = nullptr;
+	ibPropertyList*     m_propDataPath = nullptr;
 	ibPropertyList*     m_propViewKind = nullptr;
 	ibPropertyList*     m_propLayout   = nullptr;
 	ibPropertyList*     m_propRepr     = nullptr;

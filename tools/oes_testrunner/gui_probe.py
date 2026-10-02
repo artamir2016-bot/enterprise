@@ -1,4 +1,4 @@
-"""OES-TEST: one-shot GUI probe — drive an OES app's test agent WITHOUT computer-use.
+r"""OES-TEST: one-shot GUI probe — drive an OES app's test agent WITHOUT computer-use.
 
 The point of this tool: verify / exercise a GUI (designer.exe or enterprise.exe) from a SINGLE
 command, with no Gherkin feature file and no desktop driver. It launches the app as its OWN
@@ -45,6 +45,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -71,8 +72,10 @@ def _coerce(value: str):
 
 
 def parse_inline(spec: str) -> dict:
-    """'cmd key=val key=val' -> {"cmd": cmd, "args": {...}}. Values are coerced."""
-    parts = spec.split()
+    """'cmd key=val key="multi word"' -> {"cmd": cmd, "args": {...}}. Values coerced.
+
+    Tokenised with shlex so a quoted value may contain spaces: value="Add table"."""
+    parts = shlex.split(spec)
     if not parts:
         raise ValueError("empty --cmd")
     cmd, args = parts[0], {}
