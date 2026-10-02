@@ -6,6 +6,8 @@
 #include <wx/menu.h>
 #include <wx/statline.h>
 #include <wx/log.h>
+#include <wx/accel.h>
+#include <wx/wrapsizer.h>
 
 #include "backend/metaCollection/genericData.h"                   // ibValueMetaObjectGenericData
 #include "backend/metaCollection/attribute/metaAttributeObject.h" // ibValueMetaObjectAttribute
@@ -31,6 +33,8 @@ enum {
 	ID_MFE_DELETE,
 	ID_MFE_UP,
 	ID_MFE_DOWN,
+	ID_MFE_UNDO,
+	ID_MFE_REDO,
 	ID_MFE_TEST,
 	ID_MFE_TREE,
 };
@@ -40,6 +44,10 @@ EVT_BUTTON(ID_MFE_DELETE,    ibManagedFormEditor::OnDelete)
 EVT_BUTTON(ID_MFE_UP,        ibManagedFormEditor::OnMoveUp)
 EVT_BUTTON(ID_MFE_DOWN,      ibManagedFormEditor::OnMoveDown)
 EVT_BUTTON(ID_MFE_TEST,      ibManagedFormEditor::OnTestForm)
+EVT_BUTTON(ID_MFE_UNDO,      ibManagedFormEditor::OnUndo)
+EVT_BUTTON(ID_MFE_REDO,      ibManagedFormEditor::OnRedo)
+EVT_MENU(ID_MFE_UNDO,        ibManagedFormEditor::OnUndo)
+EVT_MENU(ID_MFE_REDO,        ibManagedFormEditor::OnRedo)
 EVT_MENU(ID_MFE_DELETE,      ibManagedFormEditor::OnDelete)
 EVT_MENU(ID_MFE_UP,          ibManagedFormEditor::OnMoveUp)
 EVT_MENU(ID_MFE_DOWN,        ibManagedFormEditor::OnMoveDown)
@@ -78,6 +86,13 @@ ibManagedFormEditor::ibManagedFormEditor(ibMetaDocument* document, wxWindow* par
 	sizerMain->Add(m_tree, 1, wxEXPAND | wxALL, 2);
 
 	SetSizer(sizerMain);
+
+	// Ctrl+Z / Ctrl+Y undo-redo (and Ctrl+Shift+Z as a common redo alias).
+	wxAcceleratorEntry entries[3];
+	entries[0].Set(wxACCEL_CTRL,               (int)'Z', ID_MFE_UNDO);
+	entries[1].Set(wxACCEL_CTRL,               (int)'Y', ID_MFE_REDO);
+	entries[2].Set(wxACCEL_CTRL | wxACCEL_SHIFT,(int)'Z', ID_MFE_REDO);
+	SetAcceleratorTable(wxAcceleratorTable(3, entries));
 }
 
 ibManagedFormEditor::~ibManagedFormEditor()
@@ -94,19 +109,27 @@ ibManagedFormEditor::~ibManagedFormEditor()
 
 void ibManagedFormEditor::BuildToolbar(wxSizer* sizer)
 {
-	// Common kinds on the toolbar; the full set (Column / Pages / Page / Decoration) lives
-	// in the tree context menu so the bar stays readable.
-	wxBoxSizer* bar = new wxBoxSizer(wxHORIZONTAL);
-	bar->Add(new wxButton(this, ID_MFE_ADD_GROUP,  _("Add group")),  0, wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_ADD_FIELD,  _("Add field")),  0, wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_ADD_TABLE,  _("Add table")),  0, wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_ADD_BUTTON, _("Add button")), 0, wxALL, 2);
-	bar->Add(new wxStaticLine(this, wxID_ANY, wxDefaultPosition, wxSize(2, -1), wxLI_VERTICAL), 0, wxEXPAND | wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_DELETE,     _("Delete")),     0, wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_UP,         _("Up")),         0, wxALL, 2);
-	bar->Add(new wxButton(this, ID_MFE_DOWN,       _("Down")),       0, wxALL, 2);
-	bar->AddStretchSpacer(1);
-	bar->Add(new wxButton(this, ID_MFE_TEST,       _("Test form")),  0, wxALL, 2);
+	// A WRAP sizer: when the editor pane is narrow the buttons flow onto a second row
+	// instead of collapsing to zero width (which would make them unclickable). Common
+	// kinds live here; the full set (Column / Pages / Page / Decoration) is in the tree
+	// context menu.
+	auto mkBtn = [this](int id, const wxString& label, const wxString& name) {
+		return new wxButton(this, id, label, wxDefaultPosition, wxDefaultSize, 0,
+			wxDefaultValidator, name);
+	};
+	wxWrapSizer* bar = new wxWrapSizer(wxHORIZONTAL);
+	// Unique control names on each button so automation can target them without a mouse
+	// (via the test agent's pressButton); no UI effect.
+	bar->Add(mkBtn(ID_MFE_ADD_GROUP,  _("Add group"),  wxT("mfeAddGroup")),  0, wxALL, 2);
+	bar->Add(mkBtn(ID_MFE_ADD_FIELD,  _("Add field"),  wxT("mfeAddField")),  0, wxALL, 2);
+	bar->Add(mkBtn(ID_MFE_ADD_TABLE,  _("Add table"),  wxT("mfeAddTable")),  0, wxALL, 2);
+	bar->Add(mkBtn(ID_MFE_ADD_BUTTON, _("Add button"), wxT("mfeAddButton")), 0, wxALL, 2);
+	bar->Add(mkBtn(ID_MFE_DELETE,     _("Delete"),     wxT("mfeDelete")),    0, wxALL, 2);
+	bar->Add(mkBtn(ID_MFE_UP,         _("Up"),         wxT("mfeUp")),        0, wxALL, 2);
+	bar->Add(mkBtn(ID_MFE_DOWN,       _("Down"),       wxT("mfeDown")),      0, wxALL, 2);
+	bar->Add(mkBtn(ID_MFE_UNDO, _("Undo"), wxT("mfeUndo")), 0, wxALL, 2);
+	bar->Add(mkBtn(ID_MFE_REDO, _("Redo"), wxT("mfeRedo")), 0, wxALL, 2);
+	bar->Add(mkBtn(ID_MFE_TEST, _("Test form"), wxT("mfeTest")), 0, wxALL, 2);
 	sizer->Add(bar, 0, wxEXPAND);
 }
 
@@ -324,6 +347,8 @@ ibManagedElement* ibManagedFormEditor::AddElement(ibManagedNodeKind kind)
 		return nullptr;
 	}
 
+	PushUndoSnapshot();
+
 	ibManagedElement node(kind);
 	node.name = UniqueName(NamePrefixFor(kind));
 
@@ -358,6 +383,7 @@ void ibManagedFormEditor::MoveSelected(int dir)
 	const long newIdx = (long)idx + dir;
 	if (newIdx < 0 || newIdx >= (long)parent->children.size())
 		return;
+	PushUndoSnapshot();
 	std::swap(parent->children[idx], parent->children[newIdx]);
 	RebuildTree();
 	m_document->Modify(true);
@@ -385,10 +411,9 @@ void ibManagedFormEditor::OnDelete(wxCommandEvent&)
 	ibManagedElement* parent = nullptr; size_t idx = 0;
 	if (!FindParent(m_root, sel, parent, idx))
 		return;
+	PushUndoSnapshot();
 	// Dropping the node drops the adapter that pointed at it.
-	if (objectInspector != nullptr)
-		objectInspector->SelectObject(nullptr);
-	m_adapter.reset();
+	ClearSelectionBinding();
 	parent->children.erase(parent->children.begin() + idx);
 	RebuildTree();
 	m_document->Modify(true);
@@ -397,6 +422,56 @@ void ibManagedFormEditor::OnDelete(wxCommandEvent&)
 void ibManagedFormEditor::OnMoveUp(wxCommandEvent&)   { MoveSelected(-1); }
 void ibManagedFormEditor::OnMoveDown(wxCommandEvent&) { MoveSelected(+1); }
 void ibManagedFormEditor::OnTestForm(wxCommandEvent&) { PreviewForm(); }
+
+void ibManagedFormEditor::ClearSelectionBinding()
+{
+	if (objectInspector != nullptr)
+		objectInspector->SelectObject(nullptr);
+	m_adapter.reset();
+}
+
+void ibManagedFormEditor::PushUndoSnapshot()
+{
+	m_undo.push_back(m_root);
+	if (m_undo.size() > kMaxUndo)
+		m_undo.erase(m_undo.begin());
+	m_redo.clear();
+}
+
+void ibManagedFormEditor::Undo()
+{
+	if (m_undo.empty()) {
+		wxLogStatus(wxT("%s"), _("Nothing to undo."));
+		return;
+	}
+	// A restore replaces the whole tree, invalidating every element pointer — drop the
+	// adapter/inspector binding first, then swap and rebuild.
+	ClearSelectionBinding();
+	m_redo.push_back(m_root);
+	m_root = m_undo.back();
+	m_undo.pop_back();
+	RebuildTree();
+	if (m_document != nullptr)
+		m_document->Modify(true);
+}
+
+void ibManagedFormEditor::Redo()
+{
+	if (m_redo.empty()) {
+		wxLogStatus(wxT("%s"), _("Nothing to redo."));
+		return;
+	}
+	ClearSelectionBinding();
+	m_undo.push_back(m_root);
+	m_root = m_redo.back();
+	m_redo.pop_back();
+	RebuildTree();
+	if (m_document != nullptr)
+		m_document->Modify(true);
+}
+
+void ibManagedFormEditor::OnUndo(wxCommandEvent&) { Undo(); }
+void ibManagedFormEditor::OnRedo(wxCommandEvent&) { Redo(); }
 
 void ibManagedFormEditor::OnTreeSelChanged(wxTreeEvent&)
 {

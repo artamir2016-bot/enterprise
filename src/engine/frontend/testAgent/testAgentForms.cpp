@@ -1065,6 +1065,30 @@ namespace {
 		return json{ {"invoked", true}, {"deferred", true} };
 	}
 
+	// OES-TEST: invoke a button by its control NAME WITHOUT a mouse — post a wxEVT_BUTTON
+	// command to the widget's handler. Deterministic (no foreground/z-order dependence), so a
+	// test can drive editor toolbar buttons reliably. Deferred: the handler may open a modal.
+	json Cmd_PressButton(const json& args)
+	{
+		const wxString name = FromUtf8(args.at("name"));
+		wxWindow* w = nullptr;
+		for (wxWindowList::iterator it = wxTopLevelWindows.begin(); it != wxTopLevelWindows.end(); ++it) {
+			if ((w = FindWidgetRec(*it, wxT("name"), name)) != nullptr)
+				break;
+		}
+		if (w == nullptr)
+			throw std::runtime_error("button not found: " + ToUtf8(name));
+		const int id = w->GetId();
+		if (wxTheApp != nullptr) {
+			wxTheApp->CallAfter([w, id]() {
+				wxCommandEvent evt(wxEVT_BUTTON, id);
+				evt.SetEventObject(w);
+				w->GetEventHandler()->ProcessEvent(evt);
+			});
+		}
+		return json{ {"pressed", true}, {"deferred", true} };
+	}
+
 	json Cmd_FindWidget(const json& args)
 	{
 		wxWindow* w = FindWidgetAny(args);
@@ -1182,6 +1206,7 @@ bool ibTestAgentDispatchForm(const std::string& cmd, const json& args, json& res
 	else if (cmd == "invokeMenu")          result = Cmd_InvokeMenu(args);
 	else if (cmd == "findWidget")          result = Cmd_FindWidget(args);
 	else if (cmd == "clickWidget")         result = Cmd_ClickWidget(args);
+	else if (cmd == "pressButton")         result = Cmd_PressButton(args);
 	else return false;
 	return true;
 }

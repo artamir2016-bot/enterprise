@@ -90,6 +90,10 @@ void ibManagedElementProperty::OnPropertyChanged(ibProperty* property, const wxV
 	if (m_element == nullptr || property == nullptr)
 		return;
 
+	// Record an undo point BEFORE the edit lands (the writes below mutate the element).
+	if (m_editor != nullptr)
+		m_editor->PushUndoSnapshot();
+
 	const wxString name = property->GetName();
 	if (name == wxT("Name"))
 		m_element->name = newValue.GetString();

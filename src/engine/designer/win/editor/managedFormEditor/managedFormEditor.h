@@ -51,6 +51,11 @@ public:
 	// picker in the property adapter. Empty when there is no resolvable owner.
 	std::vector<wxString> AvailableBindings() const;
 
+	// Capture the current element tree as an undo point. Call BEFORE a mutation (the
+	// property adapter calls this before it writes an edit; structural ops call it
+	// before they change the tree). Clears the redo stack.
+	void PushUndoSnapshot();
+
 private:
 
 	// Tree item payload: a raw pointer into the working copy's element tree.
@@ -83,6 +88,14 @@ private:
 	void OnMoveDown(wxCommandEvent& event);
 	void OnTestForm(wxCommandEvent& event);
 
+	void OnUndo(wxCommandEvent& event);
+	void OnRedo(wxCommandEvent& event);
+	void Undo();
+	void Redo();
+	// Drop the inspector's hold on the current adapter (used before restoring a snapshot,
+	// which invalidates every element pointer the adapter may hold).
+	void ClearSelectionBinding();
+
 	void OnTreeSelChanged(wxTreeEvent& event);
 	void OnTreeContextMenu(wxTreeEvent& event);
 
@@ -103,6 +116,11 @@ private:
 	// Working copy (the edited source of truth until Save).
 	ibManagedElement                m_root;
 	std::vector<ibManagedAttribute> m_attrs;
+
+	// Undo/redo = whole-tree snapshots (the tree is small; this is simple and correct).
+	std::vector<ibManagedElement> m_undo;
+	std::vector<ibManagedElement> m_redo;
+	static constexpr size_t kMaxUndo = 100;
 
 	wxTreeCtrl* m_tree = nullptr;
 
