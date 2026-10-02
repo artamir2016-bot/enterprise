@@ -96,6 +96,31 @@ and the IDE terminates any launched app on close, and **Run / Run with video** b
 that drive `runner.py` as a subprocess and stream its output live (OK green / FAIL red / summary).
 Launch: `python tools/oes_testrunner/ide.py`.
 
+### 2c. One-shot GUI probe (`tools/oes_testrunner/gui_probe.py`)
+A **single-command** GUI check that needs **no feature file and no desktop driver (no computer-use)** —
+built for exactly the case where a GUI change must be verified at runtime but the only desktop
+automation (computer-use) is unavailable. It launches `designer.exe` / `enterprise.exe` as its **own
+foreground child process** (so the wxApp initialises normally — the reason an app launched *inside* a
+headless automation shell exits before showing UI does not apply), connects to the embedded
+`--testagent`, runs an ordered sequence of agent commands, captures screenshots + `Сообщить`
+messages + runtime/compile diagnostics, and quits — reporting the whole run as one JSON blob on
+stdout (exit 0 iff every non-optional step passed **and** no error-level diagnostic fired).
+
+```bat
+set PYTHONIOENCODING=utf-8
+python tools\oes_testrunner\gui_probe.py --app designer --base <base> ^
+    --cmd "openMetaEditor name=ItemForm" --sleep 1.5 --cmd "listWidgets" ^
+    --shot shot.png --out report.json
+```
+
+Steps are either inline `--cmd "name key=val …"` (repeatable, ordered; values coerced like the
+runner) or a `--script <file.json>` array of `{"cmd","args","expect","optional"}` / `{"sleep"}` /
+`{"shot"}` steps. `--keep` leaves the app open for manual follow-up. Because it drives the same
+in-process agent as the runner, it reaches **any** agent command (forms, controls, menus, tree,
+widgets, real input, screenshots) — it is the fast path for "did my editor/form actually open and
+populate?" without authoring a scenario. (The agent's `openMetaEditor` resolves both ordinary and
+**managed** forms, so this opens either editor by object name.)
+
 ### 2b. Narration groups & video sync (`*` lines)
 A step line starting with `*` is a **narration marker**: it names a group and carries the voice-over
 text; the steps that follow (until the next `*`) belong to it. When recording video (`--video`), the

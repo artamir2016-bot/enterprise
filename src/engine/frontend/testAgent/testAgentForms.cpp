@@ -322,7 +322,12 @@ namespace {
 		auto* md = ibApplicationData::GetActiveMetaData();
 		if (md == nullptr)
 			throw std::runtime_error("no active configuration");
+		// Try the ordinary control-tree form first, then the managed (declarative element-tree) form —
+		// both derive ibValueMetaObjectForm and both route through OpenObjectForm to their registered
+		// editor (ibDocManager dispatches by the object's CLSID), so this opens whichever kind exists.
 		auto* form = md->FindAnyObjectByFilter<ibValueMetaObjectForm>(name, g_metaFormCLSID, true);
+		if (form == nullptr)
+			form = md->FindAnyObjectByFilter<ibValueMetaObjectForm>(name, g_metaManagedFormCLSID, true);
 		if (form == nullptr)
 			throw std::runtime_error("form not found: " + ToUtf8(name));
 		if (wxTheApp != nullptr) {
