@@ -2,8 +2,21 @@
 #include "backend/metaCollection/partial/commonObject.h"
 #include "backend/objCtor.h"
 #include "backend/metaData.h"
+#include "backend/appData.h"
 
 ////////////////////////////////////////////////////////////////////////////
+
+// The web server (eWEB_RUNTIME_MODE) runs HEADLESS — no GUI event loop and no
+// real top-level windows. Any native wx dialog/popup created here (the type
+// picker, the date/quick-choice popups) AVs on Destroy under that process, so
+// every such site checks this first. The honest web answer is "the user did
+// not choose": the caller leaves the value alone, exactly as on desktop Cancel.
+// Reference-field selection still works on web — it goes through the metaobject's
+// ProcessChoice, which opens a choice FORM over the normal web form path.
+static bool ibIsWebHeadless()
+{
+	return appData != nullptr && appData->GetAppMode() == eWEB_RUNTIME_MODE;
+}
 
 #include <wx/calctrl.h>
 #include <wx/timectrl.h>
@@ -94,6 +107,15 @@ bool ibTypeControlFactory::ChooseValue(ibControlFrame* ownerValue,
 }
 
 bool ibTypeControlFactory::SimpleChoice(ibControlFrame* ownerValue, const ibClassID& clsid, wxWindow* parent) {
+
+	// Headless web: the primitive quick-pickers below are native popup windows and
+	// crash on this process. Treat the primitive types as "handled, nothing to pop"
+	// (number/string already were) so the caller does not fall through to a dialog.
+	if (ibIsWebHeadless()) {
+		const ibValueTypes vt = ibValue::GetVTByID(clsid);
+		return vt == ibValueTypes::TYPE_NUMBER || vt == ibValueTypes::TYPE_DATE
+			|| vt == ibValueTypes::TYPE_STRING;
+	}
 
 	ibValueTypes valType = ibValue::GetVTByID(clsid);
 
@@ -346,7 +368,9 @@ bool ibTypeControlFactory::QuickChoice(ibControlFrame* ownerValue, const ibClass
 		}
 	};
 
-	if (ownerValue != nullptr) {
+	// Headless web: the quick-select list is a native popup window — skip it (the
+	// caller then tries the reference ProcessChoice path, which has a web port).
+	if (ownerValue != nullptr && !ibIsWebHeadless()) {
 		ibValue cValue; ownerValue->GetControlValue(cValue);
 		std::vector<ibValue> listValue;
 		if (cValue.FindValue(wxEmptyString, listValue)) {
@@ -577,7 +601,12 @@ ibClassID ibTypeControlFactory::GetDataType() const
 ibClassID ibTypeControlFactory::ShowSelectType(const ibMetaData* metaData, const ibTypeDescription& typeDescription)
 {
 	if (typeDescription.GetClsidCount() < 2) return typeDescription.GetFirstClsid();
-	
+
+	// Headless web: cannot pop the native type picker (crashes on Destroy). Refuse
+	// the ambiguous choice rather than guess a type — the "..." becomes a no-op for
+	// a multi-type cell until the web type picker lands.
+	if (ibIsWebHeadless()) return 0;
+
 	ibDialogSelectDataType *selectDataType = new ibDialogSelectDataType(metaData, typeDescription.GetClsidList());
 
 	ibClassID clsid = 0;	
