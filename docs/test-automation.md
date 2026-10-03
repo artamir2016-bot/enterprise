@@ -173,6 +173,17 @@ is running or after an explicit `Я закрываю приложение`.
 - **#3 runner — DONE (MVP).** `tools/oes_testrunner/` — Russian Gherkin parser, launcher, step
   library, JUnit report. `features/demo_ru.feature` runs green (1/1): Designer → close → Enterprise
   → open Товары → assert controls → set/read Артикул & Цена.
+- **Managed-form designer E2E — DONE.** `features/managed_form_designer.feature` (4/4 green) drives
+  the FULL arc конфигуратор → предприятие for a managed («управляемая») form: a batch-load step
+  (`Я загружаю конфигурацию "<spec.json|.mcf>" в базу "<dir>"` — compiles a .json spec via
+  `oes_config_gen`, then `designer /F /LoadCfg /UpdateDBCfg`, so the run is repeatable from the
+  committed fixture `fixtures/mform_e2e.json`); in the DESIGNER — open the element-tree editor
+  (`Я открываю редактор управляемой формы`), assert nodes (`Элемент управляемой формы "X : Kind"
+  присутствует/отсутствует`), add kinds (`Я добавляю в управляемую форму группу/поле/таблицу/кнопку`),
+  undo/redo (`Я отменяю/повторяю последнее действие`), persist (`Я обновляю конфигурацию базы
+  данных`); then in ENTERPRISE — the form renders (fields exist inside the group = layout), data
+  binding round-trips, and the object event `ПередЗаписью` rejects Price<0 with a message. Mouse-free
+  (via the agent's `pressButton`/`openMetaEditor`), so it is stable headless.
 
 ### Next
 - Press STANDARD actions (записать/провести) — needs the protected command set; unlocks the

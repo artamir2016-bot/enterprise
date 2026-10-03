@@ -411,6 +411,104 @@ def _dclick_tree(ctx: Context, text):
     ctx.current.call("clickTreeItem", text=text, double=True)
 
 
+# ---- batch configurator (reset a base from an .mcf, 1C-style /LoadCfg /UpdateDBCfg) -------------
+@step(r'^Я загружаю конфигурацию "(.+)" в базу "(.+)"$')
+def _load_config(ctx: Context, spec, base):
+    """Reset a file base from a config via the designer's headless batch mode — the same
+    configurator path a developer uses. Makes a cross-process feature repeatable (no edit
+    accumulation). `spec` may be an .mcf OR a friendly .json spec: a .json is first compiled to
+    a temp .mcf via oes_config_gen (so a feature stays self-contained from a committed fixture).
+    Args go straight to CreateProcess (no shell), so '/UpdateDBCfg' is not path-mangled."""
+    mcf = spec
+    if spec.lower().endswith(".json"):
+        gen = os.path.join(ctx.bin_dir, "oes_config_gen.exe")
+        if not os.path.isfile(gen):
+            raise StepError(f"oes_config_gen.exe not found in {ctx.bin_dir}")
+        mcf = os.path.splitext(spec)[0] + ".gen.mcf"
+        g = subprocess.run([gen, spec, mcf], cwd=ctx.bin_dir, capture_output=True, text=True, timeout=60)
+        if g.returncode != 0 or not os.path.isfile(mcf):
+            raise StepError(f"oes_config_gen failed:\n{(g.stdout or '')}{(g.stderr or '')}")
+    os.makedirs(base, exist_ok=True)
+    exe = os.path.join(ctx.bin_dir, "designer.exe")
+    cmd = [exe, f"/F{base}", f"/LoadCfg{mcf}", "/UpdateDBCfg"]
+    proc = subprocess.run(cmd, cwd=ctx.bin_dir, capture_output=True, text=True, timeout=120)
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if "Database configuration updated" not in out:
+        raise StepError(f"batch load did not persist the config.\n{out[-800:]}")
+
+
+# ---- managed-form designer (element-tree editor) ------------------------------------------------
+# Drive the designer's managed-form editor through the test agent: open it, add element kinds by the
+# toolbar buttons' control names, assert the element tree, undo/redo, and persist via the menu.
+
+_MFE_KIND_BUTTON = {
+    "группу": "mfeAddGroup", "группа": "mfeAddGroup",
+    "поле": "mfeAddField",
+    "таблицу": "mfeAddTable", "таблица": "mfeAddTable",
+    "кнопку": "mfeAddButton", "кнопка": "mfeAddButton",
+}
+
+
+@step(r'^Я открываю редактор управляемой формы "(.+)"$')
+def _open_managed_editor(ctx: Context, name):
+    ctx.current.call("openMetaEditor", name=name)
+    # The editor opens deferred (modal-safe) on the event loop; settle before asserting.
+    time.sleep(1.2)
+
+
+def _managed_tree_labels(ctx: Context) -> list[str]:
+    """Element-tree node labels of the open editor. The editor's nodes read 'Name : Kind'
+    (the config navigator's items have no ' : '), so that format disambiguates them."""
+    widgets = ctx.current.call("listWidgets").get("widgets", [])
+    return [w.get("label", "") for w in widgets
+            if w.get("class") == "wxTreeItem" and " : " in w.get("label", "")]
+
+
+@step(r'^Я добавляю в управляемую форму (группу|группа|поле|таблицу|таблица|кнопку|кнопка)$')
+def _managed_add(ctx: Context, kind):
+    btn = _MFE_KIND_BUTTON[kind.lower()]
+    ctx.current.call("pressButton", name=btn)
+    time.sleep(0.4)
+
+
+@step(r'^Я выделяю элемент управляемой формы "(.+)"$')
+def _managed_select(ctx: Context, label):
+    ctx.current.call("clickTreeItem", text=label)
+    time.sleep(0.4)
+
+
+@step(r'^Я отменяю последнее действие$')
+def _managed_undo(ctx: Context):
+    ctx.current.call("pressButton", name="mfeUndo")
+    time.sleep(0.4)
+
+
+@step(r'^Я повторяю последнее действие$')
+def _managed_redo(ctx: Context):
+    ctx.current.call("pressButton", name="mfeRedo")
+    time.sleep(0.4)
+
+
+@step(r'^Я обновляю конфигурацию базы данных$')
+def _update_db_config(ctx: Context):
+    ctx.current.call("invokeMenu", path=["Configuration", "Update database configuration"])
+    time.sleep(3.5)   # the restructure + persist runs on the event loop
+
+
+@step(r'^Элемент управляемой формы "(.+)" присутствует$')
+def _assert_managed_element(ctx: Context, label):
+    labels = _managed_tree_labels(ctx)
+    if label not in labels:
+        raise StepError(f'элемент "{label}" не найден в дереве формы. Есть: {labels}')
+
+
+@step(r'^Элемент управляемой формы "(.+)" отсутствует$')
+def _assert_managed_element_absent(ctx: Context, label):
+    labels = _managed_tree_labels(ctx)
+    if label in labels:
+        raise StepError(f'элемент "{label}" присутствует, а ожидалось его отсутствие. Есть: {labels}')
+
+
 @step(r'^Я вижу окно "(.+)"$')
 def _assert_window(ctx: Context, title):
     wins = ctx.current.call("listWindows").get("windows", [])

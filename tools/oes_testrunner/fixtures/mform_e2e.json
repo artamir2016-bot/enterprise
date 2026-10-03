@@ -1,0 +1,33 @@
+{
+  "name": "MFormE2E",
+  "syntax": "ves",
+  "catalogs": [
+    {
+      "name": "Goods",
+      "attributes": [
+        { "name": "Price",  "type": "Number", "precision": 15, "scale": 2 },
+        { "name": "Note",   "type": "String", "length": 100 },
+        { "name": "Active", "type": "Boolean" }
+      ],
+      "objectModule": "Процедура ПередЗаписью(Отказ) Экспорт\n\tЕсли Price < 0 Тогда\n\t\tСообщить(\"Price cannot be negative\");\n\t\tОтказ = Истина;\n\tКонецЕсли;\nКонецПроцедуры",
+      "forms": [
+        {
+          "name": "ItemForm",
+          "managed": true,
+          "type": "object",
+          "default": true,
+          "controls": [
+            {
+              "kind": "group", "name": "MainGroup", "title": "Main", "orient": "vertical",
+              "children": [
+                { "kind": "field",    "name": "PriceField",  "title": "Price",  "attr": "Price" },
+                { "kind": "field",    "name": "NoteField",   "title": "Note",   "attr": "Note" },
+                { "kind": "checkbox", "name": "ActiveField", "title": "Active", "attr": "Active" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
