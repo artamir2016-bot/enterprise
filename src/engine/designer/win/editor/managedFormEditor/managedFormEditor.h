@@ -88,6 +88,13 @@ private:
 	void OnDeleteAttribute(wxCommandEvent& event);
 	// Create a Field (or Table) bound to `dataPath`, titled `title`, placed by the usual rules.
 	ibManagedElement* AddBoundElement(const wxString& dataPath, const wxString& title, ibManagedNodeKind kind);
+
+public:
+	// A Реквизиты binding was dropped on the element tree at `treePt` (tree-client coords): select
+	// the element under the point so the new field lands there, then add it. Called by the drop target.
+	void DropBinding(const wxString& path, const wxString& title, int kind, const wxPoint& treePt);
+private:
+	void OnAttrBeginDrag(wxTreeEvent& event);   // start dragging a Реквизиты node onto the form
 	void RebuildTree();
 	void AddTreeNode(const wxTreeItemId& parentItem, ibManagedElement* el);
 	wxString ElementLabel(const ibManagedElement* el) const;

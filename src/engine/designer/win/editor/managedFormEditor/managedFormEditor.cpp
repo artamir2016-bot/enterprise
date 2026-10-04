@@ -16,6 +16,7 @@
 #include <wx/treebase.h>   // wxTreeEvent / wxTreeItemData
 #include <wx/textdlg.h>    // wxGetTextFromUser — new form attribute name
 #include <wx/choicdlg.h>   // wxGetSingleChoiceIndex — attribute type
+#include <wx/dnd.h>        // drag a Реквизиты node onto the element tree
 
 #include "frontend/win/ctrls/treelistctrl.h"   // ibTreeListCtrl — multi-column Реквизиты tree
 
@@ -64,6 +65,27 @@ public:
 	wxString          m_title;
 	ibManagedNodeKind m_kind;
 	bool              m_isFormAttr;   // a form-own attribute (deletable), vs an owner field/column
+};
+
+// Encode / decode a dragged binding as text: "path\x01kind\x01title".
+wxString EncodeBinding(const wxString& path, int kind, const wxString& title) {
+	return path + wxT("\x01") + wxString::Format(wxT("%d"), kind) + wxT("\x01") + title;
+}
+
+// A drop target on the element tree: a dragged Реквизиты binding becomes a bound field/table.
+class ibManagedBindingDropTarget : public wxTextDropTarget {
+public:
+	explicit ibManagedBindingDropTarget(ibManagedFormEditor* editor) : m_editor(editor) {}
+	virtual bool OnDropText(wxCoord x, wxCoord y, const wxString& data) override {
+		wxArrayString parts = wxSplit(data, wxChar(1));
+		if (parts.GetCount() < 3 || m_editor == nullptr)
+			return false;
+		long kind = 0; parts[1].ToLong(&kind);
+		m_editor->DropBinding(parts[0], parts[2], static_cast<int>(kind), wxPoint(x, y));
+		return true;
+	}
+private:
+	ibManagedFormEditor* m_editor;
 };
 
 // Best-effort readable type for an attribute (primitives by value-type; reference/composite folds
@@ -233,6 +255,7 @@ wxWindow* ibManagedFormEditor::BuildBody(wxWindow* parent)
 
 	m_tree = new wxTreeCtrl(m_topSplit, ID_MFE_TREE, wxDefaultPosition, wxDefaultSize,
 		wxTR_HIDE_ROOT | wxTR_HAS_BUTTONS | wxTR_LINES_AT_ROOT | wxTR_SINGLE | wxTR_DEFAULT_STYLE);
+	m_tree->SetDropTarget(new ibManagedBindingDropTarget(this));   // accept dragged Реквизиты bindings
 
 	// Data notebook: Attributes / Commands / Parameters (the form's data, 1C «Реквизиты»).
 	m_dataBook = new wxNotebook(m_topSplit, wxID_ANY);
@@ -257,6 +280,7 @@ wxWindow* ibManagedFormEditor::BuildBody(wxWindow* parent)
 	m_attrTree->AddColumn(_("Attribute"), 190, wxALIGN_LEFT);
 	m_attrTree->AddColumn(_("Type"),      200, wxALIGN_LEFT);
 	m_attrTree->Bind(wxEVT_COMMAND_TREE_ITEM_ACTIVATED, &ibManagedFormEditor::OnAttrActivated, this);
+	m_attrTree->Bind(wxEVT_COMMAND_TREE_BEGIN_DRAG,     &ibManagedFormEditor::OnAttrBeginDrag, this);
 	attrSizer->Add(m_attrTree, 1, wxEXPAND);
 	attrPage->SetSizer(attrSizer);
 
@@ -461,6 +485,31 @@ void ibManagedFormEditor::OnDeleteAttribute(wxCommandEvent&)
 	RebuildDataPanels();
 	MarkDirty();
 	RefreshPreview();
+}
+
+void ibManagedFormEditor::OnAttrBeginDrag(wxTreeEvent& event)
+{
+	if (!IsEditable() || m_attrTree == nullptr)
+		return;
+	auto* data = dynamic_cast<ibBindingData*>(m_attrTree->GetItemData(event.GetItem()));
+	if (data == nullptr)
+		return;   // a container row (Object / a section) is not draggable
+	wxTextDataObject payload(EncodeBinding(data->m_path, (int)data->m_kind, data->m_title));
+	wxDropSource source(payload, m_attrTree);
+	source.DoDragDrop(wxDrag_CopyOnly);
+}
+
+void ibManagedFormEditor::DropBinding(const wxString& path, const wxString& title, int kind,
+	const wxPoint& treePt)
+{
+	// Select the element under the drop point so the new node lands there (honouring containment).
+	if (m_tree != nullptr) {
+		int flags = 0;
+		wxTreeItemId hit = m_tree->HitTest(treePt, flags);
+		if (hit.IsOk())
+			m_tree->SelectItem(hit);
+	}
+	AddBoundElement(path, title, static_cast<ibManagedNodeKind>(kind));
 }
 
 bool ibManagedFormEditor::SaveForm()
