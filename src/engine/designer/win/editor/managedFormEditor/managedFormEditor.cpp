@@ -490,10 +490,15 @@ void ibManagedFormEditor::OnTreeSelChanged(wxTreeEvent&)
 		m_adapter.reset();
 		return;
 	}
-	// Rebuild the adapter for the newly selected element and show it.
+	// Rebuild the adapter for the newly selected element and show it. The Properties pane is
+	// created HIDDEN (mainFrameParts: Show(false)) and only appears when ShowInspector() is
+	// called — the visual editor / metadata tree do this on select, so the managed-form editor
+	// must too, otherwise the palette fills but stays invisible.
 	m_adapter = std::make_unique<ibManagedElementProperty>(el, this);
-	if (objectInspector != nullptr)
+	if (objectInspector != nullptr) {
 		objectInspector->SelectObject(m_adapter.get(), true);
+		objectInspector->ShowInspector();   // reveal the Properties palette (no-op if already shown)
+	}
 }
 
 void ibManagedFormEditor::OnTreeContextMenu(wxTreeEvent& event)
