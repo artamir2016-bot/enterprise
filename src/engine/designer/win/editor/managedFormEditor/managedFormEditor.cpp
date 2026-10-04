@@ -22,6 +22,7 @@
 #include "frontend/docView/docView.h"
 #include "frontend/mainFrame/objinspect/objinspect.h"
 #include "frontend/visualView/ctrl/form.h"
+#include "frontend/visualView/ctrl/frame.h"       // ibValueFrame — FindControlByName / GetControlName
 #include "frontend/visualView/visualHost.h"      // ibVisualHost — embedded preview host
 #include "win/editor/codeEditor/codeEditorDesigner.h"  // ibCodeEditorDesigner — Module tab
 #include "backend/metaCollection/metaFormObject.h"
@@ -628,6 +629,7 @@ void ibManagedFormEditor::OnTreeSelChanged(wxTreeEvent&)
 		if (objectInspector != nullptr)
 			objectInspector->SelectObject(nullptr);
 		m_adapter.reset();
+		HighlightInPreview(nullptr);   // clear any preview highlight
 		return;
 	}
 	// Rebuild the adapter for the newly selected element and show it. The Properties pane is
@@ -639,6 +641,7 @@ void ibManagedFormEditor::OnTreeSelChanged(wxTreeEvent&)
 		objectInspector->SelectObject(m_adapter.get(), true);
 		objectInspector->ShowInspector();   // reveal the Properties palette (no-op if already shown)
 	}
+	HighlightInPreview(el);   // highlight the matching control in the embedded preview
 }
 
 void ibManagedFormEditor::OnTreeContextMenu(wxTreeEvent& event)
@@ -763,6 +766,33 @@ void ibManagedFormEditor::PreviewForm()
 	form->ShowForm(static_cast<ibDocument*>(m_document), false);
 }
 
+void ibManagedFormEditor::HighlightInPreview(const ibManagedElement* el)
+{
+	// Restore the previously highlighted window (if it's still alive — it is, unless a rebuild
+	// cleared the pointer, which that path does before destroying windows).
+	if (m_highlightWin != nullptr) {
+		m_highlightWin->SetBackgroundColour(m_highlightOrig);
+		m_highlightWin->Refresh();
+		m_highlightWin = nullptr;
+	}
+	if (el == nullptr || el->name.IsEmpty() || m_previewForm == nullptr || m_previewHost == nullptr)
+		return;
+
+	// The compiler names each control after its element (managedFormCompiler: SetValue("Name",
+	// el.name)), so match by name, then map the ibValueFrame to its rendered wxWindow.
+	ibValueFrame* ctrl = m_previewForm->FindControlByName(el->name);
+	if (ctrl == nullptr)
+		return;
+	wxWindow* w = wxDynamicCast(m_previewHost->GetWxObject(ctrl), wxWindow);
+	if (w == nullptr)
+		return;   // e.g. a group backed by a bare sizer has no window to tint
+
+	m_highlightWin  = w;
+	m_highlightOrig = w->GetBackgroundColour();
+	w->SetBackgroundColour(wxColour(255, 243, 150));   // soft yellow selection tint
+	w->Refresh();
+}
+
 void ibManagedFormEditor::RefreshPreview()
 {
 	// Coalesce a burst of edits into one rebuild on the next event-loop turn.
@@ -776,6 +806,10 @@ void ibManagedFormEditor::DoRefreshPreview()
 {
 	if (m_previewHost == nullptr || m_managed == nullptr)
 		return;
+
+	// The rebuild destroys every preview window — drop the (now-dangling) highlight pointer WITHOUT
+	// touching the dead window.
+	m_highlightWin = nullptr;
 
 	// Tear down the previous embedded form.
 	m_previewHost->ClearVisualHost();
@@ -801,4 +835,5 @@ void ibManagedFormEditor::DoRefreshPreview()
 	m_previewForm = form;                    // GetValueForm() reads this slot
 	m_previewHost->CreateAndUpdateVisualHost();
 	m_previewPane->Layout();
+	HighlightInPreview(SelectedElement());   // re-light the current selection in the fresh preview
 }

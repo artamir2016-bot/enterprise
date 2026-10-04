@@ -123,6 +123,10 @@ private:
 	// Resolve where a new node of `kind` goes: the container vector to push into. Returns
 	// nullptr with a reason if the current selection forbids it.
 	ibManagedElement* ResolveInsertParent(ibManagedNodeKind kind, wxString& reason) const;
+	// Highlight the preview control that corresponds to `el` (matched by name), restoring the
+	// previous highlight first. Null clears it. No-op if the preview isn't rendered.
+	void HighlightInPreview(const ibManagedElement* el);
+
 	void MoveSelected(int dir);   // -1 up, +1 down
 	void PreviewForm();           // open the compiled form in a MODAL window (the "Test form" button)
 	// Rebuild the EMBEDDED preview in the bottom pane from the current element tree. Coalesced via
@@ -159,6 +163,11 @@ private:
 	// Form / Module tabs (1C-style). The Module page edits the form module's code.
 	wxNotebook*          m_mainBook   = nullptr;
 	ibCodeEditorDesigner* m_codeEditor = nullptr;
+
+	// Preview selection highlight: the currently highlighted preview window + its original colour
+	// (restored when the highlight moves). Cleared on every preview rebuild (windows are recreated).
+	wxWindow* m_highlightWin = nullptr;
+	wxColour  m_highlightOrig;
 
 	// One live adapter at a time; rebuilt per selection, never handed dangling.
 	std::unique_ptr<ibManagedElementProperty> m_adapter;
