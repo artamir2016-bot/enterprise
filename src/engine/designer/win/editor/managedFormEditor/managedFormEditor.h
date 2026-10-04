@@ -32,6 +32,7 @@ class wxSplitterWindow;
 class wxNotebook;
 class wxListCtrl;
 class wxListEvent;
+class ibVisualHost;
 
 class ibManagedFormEditor : public wxPanel {
 public:
@@ -122,7 +123,11 @@ private:
 	// nullptr with a reason if the current selection forbids it.
 	ibManagedElement* ResolveInsertParent(ibManagedNodeKind kind, wxString& reason) const;
 	void MoveSelected(int dir);   // -1 up, +1 down
-	void PreviewForm();
+	void PreviewForm();           // open the compiled form in a MODAL window (the "Test form" button)
+	// Rebuild the EMBEDDED preview in the bottom pane from the current element tree. Coalesced via
+	// CallAfter so a burst of edits recompiles once. No-op if there's no owner / empty tree.
+	void RefreshPreview();
+	void DoRefreshPreview();
 
 	ibMetaDocument*               m_document = nullptr;
 	ibValueMetaObjectManagedForm* m_managed  = nullptr;
@@ -146,13 +151,18 @@ private:
 	wxListCtrl*       m_attrList   = nullptr;    // Реквизиты
 	wxListCtrl*       m_cmdList    = nullptr;    // Команды
 	wxListCtrl*       m_paramList  = nullptr;    // Параметры
-	wxWindow*         m_previewPane = nullptr;   // bottom; embedded preview lands here later
+	wxWindow*         m_previewPane = nullptr;   // bottom container
+	ibVisualHost*     m_previewHost = nullptr;   // embedded live-form host inside m_previewPane
+	bool              m_refreshQueued = false;   // coalesce preview rebuilds
 
 	// One live adapter at a time; rebuilt per selection, never handed dangling.
 	std::unique_ptr<ibManagedElementProperty> m_adapter;
 
-	// The last ShowForm()ed preview form (ref-held; dropped on replace/close).
+	// The form rendered in the EMBEDDED preview pane (ref-held; dropped on rebuild/close).
 	ibValueForm* m_previewForm = nullptr;
+	// The form opened by the MODAL "Test form" button — a separate object (one ibValueForm cannot
+	// be both embedded and shown as a window).
+	ibValueForm* m_testForm = nullptr;
 
 	wxDECLARE_EVENT_TABLE();
 };

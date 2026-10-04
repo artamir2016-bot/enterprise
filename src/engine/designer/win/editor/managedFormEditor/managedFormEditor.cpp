@@ -22,7 +22,31 @@
 #include "frontend/docView/docView.h"
 #include "frontend/mainFrame/objinspect/objinspect.h"
 #include "frontend/visualView/ctrl/form.h"
+#include "frontend/visualView/visualHost.h"      // ibVisualHost — embedded preview host
 #include "backend/metaCollection/metaFormObject.h"
+
+namespace {
+// A minimal, read-only ibVisualHost for the embedded preview: it renders whatever ibValueForm the
+// editor hands it, with no document / source-object coupling (unlike ibVisualHostClient, whose
+// SetCaption dereferences a document). GetValueForm reads the editor's current preview form through
+// a slot pointer, so the editor can swap the form and rebuild without re-creating the host.
+class ibManagedPreviewHost : public ibVisualHost {
+public:
+	ibManagedPreviewHost(wxWindow* parent, ibValueForm** formSlot)
+		: ibVisualHost(parent, wxID_ANY), m_formSlot(formSlot) {}
+
+	virtual ibValueForm* GetValueForm() const override { return m_formSlot ? *m_formSlot : nullptr; }
+	virtual ibFrontendWindow* GetParentBackgroundWindow() const override
+		{ return const_cast<ibManagedPreviewHost*>(this); }
+	virtual ibFrontendWindow* GetBackgroundWindow() const override { return GetContentWindow(); }
+
+protected:
+	virtual void SetCaption(const wxString&) override {}   // no title bar in the preview pane
+
+private:
+	ibValueForm** m_formSlot = nullptr;
+};
+}
 
 // The Add-* command ids are CONTIGUOUS so one handler can map id -> node kind by offset.
 enum {
@@ -102,9 +126,17 @@ ibManagedFormEditor::~ibManagedFormEditor()
 	if (objectInspector != nullptr)
 		objectInspector->SelectObject(nullptr);
 	m_adapter.reset();
+	// Tear the embedded host's controls down before dropping its form (the host is destroyed with
+	// the panel; GetValueForm() reads m_previewForm, which we null here so late teardown is safe).
+	if (m_previewHost != nullptr)
+		m_previewHost->ClearVisualHost();
 	if (m_previewForm != nullptr) {
 		m_previewForm->DecrRef();
 		m_previewForm = nullptr;
+	}
+	if (m_testForm != nullptr) {
+		m_testForm->DecrRef();
+		m_testForm = nullptr;
 	}
 }
 
@@ -174,17 +206,16 @@ wxWindow* ibManagedFormEditor::BuildBody(wxWindow* parent)
 
 	m_topSplit->SplitVertically(m_tree, m_dataBook, 300);
 
-	// Preview pane (the embedded live form lands here in a later increment).
+	// Preview pane: an embedded live-form host that renders the compiled element tree.
 	m_previewPane = new wxPanel(m_outerSplit, wxID_ANY);
+	m_previewHost = new ibManagedPreviewHost(m_previewPane, &m_previewForm);
 	{
 		wxBoxSizer* ps = new wxBoxSizer(wxVERTICAL);
-		ps->Add(new wxStaticText(m_previewPane, wxID_ANY,
-			_("Preview — press \"Test form\" (embedded live preview coming next)")),
-			0, wxALL, 6);
+		ps->Add(m_previewHost, 1, wxEXPAND | wxALL, 2);
 		m_previewPane->SetSizer(ps);
 	}
 
-	m_outerSplit->SplitHorizontally(m_topSplit, m_previewPane, -150);  // ~150px preview strip
+	m_outerSplit->SplitHorizontally(m_topSplit, m_previewPane, -200);  // ~200px preview strip
 	return m_outerSplit;
 }
 
@@ -283,6 +314,7 @@ void ibManagedFormEditor::RebuildTree()
 	for (ibManagedElement& child : m_root.children)
 		AddTreeNode(rootItem, &child);
 	m_tree->ExpandAll();
+	RefreshPreview();   // structural edits (add/delete/move/undo/redo) all funnel through here
 }
 
 ibManagedElement* ibManagedFormEditor::SelectedElement() const
@@ -646,6 +678,7 @@ void ibManagedFormEditor::OnElementChanged(ibManagedElement* element)
 	}
 	if (m_document != nullptr)
 		MarkDirty();
+	RefreshPreview();   // a property edit (title / view kind / binding) changes the rendered form
 }
 
 std::vector<wxString> ibManagedFormEditor::AvailableBindings() const
@@ -684,6 +717,7 @@ std::vector<wxString> ibManagedFormEditor::AvailableBindings() const
 
 void ibManagedFormEditor::PreviewForm()
 {
+	// "Test form" — open the compiled form in a MODAL window (full interaction).
 	if (m_managed == nullptr)
 		return;
 	m_managed->SetElementTree(m_root, m_attrs);
@@ -701,8 +735,48 @@ void ibManagedFormEditor::PreviewForm()
 		return;
 	}
 	form->IncrRef();
-	if (m_previewForm != nullptr)
-		m_previewForm->DecrRef();
-	m_previewForm = form;
+	if (m_testForm != nullptr)
+		m_testForm->DecrRef();
+	m_testForm = form;
 	form->ShowForm(static_cast<ibDocument*>(m_document), false);
+}
+
+void ibManagedFormEditor::RefreshPreview()
+{
+	// Coalesce a burst of edits into one rebuild on the next event-loop turn.
+	if (m_refreshQueued || m_previewHost == nullptr)
+		return;
+	m_refreshQueued = true;
+	CallAfter([this]() { m_refreshQueued = false; DoRefreshPreview(); });
+}
+
+void ibManagedFormEditor::DoRefreshPreview()
+{
+	if (m_previewHost == nullptr || m_managed == nullptr)
+		return;
+
+	// Tear down the previous embedded form.
+	m_previewHost->ClearVisualHost();
+	if (m_previewForm != nullptr) {
+		m_previewForm->DecrRef();
+		m_previewForm = nullptr;
+	}
+
+	m_managed->SetElementTree(m_root, m_attrs);
+	const wxMemoryBuffer blob = m_managed->CompileElementsToFormData();
+	if (blob.IsEmpty()) {
+		m_previewPane->Layout();
+		return;   // empty tree / no owner → empty preview, never an error
+	}
+	m_managed->SetFormData(blob);
+
+	ibValueForm* form = new ibValueForm(m_managed, nullptr);
+	if (!m_managed->LoadFormData(form)) {
+		wxDELETE(form);
+		return;
+	}
+	form->IncrRef();
+	m_previewForm = form;                    // GetValueForm() reads this slot
+	m_previewHost->CreateAndUpdateVisualHost();
+	m_previewPane->Layout();
 }
