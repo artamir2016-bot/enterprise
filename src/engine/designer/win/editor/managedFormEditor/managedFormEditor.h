@@ -83,6 +83,9 @@ private:
 	void RebuildDataPanels();   // refill Attributes / Commands / Parameters from the working copy
 	// Double-click / Enter on a bindable Реквизиты node → add a bound field (or table) to the form.
 	void OnAttrActivated(wxTreeEvent& event);
+	// Add / delete a FORM-OWN attribute (exists while the form is open). Add prompts for name + type.
+	void OnAddAttribute(wxCommandEvent& event);
+	void OnDeleteAttribute(wxCommandEvent& event);
 	// Create a Field (or Table) bound to `dataPath`, titled `title`, placed by the usual rules.
 	ibManagedElement* AddBoundElement(const wxString& dataPath, const wxString& title, ibManagedNodeKind kind);
 	void RebuildTree();

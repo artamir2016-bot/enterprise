@@ -54,6 +54,7 @@ void ibManagedFormSerializer::Write(ibDataNode& node, const ibManagedElement& ro
 		an.SetValue(wxT("Name"), attrs[i].name);
 		an.SetValue<s32>(wxT("Id"), static_cast<s32>(attrs[i].id));
 		an.SetValue(wxT("Main"), attrs[i].isMain);
+		an.SetValue<s32>(wxT("Type"), static_cast<s32>(attrs[i].type));
 	}
 }
 
@@ -71,6 +72,8 @@ void ibManagedFormSerializer::Read(const ibDataNode& node, ibManagedElement& roo
 			attr.name   = an.GetValue<wxString>(wxT("Name"));
 			attr.id     = static_cast<ibMetaID>(an.GetValue<s32>(wxT("Id")));
 			attr.isMain = an.GetValue<bool>(wxT("Main"));
+			const s32 rawType = an.GetValue<s32>(wxT("Type"));   // 0 (absent / legacy) → String
+			attr.type   = rawType != 0 ? static_cast<ibValueTypes>(rawType) : ibValueTypes::TYPE_STRING;
 			attrs.push_back(attr);
 		}
 	}

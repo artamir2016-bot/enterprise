@@ -14,6 +14,8 @@
 #include <wx/stattext.h>
 #include <wx/panel.h>
 #include <wx/treebase.h>   // wxTreeEvent / wxTreeItemData
+#include <wx/textdlg.h>    // wxGetTextFromUser — new form attribute name
+#include <wx/choicdlg.h>   // wxGetSingleChoiceIndex — attribute type
 
 #include "frontend/win/ctrls/treelistctrl.h"   // ibTreeListCtrl — multi-column Реквизиты tree
 
@@ -55,11 +57,13 @@ private:
 // Payload on a bindable Реквизиты node: the dataPath to bind and which kind to create on activate.
 class ibBindingData : public wxTreeItemData {
 public:
-	ibBindingData(const wxString& path, const wxString& title, ibManagedNodeKind kind)
-		: m_path(path), m_title(title), m_kind(kind) {}
+	ibBindingData(const wxString& path, const wxString& title, ibManagedNodeKind kind,
+		bool isFormAttr = false)
+		: m_path(path), m_title(title), m_kind(kind), m_isFormAttr(isFormAttr) {}
 	wxString          m_path;
 	wxString          m_title;
 	ibManagedNodeKind m_kind;
+	bool              m_isFormAttr;   // a form-own attribute (deletable), vs an owner field/column
 };
 
 // Best-effort readable type for an attribute (primitives by value-type; reference/composite folds
@@ -94,6 +98,8 @@ enum {
 	ID_MFE_REDO,
 	ID_MFE_TEST,
 	ID_MFE_TREE,
+	ID_MFE_ADD_ATTR,
+	ID_MFE_DEL_ATTR,
 };
 
 wxBEGIN_EVENT_TABLE(ibManagedFormEditor, wxPanel)
@@ -111,6 +117,8 @@ EVT_MENU(ID_MFE_DOWN,        ibManagedFormEditor::OnMoveDown)
 // Every Add-* id (buttons AND menu items) funnels into OnAddElement.
 EVT_COMMAND_RANGE(ID_MFE_ADD_GROUP, ID_MFE_ADD__LAST, wxEVT_BUTTON, ibManagedFormEditor::OnAddElement)
 EVT_COMMAND_RANGE(ID_MFE_ADD_GROUP, ID_MFE_ADD__LAST, wxEVT_MENU,   ibManagedFormEditor::OnAddElement)
+EVT_BUTTON(ID_MFE_ADD_ATTR,  ibManagedFormEditor::OnAddAttribute)
+EVT_BUTTON(ID_MFE_DEL_ATTR,  ibManagedFormEditor::OnDeleteAttribute)
 EVT_TREE_SEL_CHANGED(ID_MFE_TREE, ibManagedFormEditor::OnTreeSelChanged)
 EVT_TREE_ITEM_MENU(ID_MFE_TREE,   ibManagedFormEditor::OnTreeContextMenu)
 wxEND_EVENT_TABLE()
@@ -229,16 +237,28 @@ wxWindow* ibManagedFormEditor::BuildBody(wxWindow* parent)
 	// Data notebook: Attributes / Commands / Parameters (the form's data, 1C «Реквизиты»).
 	m_dataBook = new wxNotebook(m_topSplit, wxID_ANY);
 
-	// Реквизиты as a hierarchical multi-column tree: Object expands into the owner's attributes /
-	// tabular sections (and sections into their columns), with a Тип column.
+	// Реквизиты page: a small toolbar (add / delete a form-own attribute) over a hierarchical
+	// multi-column tree. Object expands into the owner's attributes / tabular sections (sections
+	// into their columns), with a Тип column; form-own attributes list below.
+	wxPanel* attrPage = new wxPanel(m_dataBook, wxID_ANY);
+	wxBoxSizer* attrSizer = new wxBoxSizer(wxVERTICAL);
+	wxBoxSizer* attrBar   = new wxBoxSizer(wxHORIZONTAL);
+	attrBar->Add(new wxButton(attrPage, ID_MFE_ADD_ATTR, _("Add attribute"),
+		wxDefaultPosition, wxDefaultSize, 0, wxDefaultValidator, wxT("mfeAddAttr")), 0, wxALL, 1);
+	attrBar->Add(new wxButton(attrPage, ID_MFE_DEL_ATTR, _("Delete attribute"),
+		wxDefaultPosition, wxDefaultSize, 0, wxDefaultValidator, wxT("mfeDelAttr")), 0, wxALL, 1);
+	attrSizer->Add(attrBar, 0, wxEXPAND);
+
 	// Pass an explicit validator + name: the ctor's default name arg references an unexported
 	// symbol (ibTreeListCtrlNameStr), so spelling it out keeps the link clean.
-	m_attrTree = new ibTreeListCtrl(m_dataBook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+	m_attrTree = new ibTreeListCtrl(attrPage, wxID_ANY, wxDefaultPosition, wxDefaultSize,
 		wxTR_DEFAULT_STYLE | wxTR_HIDE_ROOT | wxTR_FULL_ROW_HIGHLIGHT,
 		wxDefaultValidator, wxT("mfeAttrTree"));
 	m_attrTree->AddColumn(_("Attribute"), 190, wxALIGN_LEFT);
 	m_attrTree->AddColumn(_("Type"),      200, wxALIGN_LEFT);
 	m_attrTree->Bind(wxEVT_COMMAND_TREE_ITEM_ACTIVATED, &ibManagedFormEditor::OnAttrActivated, this);
+	attrSizer->Add(m_attrTree, 1, wxEXPAND);
+	attrPage->SetSizer(attrSizer);
 
 	m_cmdList = new wxListCtrl(m_dataBook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
 		wxLC_REPORT | wxLC_SINGLE_SEL);
@@ -249,7 +269,7 @@ wxWindow* ibManagedFormEditor::BuildBody(wxWindow* parent)
 	m_paramList->AppendColumn(_("Parameter"), wxLIST_FORMAT_LEFT, 150);
 	m_paramList->AppendColumn(_("Type"),      wxLIST_FORMAT_LEFT, 170);
 
-	m_dataBook->AddPage(m_attrTree,  _("Attributes"), true);
+	m_dataBook->AddPage(attrPage,    _("Attributes"), true);
 	m_dataBook->AddPage(m_cmdList,   _("Commands"));
 	m_dataBook->AddPage(m_paramList, _("Parameters"));
 
@@ -350,11 +370,18 @@ void ibManagedFormEditor::RebuildDataPanels()
 		m_attrTree->Expand(objItem);
 	}
 
-	// The form's own attributes (session-lived — they exist while the form is open).
+	// The form's own attributes (session-lived — they exist while the form is open). Deletable.
 	for (const ibManagedAttribute& a : m_attrs) {
 		wxTreeItemId it = m_attrTree->AppendItem(root, a.name, -1, -1,
-			new ibBindingData(a.name, a.name, ibManagedNodeKind::Field));
-		m_attrTree->SetItemText(it, 1, _("String"));
+			new ibBindingData(a.name, a.name, ibManagedNodeKind::Field, /*isFormAttr*/ true));
+		wxString tn;
+		switch (a.type) {
+		case ibValueTypes::TYPE_NUMBER:  tn = _("Number");  break;
+		case ibValueTypes::TYPE_BOOLEAN: tn = _("Boolean"); break;
+		case ibValueTypes::TYPE_DATE:    tn = _("Date");    break;
+		default:                         tn = _("String");  break;
+		}
+		m_attrTree->SetItemText(it, 1, tn);
 	}
 
 	m_cmdList->DeleteAllItems();     // Commands — read-only placeholder (mirrors the 1C tab)
@@ -387,6 +414,53 @@ ibManagedElement* ibManagedFormEditor::AddBoundElement(const wxString& dataPath,
 	RebuildTree();        // relabel + refresh preview with the binding applied
 	MarkDirty();
 	return node;
+}
+
+void ibManagedFormEditor::OnAddAttribute(wxCommandEvent&)
+{
+	if (!IsEditable())
+		return;
+	const wxString name = wxGetTextFromUser(_("Attribute name:"), _("New form attribute"),
+		UniqueName(wxT("Attribute")), this);
+	if (name.IsEmpty())
+		return;
+
+	const wxArrayString kinds{ _("String"), _("Number"), _("Boolean"), _("Date") };
+	const int sel = wxGetSingleChoiceIndex(_("Type:"), _("New form attribute"), kinds, this);
+	if (sel < 0)
+		return;
+	static const ibValueTypes typeOf[] = {
+		ibValueTypes::TYPE_STRING, ibValueTypes::TYPE_NUMBER,
+		ibValueTypes::TYPE_BOOLEAN, ibValueTypes::TYPE_DATE };
+
+	PushUndoSnapshot();
+	ibManagedAttribute attr;
+	attr.name   = name;
+	attr.isMain = false;
+	attr.type   = typeOf[sel];
+	m_attrs.push_back(attr);
+
+	RebuildDataPanels();
+	MarkDirty();          // flush to the metaobject
+	RefreshPreview();     // the new attribute can now be bound / shown
+}
+
+void ibManagedFormEditor::OnDeleteAttribute(wxCommandEvent&)
+{
+	if (!IsEditable() || m_attrTree == nullptr)
+		return;
+	auto* data = dynamic_cast<ibBindingData*>(m_attrTree->GetItemData(m_attrTree->GetSelection()));
+	if (data == nullptr || !data->m_isFormAttr) {
+		wxLogStatus(wxT("%s"), _("Select a form attribute to delete (owner fields cannot be removed here)."));
+		return;
+	}
+	PushUndoSnapshot();
+	for (auto it = m_attrs.begin(); it != m_attrs.end(); ++it) {
+		if (it->name == data->m_path) { m_attrs.erase(it); break; }
+	}
+	RebuildDataPanels();
+	MarkDirty();
+	RefreshPreview();
 }
 
 bool ibManagedFormEditor::SaveForm()
@@ -809,6 +883,11 @@ std::vector<wxString> ibManagedFormEditor::AvailableBindings() const
 	// resolver accepts (see CompileElementsToFormData). An object managed form binds through
 	// the owner; a managed form with no business owner offers nothing.
 	std::vector<wxString> out;
+	// Form-own attributes bind directly by name.
+	for (const ibManagedAttribute& a : m_attrs)
+		if (!a.name.IsEmpty())
+			out.push_back(a.name);
+
 	const auto* owner = m_managed != nullptr
 		? dynamic_cast<const ibValueMetaObjectGenericData*>(m_managed->GetParent())
 		: nullptr;

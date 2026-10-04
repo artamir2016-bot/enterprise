@@ -93,6 +93,9 @@ struct ibManagedAttribute {
 	wxString  name;
 	ibMetaID  id      = wxNOT_FOUND;   // the attribute's own metaId (assigned by the owner)
 	bool      isMain  = false;
+	// The attribute's primitive value type (form-own attributes created in the editor). The MAIN
+	// attribute is typed to the owning object instead and ignores this. Default String.
+	ibValueTypes type = ibValueTypes::TYPE_STRING;
 };
 
 #endif

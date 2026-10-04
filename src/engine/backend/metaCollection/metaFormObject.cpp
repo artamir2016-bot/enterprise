@@ -459,10 +459,19 @@ wxMemoryBuffer ibValueMetaObjectManagedForm::CompileElementsToFormData() const
 		}
 	}
 
+	// Form-own attributes (created in the editor): name -> their own form-attribute id. A field bound
+	// to one resolves DIRECTLY (1-hop), not through the main Object attribute. Populated below as the
+	// nodes are emitted; the resolver captures it by reference.
+	std::map<wxString, ibMetaID> formAttrs;
+
 	ibManagedFormCompiler::Resolver resolve =
-		[&attrs, &tabs](const wxString& dataPath) -> std::vector<ibSourceId> {
+		[&attrs, &tabs, &formAttrs](const wxString& dataPath) -> std::vector<ibSourceId> {
 			if (dataPath.IsEmpty())
 				return {};
+			// A form-own attribute binds straight to itself (1-hop), not through Object.
+			auto fa = formAttrs.find(dataPath);
+			if (fa != formAttrs.end())
+				return { fa->second };
 			const int dot = dataPath.Find('.');
 			if (dot != wxNOT_FOUND) {
 				const wxString section = dataPath.Left(dot);
@@ -500,6 +509,25 @@ wxMemoryBuffer ibValueMetaObjectManagedForm::CompileElementsToFormData() const
 	ibDataValue typeVal;
 	ibTypeDescriptionMemory::WriteNode(typeVal, td, metaData);
 	mainAttr.SetProperty(wxT("Type"), typeVal);
+
+	// Form-own attributes: each gets its own FormAttributeValue (id 2, 3, …), typed to the primitive
+	// the editor assigned, and a formAttrs entry so bound fields resolve 1-hop to it.
+	s32 nextAttrId = 2;
+	for (const ibManagedAttribute& fa : m_elementAttrs) {
+		if (fa.name.IsEmpty())
+			continue;
+		const s32 attrId = nextAttrId++;
+		ibDataNode& an = attrsNode.AddChild(system_to_clsid("FormAttributeValue"), attrId);
+		an.SetValue(wxT("AttributeId"), attrId);
+		an.SetValue(wxT("Main"), false);
+		an.SetProp<wxString>(wxT("Name"), fa.name);
+		ibTypeDescription ftd;
+		ftd.SetDefaultMetaType(fa.type);
+		ibDataValue ftv;
+		ibTypeDescriptionMemory::WriteNode(ftv, ftd, metaData);
+		an.SetProperty(wxT("Type"), ftv);
+		formAttrs[fa.name] = attrId;
+	}
 
 	// Emit the control tree (children start at id 2 inside the compiler). Auto
 	// fields pick their control from the bound attribute's type.
