@@ -28,6 +28,11 @@ class ibValueMetaObjectManagedForm;
 class ibValueForm;
 class ibManagedElementProperty;
 
+class wxSplitterWindow;
+class wxNotebook;
+class wxListCtrl;
+class wxListEvent;
+
 class ibManagedFormEditor : public wxPanel {
 public:
 
@@ -68,6 +73,10 @@ private:
 	};
 
 	void BuildToolbar(wxSizer* sizer);
+	// Build the 3-pane body: [elements tree | Attributes/Commands/Parameters notebook] over a
+	// preview pane. Returns the top-level window to add under the toolbar.
+	wxWindow* BuildBody(wxWindow* parent);
+	void RebuildDataPanels();   // refill Attributes / Commands / Parameters from the working copy
 	void RebuildTree();
 	void AddTreeNode(const wxTreeItemId& parentItem, ibManagedElement* el);
 	wxString ElementLabel(const ibManagedElement* el) const;
@@ -128,6 +137,16 @@ private:
 	static constexpr size_t kMaxUndo = 100;
 
 	wxTreeCtrl* m_tree = nullptr;
+
+	// 3-pane body (1C-style). The data notebook lists the form's data on the right; the preview
+	// pane hosts the compiled form at the bottom (filled in a later increment).
+	wxSplitterWindow* m_outerSplit = nullptr;   // body (top) over preview (bottom)
+	wxSplitterWindow* m_topSplit   = nullptr;   // tree (left) | data notebook (right)
+	wxNotebook*       m_dataBook   = nullptr;
+	wxListCtrl*       m_attrList   = nullptr;    // Реквизиты
+	wxListCtrl*       m_cmdList    = nullptr;    // Команды
+	wxListCtrl*       m_paramList  = nullptr;    // Параметры
+	wxWindow*         m_previewPane = nullptr;   // bottom; embedded preview lands here later
 
 	// One live adapter at a time; rebuilt per selection, never handed dangling.
 	std::unique_ptr<ibManagedElementProperty> m_adapter;

@@ -8,6 +8,11 @@
 #include <wx/log.h>
 #include <wx/accel.h>
 #include <wx/wrapsizer.h>
+#include <wx/splitter.h>
+#include <wx/notebook.h>
+#include <wx/listctrl.h>
+#include <wx/stattext.h>
+#include <wx/panel.h>
 
 #include "backend/metaCollection/genericData.h"                   // ibValueMetaObjectGenericData
 #include "backend/metaCollection/attribute/metaAttributeObject.h" // ibValueMetaObjectAttribute
@@ -80,11 +85,7 @@ ibManagedFormEditor::ibManagedFormEditor(ibMetaDocument* document, wxWindow* par
 {
 	wxBoxSizer* sizerMain = new wxBoxSizer(wxVERTICAL);
 	BuildToolbar(sizerMain);
-
-	m_tree = new wxTreeCtrl(this, ID_MFE_TREE, wxDefaultPosition, wxDefaultSize,
-		wxTR_HIDE_ROOT | wxTR_HAS_BUTTONS | wxTR_LINES_AT_ROOT | wxTR_SINGLE | wxTR_DEFAULT_STYLE);
-	sizerMain->Add(m_tree, 1, wxEXPAND | wxALL, 2);
-
+	sizerMain->Add(BuildBody(this), 1, wxEXPAND | wxALL, 2);
 	SetSizer(sizerMain);
 
 	// Ctrl+Z / Ctrl+Y undo-redo (and Ctrl+Shift+Z as a common redo alias).
@@ -133,6 +134,60 @@ void ibManagedFormEditor::BuildToolbar(wxSizer* sizer)
 	sizer->Add(bar, 0, wxEXPAND);
 }
 
+wxWindow* ibManagedFormEditor::BuildBody(wxWindow* parent)
+{
+	// Outer split: the editing body (top) over the preview pane (bottom).
+	m_outerSplit = new wxSplitterWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+		wxSP_3D | wxSP_LIVE_UPDATE);
+	m_outerSplit->SetSashGravity(1.0);      // the body absorbs vertical growth; preview keeps height
+	m_outerSplit->SetMinimumPaneSize(48);
+
+	// Top split: element tree (left) | data notebook (right).
+	m_topSplit = new wxSplitterWindow(m_outerSplit, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+		wxSP_3D | wxSP_LIVE_UPDATE);
+	m_topSplit->SetSashGravity(0.6);
+	m_topSplit->SetMinimumPaneSize(140);
+
+	m_tree = new wxTreeCtrl(m_topSplit, ID_MFE_TREE, wxDefaultPosition, wxDefaultSize,
+		wxTR_HIDE_ROOT | wxTR_HAS_BUTTONS | wxTR_LINES_AT_ROOT | wxTR_SINGLE | wxTR_DEFAULT_STYLE);
+
+	// Data notebook: Attributes / Commands / Parameters (the form's data, 1C «Реквизиты»).
+	m_dataBook = new wxNotebook(m_topSplit, wxID_ANY);
+
+	m_attrList = new wxListCtrl(m_dataBook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+		wxLC_REPORT | wxLC_SINGLE_SEL);
+	m_attrList->AppendColumn(_("Attribute"), wxLIST_FORMAT_LEFT, 150);
+	m_attrList->AppendColumn(_("Type"),      wxLIST_FORMAT_LEFT, 170);
+
+	m_cmdList = new wxListCtrl(m_dataBook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+		wxLC_REPORT | wxLC_SINGLE_SEL);
+	m_cmdList->AppendColumn(_("Command"), wxLIST_FORMAT_LEFT, 220);
+
+	m_paramList = new wxListCtrl(m_dataBook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+		wxLC_REPORT | wxLC_SINGLE_SEL);
+	m_paramList->AppendColumn(_("Parameter"), wxLIST_FORMAT_LEFT, 150);
+	m_paramList->AppendColumn(_("Type"),      wxLIST_FORMAT_LEFT, 170);
+
+	m_dataBook->AddPage(m_attrList,  _("Attributes"), true);
+	m_dataBook->AddPage(m_cmdList,   _("Commands"));
+	m_dataBook->AddPage(m_paramList, _("Parameters"));
+
+	m_topSplit->SplitVertically(m_tree, m_dataBook, 300);
+
+	// Preview pane (the embedded live form lands here in a later increment).
+	m_previewPane = new wxPanel(m_outerSplit, wxID_ANY);
+	{
+		wxBoxSizer* ps = new wxBoxSizer(wxVERTICAL);
+		ps->Add(new wxStaticText(m_previewPane, wxID_ANY,
+			_("Preview — press \"Test form\" (embedded live preview coming next)")),
+			0, wxALL, 6);
+		m_previewPane->SetSizer(ps);
+	}
+
+	m_outerSplit->SplitHorizontally(m_topSplit, m_previewPane, -150);  // ~150px preview strip
+	return m_outerSplit;
+}
+
 bool ibManagedFormEditor::IsEditable() const
 {
 	return m_managed != nullptr && m_managed->IsEditable();
@@ -151,7 +206,38 @@ bool ibManagedFormEditor::LoadForm()
 	m_root  = m_managed->GetElementRoot();
 	m_attrs = m_managed->GetElementAttrs();
 	RebuildTree();
+	RebuildDataPanels();
 	return true;
+}
+
+void ibManagedFormEditor::RebuildDataPanels()
+{
+	if (m_attrList == nullptr)
+		return;
+
+	// Attributes («Реквизиты»): the main "Object" attribute (typed to the owning business object,
+	// as the compiler emits it) followed by the form's own attributes.
+	m_attrList->DeleteAllItems();
+	const auto* owner = m_managed != nullptr
+		? dynamic_cast<const ibValueMetaObjectGenericData*>(m_managed->GetParent()) : nullptr;
+	long row = 0;
+	if (owner != nullptr) {
+		row = m_attrList->InsertItem(row, wxT("Object"));
+		m_attrList->SetItem(row, 1, owner->GetName());
+		++row;
+	}
+	for (const ibManagedAttribute& a : m_attrs) {
+		row = m_attrList->InsertItem(row, a.name);
+		m_attrList->SetItem(row, 1, wxEmptyString);
+		++row;
+	}
+
+	// Commands: form commands a Button element references (by its command id). Listed read-only
+	// for now; a command editor is a later increment.
+	m_cmdList->DeleteAllItems();
+
+	// Parameters: none modelled yet (placeholder page to mirror the 1C layout).
+	m_paramList->DeleteAllItems();
 }
 
 bool ibManagedFormEditor::SaveForm()
