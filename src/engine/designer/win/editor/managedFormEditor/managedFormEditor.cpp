@@ -23,6 +23,7 @@
 #include "frontend/mainFrame/objinspect/objinspect.h"
 #include "frontend/visualView/ctrl/form.h"
 #include "frontend/visualView/visualHost.h"      // ibVisualHost — embedded preview host
+#include "win/editor/codeEditor/codeEditorDesigner.h"  // ibCodeEditorDesigner — Module tab
 #include "backend/metaCollection/metaFormObject.h"
 
 namespace {
@@ -107,9 +108,23 @@ static ibManagedNodeKind KindForAddId(int id)
 ibManagedFormEditor::ibManagedFormEditor(ibMetaDocument* document, wxWindow* parent, wxWindowID id)
 	: wxPanel(parent, id), m_document(document)
 {
+	// Top-level Form / Module notebook (1C-style). The Form page holds the toolbar + 3-pane body;
+	// the Module page is the form-module code editor.
 	wxBoxSizer* sizerMain = new wxBoxSizer(wxVERTICAL);
-	BuildToolbar(sizerMain);
-	sizerMain->Add(BuildBody(this), 1, wxEXPAND | wxALL, 2);
+	m_mainBook = new wxNotebook(this, wxID_ANY);
+
+	wxPanel* formPage = new wxPanel(m_mainBook, wxID_ANY);
+	wxBoxSizer* formSizer = new wxBoxSizer(wxVERTICAL);
+	BuildToolbar(formPage, formSizer);
+	formSizer->Add(BuildBody(formPage), 1, wxEXPAND | wxALL, 2);
+	formPage->SetSizer(formSizer);
+
+	m_codeEditor = new ibCodeEditorDesigner(m_document, m_mainBook, wxID_ANY);
+
+	m_mainBook->AddPage(formPage,     _("Form"),   true);
+	m_mainBook->AddPage(m_codeEditor, _("Module"));
+
+	sizerMain->Add(m_mainBook, 1, wxEXPAND);
 	SetSizer(sizerMain);
 
 	// Ctrl+Z / Ctrl+Y undo-redo (and Ctrl+Shift+Z as a common redo alias).
@@ -140,14 +155,15 @@ ibManagedFormEditor::~ibManagedFormEditor()
 	}
 }
 
-void ibManagedFormEditor::BuildToolbar(wxSizer* sizer)
+void ibManagedFormEditor::BuildToolbar(wxWindow* parent, wxSizer* sizer)
 {
 	// A WRAP sizer: when the editor pane is narrow the buttons flow onto a second row
 	// instead of collapsing to zero width (which would make them unclickable). Common
 	// kinds live here; the full set (Column / Pages / Page / Decoration) is in the tree
-	// context menu.
-	auto mkBtn = [this](int id, const wxString& label, const wxString& name) {
-		return new wxButton(this, id, label, wxDefaultPosition, wxDefaultSize, 0,
+	// context menu. Buttons parent to the Form page; their command events still propagate up
+	// to this editor's event table.
+	auto mkBtn = [parent](int id, const wxString& label, const wxString& name) {
+		return new wxButton(parent, id, label, wxDefaultPosition, wxDefaultSize, 0,
 			wxDefaultValidator, name);
 	};
 	wxWrapSizer* bar = new wxWrapSizer(wxHORIZONTAL);
@@ -238,6 +254,10 @@ bool ibManagedFormEditor::LoadForm()
 	m_attrs = m_managed->GetElementAttrs();
 	RebuildTree();
 	RebuildDataPanels();
+	// Load the form module's code into the Module tab (the form IS an ibValueMetaObjectModuleBase,
+	// so the editor binds to it through the document).
+	if (m_codeEditor != nullptr)
+		m_codeEditor->LoadModule();
 	return true;
 }
 
@@ -276,6 +296,8 @@ bool ibManagedFormEditor::SaveForm()
 	if (m_managed == nullptr)
 		return false;
 	m_managed->SetElementTree(m_root, m_attrs);
+	if (m_codeEditor != nullptr)
+		m_codeEditor->SaveModule();   // flush the Module tab's code onto the form module
 	return true;
 }
 

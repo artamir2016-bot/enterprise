@@ -33,6 +33,7 @@ class wxNotebook;
 class wxListCtrl;
 class wxListEvent;
 class ibVisualHost;
+class ibCodeEditorDesigner;
 
 class ibManagedFormEditor : public wxPanel {
 public:
@@ -73,7 +74,7 @@ private:
 		ibManagedElement* m_element;
 	};
 
-	void BuildToolbar(wxSizer* sizer);
+	void BuildToolbar(wxWindow* parent, wxSizer* sizer);
 	// Build the 3-pane body: [elements tree | Attributes/Commands/Parameters notebook] over a
 	// preview pane. Returns the top-level window to add under the toolbar.
 	wxWindow* BuildBody(wxWindow* parent);
@@ -154,6 +155,10 @@ private:
 	wxWindow*         m_previewPane = nullptr;   // bottom container
 	ibVisualHost*     m_previewHost = nullptr;   // embedded live-form host inside m_previewPane
 	bool              m_refreshQueued = false;   // coalesce preview rebuilds
+
+	// Form / Module tabs (1C-style). The Module page edits the form module's code.
+	wxNotebook*          m_mainBook   = nullptr;
+	ibCodeEditorDesigner* m_codeEditor = nullptr;
 
 	// One live adapter at a time; rebuilt per selection, never handed dangling.
 	std::unique_ptr<ibManagedElementProperty> m_adapter;
