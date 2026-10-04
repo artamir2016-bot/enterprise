@@ -13,6 +13,9 @@
 #include <wx/listctrl.h>
 #include <wx/stattext.h>
 #include <wx/panel.h>
+#include <wx/treebase.h>   // wxTreeEvent / wxTreeItemData
+
+#include "frontend/win/ctrls/treelistctrl.h"   // ibTreeListCtrl — multi-column Реквизиты tree
 
 #include "backend/metaCollection/genericData.h"                   // ibValueMetaObjectGenericData
 #include "backend/metaCollection/attribute/metaAttributeObject.h" // ibValueMetaObjectAttribute
@@ -48,6 +51,29 @@ protected:
 private:
 	ibValueForm** m_formSlot = nullptr;
 };
+
+// Payload on a bindable Реквизиты node: the dataPath to bind and which kind to create on activate.
+class ibBindingData : public wxTreeItemData {
+public:
+	ibBindingData(const wxString& path, const wxString& title, ibManagedNodeKind kind)
+		: m_path(path), m_title(title), m_kind(kind) {}
+	wxString          m_path;
+	wxString          m_title;
+	ibManagedNodeKind m_kind;
+};
+
+// Best-effort readable type for an attribute (primitives by value-type; reference/composite folds
+// to "Reference"). Good enough for the Тип column; an exact "CatalogRef.X" presentation is a later
+// refinement.
+wxString AttrTypeString(ibValueMetaObjectAttribute* a)
+{
+	if (a == nullptr) return wxEmptyString;
+	if (a->ContainType(ibValueTypes::TYPE_BOOLEAN)) return _("Boolean");
+	if (a->ContainType(ibValueTypes::TYPE_NUMBER))  return _("Number");
+	if (a->ContainType(ibValueTypes::TYPE_STRING))  return _("String");
+	if (a->ContainType(ibValueTypes::TYPE_DATE))    return _("Date");
+	return _("Reference");
+}
 }
 
 // The Add-* command ids are CONTIGUOUS so one handler can map id -> node kind by offset.
@@ -203,10 +229,16 @@ wxWindow* ibManagedFormEditor::BuildBody(wxWindow* parent)
 	// Data notebook: Attributes / Commands / Parameters (the form's data, 1C «Реквизиты»).
 	m_dataBook = new wxNotebook(m_topSplit, wxID_ANY);
 
-	m_attrList = new wxListCtrl(m_dataBook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-		wxLC_REPORT | wxLC_SINGLE_SEL);
-	m_attrList->AppendColumn(_("Attribute"), wxLIST_FORMAT_LEFT, 150);
-	m_attrList->AppendColumn(_("Type"),      wxLIST_FORMAT_LEFT, 170);
+	// Реквизиты as a hierarchical multi-column tree: Object expands into the owner's attributes /
+	// tabular sections (and sections into their columns), with a Тип column.
+	// Pass an explicit validator + name: the ctor's default name arg references an unexported
+	// symbol (ibTreeListCtrlNameStr), so spelling it out keeps the link clean.
+	m_attrTree = new ibTreeListCtrl(m_dataBook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+		wxTR_DEFAULT_STYLE | wxTR_HIDE_ROOT | wxTR_FULL_ROW_HIGHLIGHT,
+		wxDefaultValidator, wxT("mfeAttrTree"));
+	m_attrTree->AddColumn(_("Attribute"), 190, wxALIGN_LEFT);
+	m_attrTree->AddColumn(_("Type"),      200, wxALIGN_LEFT);
+	m_attrTree->Bind(wxEVT_COMMAND_TREE_ITEM_ACTIVATED, &ibManagedFormEditor::OnAttrActivated, this);
 
 	m_cmdList = new wxListCtrl(m_dataBook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
 		wxLC_REPORT | wxLC_SINGLE_SEL);
@@ -217,7 +249,7 @@ wxWindow* ibManagedFormEditor::BuildBody(wxWindow* parent)
 	m_paramList->AppendColumn(_("Parameter"), wxLIST_FORMAT_LEFT, 150);
 	m_paramList->AppendColumn(_("Type"),      wxLIST_FORMAT_LEFT, 170);
 
-	m_dataBook->AddPage(m_attrList,  _("Attributes"), true);
+	m_dataBook->AddPage(m_attrTree,  _("Attributes"), true);
 	m_dataBook->AddPage(m_cmdList,   _("Commands"));
 	m_dataBook->AddPage(m_paramList, _("Parameters"));
 
@@ -264,32 +296,97 @@ bool ibManagedFormEditor::LoadForm()
 
 void ibManagedFormEditor::RebuildDataPanels()
 {
-	if (m_attrList == nullptr)
+	if (m_attrTree == nullptr)
 		return;
 
-	// Attributes («Реквизиты»): the main "Object" attribute (typed to the owning business object,
-	// as the compiler emits it) followed by the form's own attributes.
-	m_attrList->DeleteAllItems();
-	const auto* owner = m_managed != nullptr
-		? dynamic_cast<const ibValueMetaObjectGenericData*>(m_managed->GetParent()) : nullptr;
-	long row = 0;
+	m_attrTree->DeleteRoot();
+	wxTreeItemId root = m_attrTree->AddRoot(wxT("root"));
+
+	auto* owner = m_managed != nullptr
+		? dynamic_cast<ibValueMetaObjectGenericData*>(m_managed->GetParent()) : nullptr;
+
+	// The main "Object" attribute, typed to the owning business object (as the compiler emits it),
+	// expands into the owner's fields and tabular sections — double-clicking a leaf binds a field.
 	if (owner != nullptr) {
-		row = m_attrList->InsertItem(row, wxT("Object"));
-		m_attrList->SetItem(row, 1, owner->GetName());
-		++row;
+		wxTreeItemId objItem = m_attrTree->AppendItem(root, wxT("Object"));
+		m_attrTree->SetItemText(objItem, 1, owner->GetName());
+		m_attrTree->SetItemBold(objItem, true);
+
+		if (auto* h = dynamic_cast<ibValueMetaObjectRecordDataHierarchyMutableRef*>(owner)) {
+			if (auto* code = dynamic_cast<ibValueMetaObjectAttribute*>(h->GetDataCode())) {
+				wxTreeItemId it = m_attrTree->AppendItem(objItem, wxT("Code"), -1, -1,
+					new ibBindingData(wxT("Code"), wxT("Code"), ibManagedNodeKind::Field));
+				m_attrTree->SetItemText(it, 1, AttrTypeString(code));
+			}
+			if (auto* desc = dynamic_cast<ibValueMetaObjectAttribute*>(h->GetDataDescription())) {
+				wxTreeItemId it = m_attrTree->AppendItem(objItem, wxT("Description"), -1, -1,
+					new ibBindingData(wxT("Description"), wxT("Description"), ibManagedNodeKind::Field));
+				m_attrTree->SetItemText(it, 1, AttrTypeString(desc));
+			}
+		}
+		for (unsigned int i = 0; i < owner->GetChildCount(); ++i) {
+			ibValueMetaObject* child = owner->GetChild(i);
+			if (child == nullptr) continue;
+			if (auto* a = dynamic_cast<ibValueMetaObjectAttribute*>(child)) {
+				wxTreeItemId it = m_attrTree->AppendItem(objItem, a->GetName(), -1, -1,
+					new ibBindingData(a->GetName(), a->GetName(), ibManagedNodeKind::Field));
+				m_attrTree->SetItemText(it, 1, AttrTypeString(a));
+			}
+			else if (child->GetClassType() == g_metaTableRefCLSID) {
+				const wxString section = child->GetName();
+				wxTreeItemId secItem = m_attrTree->AppendItem(objItem, section, -1, -1,
+					new ibBindingData(section, section, ibManagedNodeKind::Table));
+				m_attrTree->SetItemText(secItem, 1, _("ValueTable"));
+				for (unsigned int j = 0; j < child->GetChildCount(); ++j) {
+					if (auto* col = dynamic_cast<ibValueMetaObjectAttribute*>(child->GetChild(j))) {
+						const wxString path = section + wxT(".") + col->GetName();
+						wxTreeItemId it = m_attrTree->AppendItem(secItem, col->GetName(), -1, -1,
+							new ibBindingData(path, col->GetName(), ibManagedNodeKind::Column));
+						m_attrTree->SetItemText(it, 1, AttrTypeString(col));
+					}
+				}
+			}
+		}
+		m_attrTree->Expand(objItem);
 	}
+
+	// The form's own attributes (session-lived — they exist while the form is open).
 	for (const ibManagedAttribute& a : m_attrs) {
-		row = m_attrList->InsertItem(row, a.name);
-		m_attrList->SetItem(row, 1, wxEmptyString);
-		++row;
+		wxTreeItemId it = m_attrTree->AppendItem(root, a.name, -1, -1,
+			new ibBindingData(a.name, a.name, ibManagedNodeKind::Field));
+		m_attrTree->SetItemText(it, 1, _("String"));
 	}
 
-	// Commands: form commands a Button element references (by its command id). Listed read-only
-	// for now; a command editor is a later increment.
-	m_cmdList->DeleteAllItems();
+	m_cmdList->DeleteAllItems();     // Commands — read-only placeholder (mirrors the 1C tab)
+	m_paramList->DeleteAllItems();   // Parameters — placeholder
+}
 
-	// Parameters: none modelled yet (placeholder page to mirror the 1C layout).
-	m_paramList->DeleteAllItems();
+void ibManagedFormEditor::OnAttrActivated(wxTreeEvent& event)
+{
+	if (!IsEditable())
+		return;
+	auto* data = dynamic_cast<ibBindingData*>(m_attrTree->GetItemData(event.GetItem()));
+	if (data == nullptr)
+		return;   // a container row (Object / a section) — nothing to bind directly
+	AddBoundElement(data->m_path, data->m_title, data->m_kind);
+}
+
+ibManagedElement* ibManagedFormEditor::AddBoundElement(const wxString& dataPath,
+	const wxString& title, ibManagedNodeKind kind)
+{
+	// Columns can only live in a Table; for a double-click bind, fall back to a Field so the node
+	// is always placeable (a column dragged onto a table is handled by the drag path later).
+	if (kind == ibManagedNodeKind::Column)
+		kind = ibManagedNodeKind::Field;
+
+	ibManagedElement* node = AddElement(kind);   // honours containment rules + undo snapshot
+	if (node == nullptr)
+		return nullptr;
+	node->dataPath = dataPath;
+	node->title    = title;
+	RebuildTree();        // relabel + refresh preview with the binding applied
+	MarkDirty();
+	return node;
 }
 
 bool ibManagedFormEditor::SaveForm()

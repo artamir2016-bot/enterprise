@@ -34,6 +34,8 @@ class wxListCtrl;
 class wxListEvent;
 class ibVisualHost;
 class ibCodeEditorDesigner;
+class ibTreeListCtrl;
+class wxTreeEvent;
 
 class ibManagedFormEditor : public wxPanel {
 public:
@@ -79,6 +81,10 @@ private:
 	// preview pane. Returns the top-level window to add under the toolbar.
 	wxWindow* BuildBody(wxWindow* parent);
 	void RebuildDataPanels();   // refill Attributes / Commands / Parameters from the working copy
+	// Double-click / Enter on a bindable Реквизиты node → add a bound field (or table) to the form.
+	void OnAttrActivated(wxTreeEvent& event);
+	// Create a Field (or Table) bound to `dataPath`, titled `title`, placed by the usual rules.
+	ibManagedElement* AddBoundElement(const wxString& dataPath, const wxString& title, ibManagedNodeKind kind);
 	void RebuildTree();
 	void AddTreeNode(const wxTreeItemId& parentItem, ibManagedElement* el);
 	wxString ElementLabel(const ibManagedElement* el) const;
@@ -153,7 +159,7 @@ private:
 	wxSplitterWindow* m_outerSplit = nullptr;   // body (top) over preview (bottom)
 	wxSplitterWindow* m_topSplit   = nullptr;   // tree (left) | data notebook (right)
 	wxNotebook*       m_dataBook   = nullptr;
-	wxListCtrl*       m_attrList   = nullptr;    // Реквизиты
+	ibTreeListCtrl*   m_attrTree   = nullptr;    // Реквизиты (hierarchical: Object → owner attrs/tables)
 	wxListCtrl*       m_cmdList    = nullptr;    // Команды
 	wxListCtrl*       m_paramList  = nullptr;    // Параметры
 	wxWindow*         m_previewPane = nullptr;   // bottom container
