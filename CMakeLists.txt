@@ -152,7 +152,19 @@ if(OES_SANITIZE)
         message(WARNING
             "OES_SANITIZE on MSVC: /fsanitize=address has no leak detector. "
             "Use a Debug build and the CRT dump (docs/engineering-playbook/25-memory-leaks.md).")
-        add_compile_options(/fsanitize=${OES_SANITIZE})
+        # ASan needs debug info to symbolize its reports; without it MSVC emits
+        # warning C5072 on every TU, which is fatal wherever /WX is set (gtest).
+        # /Zi (+ /DEBUG on the link) silences it and gives named frames in the
+        # fault report. RelWithDebInfo already carries /Zi, but a plain Release
+        # or a subproject with its own flags (googletest) may not.
+        add_compile_options(/fsanitize=${OES_SANITIZE} /Zi)
+        add_link_options(/DEBUG)
+        # ASan inflates every stack frame (redzones, shadow, spilled locals), so
+        # the recursive-descent compiler overflows the default 1 MB thread stack
+        # at a nesting depth that is fine in an ordinary build — a stack overflow
+        # the sweep would otherwise read as a crash. Reserve 64 MB so ASan's frame
+        # growth does not mask real findings. Instrumentation-only; not shipped.
+        add_link_options(/STACK:67108864)
     else()
         add_compile_options(-fsanitize=${OES_SANITIZE} -fno-omit-frame-pointer -g)
         add_link_options(-fsanitize=${OES_SANITIZE})

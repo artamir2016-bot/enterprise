@@ -58,6 +58,15 @@
             "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
         },
         {
+            "name": "linux-asan",
+            "displayName": "Linux — ASan+UBSan",
+            "inherits": "linux-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "OES_SANITIZE": "address,undefined"
+            }
+        },
+        {
             "name": "macos-debug",
             "displayName": "macOS — Debug",
             "inherits": "base",
@@ -78,6 +87,7 @@
         { "name": "windows-x86-release", "configurePreset": "windows-x86-release", "jobs": 6 },
         { "name": "linux-debug",         "configurePreset": "linux-debug",         "jobs": 3 },
         { "name": "linux-release",       "configurePreset": "linux-release",       "jobs": 3 },
+        { "name": "linux-asan",          "configurePreset": "linux-asan",          "jobs": 3 },
         { "name": "macos-debug",         "configurePreset": "macos-debug",         "jobs": 3 },
         { "name": "macos-release",       "configurePreset": "macos-release",       "jobs": 3 }
     ]
