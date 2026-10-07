@@ -216,7 +216,22 @@ std::vector<ibQueryToken> ibQueryLexer::Tokenize(const wxString& queryText)
 		t.m_line = GetCurrentLine() + 1;   // 0-based internally -> 1-based for users
 		t.m_col  = GetCurrentPos();
 
-		if (IsWord()) {
+		// &Name — a query parameter. CHECKED BEFORE IsWord(): ibTranslateCode makes
+		// `&` a word-START char for the script's managed-form directives (&НаКлиенте
+		// family), so IsWord() would otherwise swallow `&Warehouse` whole as one Ident.
+		// The query language means `&` as a parameter sigil, so it wins here.
+		if (IsByte(wxT('&'))) {
+			GetByte();                         // consume '&'
+			if (!IsWord())
+				ibBackendQuerySourceException::ErrorAt(GetCurrentLine() + 1, GetCurrentPos(),
+					_("Query: expected a parameter name after '&' at line %u (position %u)"),
+					GetCurrentLine() + 1, GetCurrentPos());
+			sUpper.clear(); sOrig.clear();
+			GetWord(&sUpper, &sOrig, /*realName*/false, /*get_point*/false);
+			t.m_kind = ibQueryTokenKind::Param;
+			t.m_text = sOrig;
+		}
+		else if (IsWord()) {
 			sUpper.clear(); sOrig.clear();
 			GetWord(&sUpper, &sOrig, /*realName*/false, /*get_point*/false);  // sUpper = uppercased, sOrig = original case
 			const ibQueryKeyword kw = ibFindQueryKeyword(sUpper);
@@ -247,17 +262,6 @@ std::vector<ibQueryToken> ibQueryLexer::Tokenize(const wxString& queryText)
 			t.m_kind = ibQueryTokenKind::Date;
 			t.m_literal.SetDate(sUpper);
 			t.m_text = sUpper;
-		}
-		else if (IsByte(wxT('&'))) {           // &Name — a query parameter
-			GetByte();                         // consume '&'
-			if (!IsWord())
-				ibBackendQuerySourceException::ErrorAt(GetCurrentLine() + 1, GetCurrentPos(),
-					_("Query: expected a parameter name after '&' at line %u (position %u)"),
-					GetCurrentLine() + 1, GetCurrentPos());
-			sUpper.clear(); sOrig.clear();
-			GetWord(&sUpper, &sOrig, /*realName*/false, /*get_point*/false);
-			t.m_kind = ibQueryTokenKind::Param;
-			t.m_text = sOrig;
 		}
 		else {
 			// single delimiter / operator (multi-char operators glued when contiguous)
