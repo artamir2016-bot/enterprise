@@ -62,6 +62,33 @@ The smallest self-contained win with the cleanest oracle.
   `materialised == pushed` and `pushed == RAM`. Include: empty subquery, duplicate
   values, NULL in the subquery column, `NOT IN`, a subquery with its own WHERE.
 
+> **Inc 1 design finding (reuse, don't extend the IR).** The semi-join machinery
+> ALREADY exists for RLS: `ibSemiJoinExists` (`queryable.h` ~258) rides on
+> `ibQueryCondition::m_semiJoin` and renders to `EXISTS (SELECT 1 FROM inner sj WHERE
+> sj.innerKey = outer.outerKey AND …)` via `ibMetaIRBuilder::BuildSemiJoinExists`
+> (`dbTableProvider.cpp` ~868). So Inc 1 lowers `IN (SELECT)` to an `ibSemiJoinExists`
+> leaf and gets the EXISTS render for free — no change to the L2-1 `In` node.
+> `x IN (SELECT k FROM T WHERE p)` ≡ `EXISTS (SELECT 1 FROM T sj WHERE sj.k = outer.x AND p)`.
+>
+> **Critical constraint — RAM has no semi-join.** `RamEvalLeaf` (`queryProvider.cpp`
+> ~930) does NOT handle `m_semiJoin`; it DOES evaluate a flat `ibQueryFilterOp::In`
+> over `m_values` with correct NULL/empty-set semantics (lines 940-944). So the
+> predicate must differ by target: **DB-backed outer source → emit the semi-join leaf;
+> RAM outer source → keep the existing `sq.Execute()` materialise + value list.** The
+> lowering gates on an `IsServerBacked()`-style capability of the outer queryable, not
+> a blind push.
+>
+> **Push gate `CanPushSemiJoin(e)` — all must hold, else materialise:** not
+> `e.m_negated` (NOT IN keeps SQL 3-valued NULL logic — a later inc); subquery is one
+> plain source with `GetQueryTableName()` (no JOIN/TOTALS/GROUP BY/UNION/DISTINCT/TOP/
+> aggregate projection); exactly one projected plain column (the `innerKey`); outer
+> owner DB-backed. **Build:** `ibSemiJoinExists{ m_inner = ResolveFrom(sel.m_from),
+> m_where = lowered sel.m_where, m_outerKey = cols.back(), m_innerKey = projectedCol,
+> m_op = Equal }` → `ibQueryCondition.m_semiJoin` → `Leaf(cond)`.
+>
+> This keeps Inc 1 to ONE file (`queryLowering.cpp`, the `e.m_subquery` branch ~909)
+> plus a parity test, with the materialise path as the correctness-preserving fallback.
+
 ### Inc 2 — `IN HIERARCHY` walked by the server
 - Render the hierarchy membership as SQL rather than resolving `ibQueryHierarchyScope`
   in C++. Shape per dialect: a **recursive CTE** over the parent column
