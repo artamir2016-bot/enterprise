@@ -916,14 +916,13 @@ ibQueryPredicatePtr BuildWherePredicate(const std::vector<ibSourceBinding>& sour
 			// `x IN (SELECT k FROM T WHERE p)` == `EXISTS (SELECT 1 FROM T sj WHERE sj.k = x AND p)`.
 			// Only for the simple, safe shape AND only when the outer read is a single-source,
 			// non-aggregate DB read (allowDotWalk) whose leaf is a plain DB column — so the WHERE
-			// renders server-side; RamEvalLeaf cannot evaluate a semi-join leaf. subOwner (persistent)
-			// owns the inner queryable past this predicate. Everything else falls through to the
-			// eager-materialise path below, which is bit-identical to the shipped behaviour.
-			// (docs/query-pushdown.md Inc 1.)
-			// The inner is a PLAIN metaobject source (gated below), so ResolveFrom returns a
-			// metadata-backed queryable that is stable for the configuration's life (like an RLS
-			// permission base) — no owner is needed to keep it alive past this predicate. Only a
-			// subquery-wrapped FROM would need the materialise owner, and that shape is excluded.
+			// renders server-side; RamEvalLeaf cannot evaluate a semi-join leaf. Everything else falls
+			// through to the eager-materialise path below, which is bit-identical to the shipped
+			// behaviour. (docs/query-pushdown.md Inc 1.)
+			// The inner is a PLAIN metaobject source (gated below — no args, no subquery FROM), so
+			// ResolveFrom returns a metadata-backed queryable that is stable for the configuration's
+			// life (like an RLS permission base); no owner is needed to keep it alive past this
+			// predicate, and it carries no own conditions to lose.
 			const ibQuerySelect& sub = *e.m_subquery;
 			const ibBackendQueryColumn* outerKey = cols.empty() ? nullptr : cols.back();
 			const ibBackendQueryable* outerOwner =
@@ -935,13 +934,16 @@ ibQueryPredicatePtr BuildWherePredicate(const std::vector<ibSourceBinding>& sour
 				!sub.m_distinct && !sub.m_selectAll &&
 				sub.m_projections.size() == 1 && sub.m_projections.front().m_expr &&
 				!sub.m_projections.front().m_star &&
-				sub.m_from.m_subquery == nullptr && !sub.m_from.m_parameter && !sub.m_from.m_name.empty();
+				sub.m_from.m_subquery == nullptr && !sub.m_from.m_parameter &&
+				sub.m_from.m_args.empty() && !sub.m_from.m_name.empty();
 			if (outerOwner != nullptr && !outerOwner->GetQueryTableName().empty() && subSimple) {
 				ibSubqueryOwner pushOwner;   // unused for a plain source — innerBase is metadata-stable
-				const ibBackendQueryable* innerBase = ResolveFrom(sub.m_from, params, pushOwner, nullptr);
-				// The gate guarantees a single plain source (no joins, no subquery FROM); a real table
-				// name confirms it renders server-side as the EXISTS inner.
-				if (innerBase != nullptr && !innerBase->GetQueryTableName().empty()) {
+				std::vector<ibQueryAstExprPtr> innerOwnConds;
+				const ibBackendQueryable* innerBase = ResolveFrom(sub.m_from, params, pushOwner, &innerOwnConds);
+				// Push ONLY a plain table: a real table name, and NO conditions of its own (a virtual
+				// table — balance / slice — hands back conditions here; dropping them would weaken the
+				// EXISTS). Either disqualifier → fall through to materialise, which keeps them.
+				if (innerBase != nullptr && innerOwnConds.empty() && !innerBase->GetQueryTableName().empty()) {
 					const std::vector<ibSourceBinding> innerSources{ { sub.m_from.m_alias, innerBase } };
 					const std::vector<const ibBackendQueryColumn*> innerCols =
 						ResolvePath(innerSources, *sub.m_projections.front().m_expr);
