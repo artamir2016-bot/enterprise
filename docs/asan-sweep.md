@@ -76,17 +76,22 @@ memory safety. Recorded here so they are not mistaken for ASan findings:
 1. **`BuiltInRuntime.VariadicBuiltinTakesMoreArgumentsThanZero` — HANGS** (infinite
    loop; confirmed in both Release and ASan). A real defect in the variadic
    builtin path. Tracked separately.
-2. **8 QueryL4 tests FAIL** — `QueryL4Lexer.Parameter_AmpersandName`,
+2. **8 QueryL4 tests FAILED → FIXED** (commit `232f70ef`). `QueryL4Lexer.Parameter_AmpersandName`,
    `QueryL4Parser.{WherePrecedence_AndComparesWithParam, SourceCallArgs,
    InHierarchyCarriesTheWordAndOneParameter, InHierarchyOnlyIsItsOwnWord,
    NotInHierarchyKeepsBothTheNegationAndTheWord}`, `QueryRender.InHierarchyRoundTrips`,
    `QueryParameterTable.{ItIsMARKED_InTheTextAndSurvivesTheRoundTrip,
-   ItGoesInToATemporaryTableAndOnlyThere}`. These are **red tests for in-progress
-   query-L4 work** — `&name` query parameters, `IN HIERARCHY`, parameter temp
-   tables — i.e. exactly the surface of backlog item **T1.1** (query pushdown).
-   They will be driven green as part of T1.1, not here.
+   ItGoesInToATemporaryTableAndOnlyThere}`. Root cause was NOT missing features — the
+   query-L4 language surface (`&name` params, `IN HIERARCHY`, parameter temp tables)
+   already exists in the fork. It was a **regression** from the `&`-directive work
+   (tasks #44-47): `ibTranslateCode` made `&` a word-start char for the script's
+   `&НаКлиенте` directives, and `ibQueryLexer` (which derives from it) checked
+   `IsWord()` before its own `&`-param branch, so `&Warehouse` lexed as one Ident.
+   Fixed by testing `&` before `IsWord()` in the query lexer. 87/87 query tests pass.
 
-The `tests-asan` CI job inherits the ordinary Linux job's `-E` exclusions; it does
-not separately exclude the above, so until T1.1 closes them (and the variadic hang
-is fixed) the job can show those same pre-existing reds. They are a branch-baseline
-issue, independent of the sanitizer.
+The remaining **T1.1** work is therefore NOT the query language surface (it is present)
+but the upstream **server pushdown** — executing `IN (SELECT)` as a semi-join, `IN
+HIERARCHY` / `TOTALS` / turnovers folded by the DB — which is the performance win.
+
+After this fix the only pre-existing red left is the variadic-builtin **hang** (flagged
+as a separate task); the `tests-asan` CI job inherits the ordinary Linux `-E` exclusions.
