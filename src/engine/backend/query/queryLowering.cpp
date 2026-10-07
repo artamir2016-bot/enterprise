@@ -753,6 +753,10 @@ ibAggregateFn AggFn(ibQueryKeyword kw)
 using ibSubqueryOwner = std::vector<std::unique_ptr<ibSubqueryQueryable>>;
 const ibBackendQueryable* WrapSelectAsQueryable(const ibQuerySelect& sel,
                                                 const std::map<wxString, ibValue>& params, ibSubqueryOwner& owner);
+// Resolve a FROM source (plain metaobject or subquery) to a queryable — used by the IN (SELECT)
+// semi-join pushdown to reach the inner source; defined below.
+const ibBackendQueryable* ResolveFrom(const ibQuerySource& src, const std::map<wxString, ibValue>& params,
+                                      ibSubqueryOwner& owner, std::vector<ibQueryAstExprPtr>* conditionsOut);
 
 // --- WHERE-leaf condition builders. `path` (size > 1) = a reference dot-walk; the provider joins it
 // and qualifies the LEAF (== path.back()) by the join alias. A plain column passes path = {col}. ------
@@ -907,6 +911,56 @@ ibQueryPredicatePtr BuildWherePredicate(const std::vector<ibSourceBinding>& sour
 			values = scope.Accepted();
 		}
 		else if (e.m_subquery) {
+			// ── PUSHDOWN: IN (SELECT …) as a server-side semi-join (EXISTS) ──────────────────
+			// Reuse the RLS semi-join machinery (ibSemiJoinExists -> EXISTS, dbTableProvider.cpp).
+			// `x IN (SELECT k FROM T WHERE p)` == `EXISTS (SELECT 1 FROM T sj WHERE sj.k = x AND p)`.
+			// Only for the simple, safe shape AND only when the outer read is a single-source,
+			// non-aggregate DB read (allowDotWalk) whose leaf is a plain DB column — so the WHERE
+			// renders server-side; RamEvalLeaf cannot evaluate a semi-join leaf. subOwner (persistent)
+			// owns the inner queryable past this predicate. Everything else falls through to the
+			// eager-materialise path below, which is bit-identical to the shipped behaviour.
+			// (docs/query-pushdown.md Inc 1.)
+			// The inner is a PLAIN metaobject source (gated below), so ResolveFrom returns a
+			// metadata-backed queryable that is stable for the configuration's life (like an RLS
+			// permission base) — no owner is needed to keep it alive past this predicate. Only a
+			// subquery-wrapped FROM would need the materialise owner, and that shape is excluded.
+			const ibQuerySelect& sub = *e.m_subquery;
+			const ibBackendQueryColumn* outerKey = cols.empty() ? nullptr : cols.back();
+			const ibBackendQueryable* outerOwner =
+				(!e.m_negated && allowDotWalk && cols.size() == 1 && outerKey != nullptr)
+					? OwnerOfPathLeaf(sources, *e.m_lhs, cols) : nullptr;
+			const bool subSimple =
+				sub.m_joins.empty() && !sub.m_hasTotals && sub.m_groupBy.empty() &&
+				sub.m_having == nullptr && sub.m_unions.empty() && sub.m_top == 0 &&
+				!sub.m_distinct && !sub.m_selectAll &&
+				sub.m_projections.size() == 1 && sub.m_projections.front().m_expr &&
+				!sub.m_projections.front().m_star &&
+				sub.m_from.m_subquery == nullptr && !sub.m_from.m_parameter && !sub.m_from.m_name.empty();
+			if (outerOwner != nullptr && !outerOwner->GetQueryTableName().empty() && subSimple) {
+				ibSubqueryOwner pushOwner;   // unused for a plain source — innerBase is metadata-stable
+				const ibBackendQueryable* innerBase = ResolveFrom(sub.m_from, params, pushOwner, nullptr);
+				// The gate guarantees a single plain source (no joins, no subquery FROM); a real table
+				// name confirms it renders server-side as the EXISTS inner.
+				if (innerBase != nullptr && !innerBase->GetQueryTableName().empty()) {
+					const std::vector<ibSourceBinding> innerSources{ { sub.m_from.m_alias, innerBase } };
+					const std::vector<const ibBackendQueryColumn*> innerCols =
+						ResolvePath(innerSources, *sub.m_projections.front().m_expr);
+					if (innerCols.size() == 1 && innerCols.front() != nullptr) {
+						ibSemiJoinExists sj;
+						sj.m_inner    = innerBase;
+						sj.m_where    = sub.m_where
+							? BuildWherePredicate(innerSources, *sub.m_where, params, /*allowDotWalk*/false)
+							: nullptr;
+						sj.m_outerKey = outerKey;
+						sj.m_innerKey = innerCols.front();
+						sj.m_op       = ibQueryFilterOp::Equal;
+						ibQueryCondition cond;
+						cond.m_semiJoin = std::make_shared<ibSemiJoinExists>(sj);
+						return ibQueryPredicate::Leaf(cond);   // not negated (gated above)
+					}
+				}
+			}
+			// ── Fallback: eagerly materialise the subquery into a value list ────────────────
 			ibSubqueryOwner localOwner;   // the inner queryable lives only for this materialisation
 			const ibBackendQueryable* subq = WrapSelectAsQueryable(*e.m_subquery, params, localOwner);
 			const std::vector<const ibBackendQueryColumn*> outCols = subq->GetColumns();
