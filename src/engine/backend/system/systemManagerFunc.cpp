@@ -88,23 +88,28 @@ ibNumber ibValueSystemFunction::Ln(const ibValue& cValue)
 
 ibValue ibValueSystemFunction::Max(ibValue** paParams, const long lSizeArray)
 {
-	ibValue* maxValue = paParams[0]; int i = 1;
-	while (i < lSizeArray) {
+	// The loop index MUST advance every iteration: the increment used to live inside
+	// the `if`, so a value that was not the new maximum never advanced i — Max(7, 3)
+	// (and every Min call whose first arg is already the extremum) span forever.
+	ibValue* maxValue = paParams[0];
+	for (long i = 1; i < lSizeArray; ++i) {
 		if (paParams[i]->GetNumber() > maxValue->GetNumber())
-			maxValue = paParams[i++];
+			maxValue = paParams[i];
 	}
-
-	return maxValue;
+	// Return a COPY. `return maxValue;` (an ibValue*) would build a TYPE_REFFER to a
+	// transient parameter slot (ibValue(ibValue*)), which reads empty once the call
+	// frame is gone — the extremum came back as 0.
+	return *maxValue;
 }
 
 ibValue ibValueSystemFunction::Min(ibValue** paParams, const long lSizeArray)
 {
-	ibValue* minValue = paParams[0]; int i = 1;
-	while (i < lSizeArray) {
+	ibValue* minValue = paParams[0];
+	for (long i = 1; i < lSizeArray; ++i) {
 		if (paParams[i]->GetNumber() < minValue->GetNumber())
-			minValue = paParams[i++];
+			minValue = paParams[i];
 	}
-	return minValue;
+	return *minValue;
 }
 
 // StrTemplate("%1 of %2", a, b) — substitute %1..%N (1-based into the trailing
