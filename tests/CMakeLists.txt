@@ -420,6 +420,28 @@ set_target_properties(oes_config_gen PROPERTIES
 )
 
 # ---------------------------------------------------------------------------
+# oes_query — headless OES query runner (the engine behind the data MCP). Opens
+# a FILE infobase + a live session and answers OES queries from stdin as JSON.
+#   cmake --build build --target oes_query
+#   oes_query --file <baseDir>
+# Links backend only; wxBase comes up via wxInitializer in main().
+# ---------------------------------------------------------------------------
+add_executable(oes_query "${CMAKE_SOURCE_DIR}/tools/oes_query.cpp")
+target_link_libraries(oes_query PRIVATE backend)
+target_compile_definitions(oes_query PRIVATE OES_TESTING)
+target_include_directories(oes_query PRIVATE
+    "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}/src/engine"
+    "${CMAKE_SOURCE_DIR}/src/engine/backend"
+)
+set_target_properties(oes_query PROPERTIES
+    CXX_STANDARD          17
+    CXX_STANDARD_REQUIRED ON
+    BUILD_RPATH            "${CMAKE_BINARY_DIR}/bin"
+    INSTALL_RPATH          "${CMAKE_BINARY_DIR}/bin"
+)
+
+# ---------------------------------------------------------------------------
 # Frontend GUI harness — STEP 1. Links the DESKTOP frontend.dll (real wx
 # widgets: ibVisualHost : wxScrolledCanvas) + backend into a gtest target and
 # proves a live GUI wxApp + a runtime-mode appData env come up together in the

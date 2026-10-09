@@ -218,7 +218,7 @@ public:
 	// they die with the call. Non-null (a script's `TempTablesManager`): they outlive it, so a
 	// LATER query attached to the same store reads what this one left. Same mechanism, different
 	// holder — which is the whole difference between "a batch" and "a set of tables I am keeping".
-	static std::vector<PackageResult> ExecutePackage(const ibQueryPackage& package,
+	BACKEND_API static std::vector<PackageResult> ExecutePackage(const ibQueryPackage& package,
 	                                                 const std::map<wxString, ibValue>& params,
 	                                                 class ibQueryTempTableStore* store = nullptr);
 
