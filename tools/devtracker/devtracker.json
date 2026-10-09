@@ -1,0 +1,90 @@
+{
+  "name": "DevTracker",
+  "syntax": "ves",
+  "enums": [
+    { "name": "СтатусДефекта",    "values": ["Новый", "Диагностика", "Исправляется", "Исправлен", "Проверен", "Закрыт", "Отклонён"] },
+    { "name": "Серьёзность",      "values": ["Блокер", "Критическая", "Высокая", "Средняя", "Низкая"] },
+    { "name": "СтатусТребования", "values": ["Предложено", "Проанализировано", "Запланировано", "ВРаботе", "Выполнено", "Отклонено"] },
+    { "name": "Приоритет",        "values": ["Высокий", "Средний", "Низкий"] },
+    { "name": "РезультатТеста",   "values": ["НеЗапускался", "Пройден", "Провален"] }
+  ],
+  "catalogs": [
+    {
+      "name": "Компоненты",
+      "attributes": [
+        { "name": "Описание", "type": "String", "length": 200 }
+      ],
+      "predefined": [
+        { "name": "Backend",        "description": "Ядро движка (backend.dll)" },
+        { "name": "Frontend",       "description": "UI-слой (frontend.dll, wxWidgets)" },
+        { "name": "Компилятор",     "description": "Язык, лексер, компилятор, интерпретатор" },
+        { "name": "ДвижокЗапросов", "description": "L1-L5: запросы, pushdown, компоновка" },
+        { "name": "Формы",          "description": "Движок форм, управляемые формы" },
+        { "name": "Дизайнер",       "description": "designer.exe — IDE" },
+        { "name": "Предприятие",    "description": "enterprise.exe — толстый клиент" },
+        { "name": "ВебКлиент",      "description": "wenterprise-server + client.html" },
+        { "name": "Отладчик",       "description": "Отладчик, транспорт" },
+        { "name": "Тесты",          "description": "oes_tests, бенчи, ASan" },
+        { "name": "CI",             "description": "Сборка, CI/CD" }
+      ]
+    },
+    {
+      "name": "ТестоваяФича",
+      "attributes": [
+        { "name": "Описание",           "type": "String", "length": 250 },
+        { "name": "Файл",               "type": "String", "length": 260 },
+        { "name": "Требование",         "type": "ref", "refs": ["Document.Требование"] },
+        { "name": "ПоследнийРезультат", "type": "ref", "refs": ["Enum.РезультатТеста"] }
+      ],
+      "tabularSections": [
+        {
+          "name": "Содержимое",
+          "attributes": [
+            { "name": "НомерСтроки", "type": "Number", "precision": 6 },
+            { "name": "Текст",       "type": "String", "length": 1000 }
+          ]
+        }
+      ],
+      "predefined": [
+        { "name": "demo_ru",                "description": "Демо-сценарий (обычные/управляемые формы, рус. Gherkin)" },
+        { "name": "managed_form_designer",  "description": "E2E: дизайнер УФ → предприятие (элементы/привязка/события)" },
+        { "name": "ГруппировкаШаговВидео",  "description": "Фича группировки шагов для записи видео" }
+      ]
+    }
+  ],
+  "documents": [
+    {
+      "name": "Дефект",
+      "attributes": [
+        { "name": "Заголовок",   "type": "String", "length": 150 },
+        { "name": "Серьёзность", "type": "ref", "refs": ["Enum.Серьёзность"] },
+        { "name": "Статус",      "type": "ref", "refs": ["Enum.СтатусДефекта"] },
+        { "name": "Компонент",   "type": "ref", "refs": ["Catalog.Компоненты"] },
+        { "name": "НайденТестом","type": "ref", "refs": ["Catalog.ТестоваяФича"] },
+        { "name": "КоммитФикса", "type": "String", "length": 60 }
+      ],
+      "tabularSections": [
+        {
+          "name": "Описание",
+          "attributes": [ { "name": "Текст", "type": "String", "length": 1000 } ]
+        }
+      ]
+    },
+    {
+      "name": "Требование",
+      "attributes": [
+        { "name": "Заголовок", "type": "String", "length": 150 },
+        { "name": "Приоритет", "type": "ref", "refs": ["Enum.Приоритет"] },
+        { "name": "Статус",    "type": "ref", "refs": ["Enum.СтатусТребования"] },
+        { "name": "Компонент", "type": "ref", "refs": ["Catalog.Компоненты"] },
+        { "name": "ОценкаЧасы", "type": "Number", "precision": 6, "scale": 1 }
+      ],
+      "tabularSections": [
+        {
+          "name": "Обоснование",
+          "attributes": [ { "name": "Текст", "type": "String", "length": 1000 } ]
+        }
+      ]
+    }
+  ]
+}
