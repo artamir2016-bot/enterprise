@@ -33,6 +33,7 @@
 #include "backend/appData.h"
 #include "backend/session/session.h"
 #include "backend/session/sessionHolder.h"
+#include "backend/session/workerPool.h"            // ibWorkerPool::RunOnSession — run the read on the session worker
 #include "backend/metadataConfiguration.h"
 #include "backend/metaData.h"
 #include "backend/query/queryParser.h"
@@ -131,20 +132,19 @@ bool ParseRequest(const std::string& line, wxString& query, long& limit, bool& i
 	return true;
 }
 
-void EmitQuery(const wxString& query, long limit) {
+// Parse + execute + serialize. RUN ON THE SESSION WORKER (see EmitQuery): only there is
+// the per-session runtime (connection, runtime image, PUState) live, so a catalog table
+// actually reads its rows — on the bare main thread the scan comes back empty.
+std::string BuildQueryJson(const wxString& query, long limit) {
 	try {
-		// WHOSE sources this query sees: scope it to the open configuration, else the
-		// factory falls back to the global (common / plugin) sources only and a
-		// Catalog.<X> / Document.<X> comes back as "unknown metaobject kind".
-		ibSessionScope sessionScope(g_session);   // make the session Current() on this thread (connection + runtime)
+		// Scope the query to the open configuration, else the factory falls back to the
+		// global (common / plugin) sources and Catalog.<X> is "unknown metaobject kind".
 		ibSourceMetaDataScope scope(ibApplicationData::GetActiveMetaData());
 		ibQueryPackage pkg = ibQueryParser().ParsePackage(query);
 		std::map<wxString, ibValue> params;
 		std::vector<ibQueryLowering::PackageResult> results = ibQueryLowering::ExecutePackage(pkg, params);
-		if (results.empty() || results.front().m_result == nullptr) {
-			std::printf("{\"columns\":[],\"rows\":[],\"count\":0}\n");
-			return;
-		}
+		if (results.empty() || results.front().m_result == nullptr)
+			return "{\"columns\":[],\"rows\":[],\"count\":0}";
 		ibQueryLowering::PackageResult& r = results.front();
 		std::string cols = "[";
 		for (size_t i = 0; i < r.m_schema.size(); ++i) {
@@ -172,14 +172,20 @@ void EmitQuery(const wxString& query, long limit) {
 			++n;
 		}
 		rows += "]";
-		std::printf("{\"columns\":%s,\"rows\":%s,\"count\":%ld}\n", cols.c_str(), rows.c_str(), n);
+		return "{\"columns\":" + cols + ",\"rows\":" + rows + ",\"count\":" + std::to_string(n) + "}";
 	}
-	catch (const ibBackendException& e) {
-		std::printf("{\"error\":\"%s\"}\n", JEsc(e.GetErrorDescription()).c_str());
-	}
-	catch (...) {
-		std::printf("{\"error\":\"unknown exception\"}\n");
-	}
+	catch (const ibBackendException& e) { return "{\"error\":\"" + JEsc(e.GetErrorDescription()) + "\"}"; }
+	catch (...)                         { return "{\"error\":\"unknown exception\"}"; }
+}
+
+void EmitQuery(const wxString& query, long limit) {
+	std::string out;
+	ibWorkerPool* pool = g_session != nullptr ? g_session->GetWorkerPool() : nullptr;
+	if (pool != nullptr)
+		pool->RunOnSession(g_session, [&]() { out = BuildQueryJson(query, limit); });   // worker binds the session
+	else
+		out = BuildQueryJson(query, limit);
+	std::printf("%s\n", out.c_str());
 	std::fflush(stdout);
 }
 
