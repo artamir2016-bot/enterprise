@@ -89,6 +89,25 @@ The smallest self-contained win with the cleanest oracle.
 > This keeps Inc 1 to ONE file (`queryLowering.cpp`, the `e.m_subquery` branch ~909)
 > plus a parity test, with the materialise path as the correctness-preserving fallback.
 
+#### Inc 1b — e2e coverage of the EXISTS render (LANDED)
+`tests/test_queryComputedServer.cpp` (`ComputedServerFix.SemiJoin_*`, 5 cases) runs the
+`ibSemiJoinExists` → `BuildSemiJoinExists` render on a real in-memory SQLite — the SQL
+the pushdown actually emits — and pins the EXISTS semantics that justify the rewrite:
+membership (`SemiJoin_InReturnsMembers`), existence-not-join so a duplicate inner key
+does NOT multiply (`SemiJoin_DuplicateInnerDoesNotMultiply`), empty inner → nothing
+(never the whole-table degrade a dropped predicate gives — `SemiJoin_EmptyInnerReturnsNoRows`),
+the inner's own WHERE narrowing the set (`SemiJoin_InnerWhereFilters`), and a NULL inner
+key being inert (`SemiJoin_NullInnerKeyIsInert`). Built the same way the lowering builds
+it (an `ibSemiJoinExists` over two physical sources wrapped in `ibQueryCondition.m_semiJoin`),
+so it exercises the production render, not a hand-written EXISTS string.
+
+**`NOT IN` is deliberately NOT pushed** and stays on the eager-materialise path. `NOT
+EXISTS` is NOT equivalent to `NOT IN` when the subquery can yield NULL (`x NOT IN (…, NULL)`
+is UNKNOWN for every x, while `NOT EXISTS(k = x)` is true for non-matching x) — the gate
+`!e.m_negated` in the lowering keeps the correct 3-valued answer the materialise path
+already gives. A correct `NOT IN` pushdown (NOT EXISTS + a null-probe guard) is a later
+increment; it is an optimisation with a subtle correctness trap, not shipped blind.
+
 ### Inc 2 — `IN HIERARCHY` walked by the server
 - Render the hierarchy membership as SQL rather than resolving `ibQueryHierarchyScope`
   in C++. Shape per dialect: a **recursive CTE** over the parent column

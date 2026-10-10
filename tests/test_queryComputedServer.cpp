@@ -480,3 +480,159 @@ TEST_F(ComputedServerFix, In_MetadataColumnEmptySetReturnsNoRows)
 	while (res.Next()) ++rows;
 	EXPECT_EQ(rows, 0) << "an empty OR-fold must not degrade to 'no predicate' (the whole table)";
 }
+
+// ---- Semi-join (EXISTS): the server render of the IN (SELECT …) pushdown ---------
+//
+// T1.1 Inc 1 lowers `x IN (SELECT k FROM T WHERE p)` to an ibSemiJoinExists leaf that
+// renders `EXISTS (SELECT 1 FROM T sj WHERE sj.k = outer.x AND p)` (dbTableProvider.cpp).
+// These are the END-TO-END cases on a real SQLite — the SQL the pushdown emits must
+// return exactly the rows the eager-materialise fallback would, with the EXISTS
+// semantics that justify the rewrite:
+//   * existence, not a join — a DUPLICATE key in the inner does NOT multiply results;
+//   * an EMPTY inner returns NOTHING (never degrades to "no predicate" = whole table);
+//   * the inner's OWN WHERE filters the membership set;
+//   * a NULL inner key simply never matches (correct for IN; NOT IN — which would need
+//     3-valued logic — is deliberately NOT pushed and stays on the materialise path).
+//
+// Built the same way the lowering builds it (queryLowering.cpp ~951): an ibSemiJoinExists
+// over two PHYSICAL (DB-backed) sources, wrapped in an ibQueryCondition.m_semiJoin leaf,
+// handed to the builder's Where — so this exercises the real BuildSemiJoinExists render,
+// not a hand-written EXISTS string.
+
+namespace {
+
+// outer `doc` (region, qty): North×2, South, East — the table the IN filters.
+void MakeDocTable(ibDatabaseLayerSQLite& db)
+{
+	db.RunQuery(wxT("CREATE TABLE doc (region TEXT, qty INTEGER)"));
+	db.RunQuery(wxT("INSERT INTO doc (region, qty) VALUES ('North', 10), ('South', 5), ('North', 7), ('East', 3)"));
+}
+
+// Count the rows a semi-join `doc WHERE EXISTS(SELECT 1 FROM <inner> WHERE inner.region = doc.region AND <where>)`
+// returns, built through the real ibSemiJoinExists -> BuildSemiJoinExists render path.
+int SemiJoinRowCount(ibConnectionPool* /*unused*/, PhysicalQ& outer, const ibBackendQueryColumn* outerKey,
+                     const ibBackendQueryColumn* outerSel,
+                     PhysicalQ& inner, const ibBackendQueryColumn* innerKey,
+                     const ibQueryPredicatePtr& innerWhere)
+{
+	ibSemiJoinExists sj;
+	sj.m_inner    = &inner;
+	sj.m_where    = innerWhere;
+	sj.m_outerKey = outerKey;
+	sj.m_innerKey = innerKey;
+	sj.m_op       = ibQueryFilterOp::Equal;
+	ibQueryCondition cond;
+	cond.m_semiJoin = std::make_shared<ibSemiJoinExists>(sj);
+	ibQueryPredicatePtr pred = ibQueryPredicate::Leaf(cond);
+
+	ibDatabaseConnectionHolder* holder = ibConnectionPool::ThreadHolder();
+	if (holder == nullptr) return -1;
+	ibDataQueryBuilder q(holder);
+	q.From(&outer);
+	q.Select(outerSel, wxT("qty"));
+	q.Where(pred);
+	ibReadPageRequest page;
+	ibDataQueryResult res = q.Execute(page);
+	int rows = 0;
+	while (res.Next()) ++rows;
+	return rows;
+}
+
+} // namespace
+
+// IN (SELECT): membership against { North, East } -> North×2 + East = 3 rows.
+TEST_F(ComputedServerFix, SemiJoin_InReturnsMembers)
+{
+	if (!ready) return;
+	MakeDocTable(*db);
+	db->RunQuery(wxT("CREATE TABLE allowed (region TEXT)"));
+	db->RunQuery(wxT("INSERT INTO allowed (region) VALUES ('North'), ('East')"));
+
+	ibRawDBColumn docRegion = ibRawDBColumn::String(wxT("region"));
+	ibRawDBColumn docQty    = ibRawDBColumn::Number(wxT("qty"));
+	PhysicalQ doc(wxT("doc"), 400); doc.AddCol(&docRegion); doc.AddCol(&docQty);
+	ibRawDBColumn allowedRegion = ibRawDBColumn::String(wxT("region"));
+	PhysicalQ allowed(wxT("allowed"), 401); allowed.AddCol(&allowedRegion);
+
+	EXPECT_EQ(SemiJoinRowCount(nullptr, doc, &docRegion, &docQty, allowed, &allowedRegion, nullptr), 3);
+}
+
+// Existence, not a join: a DUPLICATE inner key must NOT multiply the outer rows.
+// { North, East, East } still yields North×2 + East = 3 (not 4).
+TEST_F(ComputedServerFix, SemiJoin_DuplicateInnerDoesNotMultiply)
+{
+	if (!ready) return;
+	MakeDocTable(*db);
+	db->RunQuery(wxT("CREATE TABLE allowed (region TEXT)"));
+	db->RunQuery(wxT("INSERT INTO allowed (region) VALUES ('North'), ('East'), ('East')"));
+
+	ibRawDBColumn docRegion = ibRawDBColumn::String(wxT("region"));
+	ibRawDBColumn docQty    = ibRawDBColumn::Number(wxT("qty"));
+	PhysicalQ doc(wxT("doc"), 402); doc.AddCol(&docRegion); doc.AddCol(&docQty);
+	ibRawDBColumn allowedRegion = ibRawDBColumn::String(wxT("region"));
+	PhysicalQ allowed(wxT("allowed"), 403); allowed.AddCol(&allowedRegion);
+
+	EXPECT_EQ(SemiJoinRowCount(nullptr, doc, &docRegion, &docQty, allowed, &allowedRegion, nullptr), 3);
+}
+
+// Empty inner -> NOTHING (the load-bearing case: an EXISTS over an empty set is false
+// for every row, never the whole-table degrade a dropped predicate would give).
+TEST_F(ComputedServerFix, SemiJoin_EmptyInnerReturnsNoRows)
+{
+	if (!ready) return;
+	MakeDocTable(*db);
+	db->RunQuery(wxT("CREATE TABLE allowed (region TEXT)"));   // no rows
+
+	ibRawDBColumn docRegion = ibRawDBColumn::String(wxT("region"));
+	ibRawDBColumn docQty    = ibRawDBColumn::Number(wxT("qty"));
+	PhysicalQ doc(wxT("doc"), 404); doc.AddCol(&docRegion); doc.AddCol(&docQty);
+	ibRawDBColumn allowedRegion = ibRawDBColumn::String(wxT("region"));
+	PhysicalQ allowed(wxT("allowed"), 405); allowed.AddCol(&allowedRegion);
+
+	EXPECT_EQ(SemiJoinRowCount(nullptr, doc, &docRegion, &docQty, allowed, &allowedRegion, nullptr), 0);
+}
+
+// The inner's OWN WHERE narrows the membership set: allowed(region, active); only
+// active='Y' rows count. { North:Y, East:N } -> only North×2 survive = 2.
+TEST_F(ComputedServerFix, SemiJoin_InnerWhereFilters)
+{
+	if (!ready) return;
+	MakeDocTable(*db);
+	db->RunQuery(wxT("CREATE TABLE allowed (region TEXT, active TEXT)"));
+	db->RunQuery(wxT("INSERT INTO allowed (region, active) VALUES ('North', 'Y'), ('East', 'N')"));
+
+	ibRawDBColumn docRegion = ibRawDBColumn::String(wxT("region"));
+	ibRawDBColumn docQty    = ibRawDBColumn::Number(wxT("qty"));
+	PhysicalQ doc(wxT("doc"), 406); doc.AddCol(&docRegion); doc.AddCol(&docQty);
+	ibRawDBColumn allowedRegion = ibRawDBColumn::String(wxT("region"));
+	ibRawDBColumn allowedActive = ibRawDBColumn::String(wxT("active"));
+	PhysicalQ allowed(wxT("allowed"), 407); allowed.AddCol(&allowedRegion); allowed.AddCol(&allowedActive);
+
+	// inner WHERE: active == 'Y'
+	ibQueryCondition c;
+	c.m_col   = &allowedActive;
+	c.m_op    = ibQueryFilterOp::Equal;
+	c.m_value = ibValue(wxString(wxT("Y")));
+	ibQueryPredicatePtr innerWhere = ibQueryPredicate::Leaf(c);
+
+	EXPECT_EQ(SemiJoinRowCount(nullptr, doc, &docRegion, &docQty, allowed, &allowedRegion, innerWhere), 2);
+}
+
+// A NULL inner key simply never matches (sj.region = doc.region is UNKNOWN for a NULL
+// inner row) -> it contributes no membership, exactly like IN ignores a NULL set member.
+// { North, NULL } -> only North×2 = 2 (the NULL row is inert).
+TEST_F(ComputedServerFix, SemiJoin_NullInnerKeyIsInert)
+{
+	if (!ready) return;
+	MakeDocTable(*db);
+	db->RunQuery(wxT("CREATE TABLE allowed (region TEXT)"));
+	db->RunQuery(wxT("INSERT INTO allowed (region) VALUES ('North'), (NULL)"));
+
+	ibRawDBColumn docRegion = ibRawDBColumn::String(wxT("region"));
+	ibRawDBColumn docQty    = ibRawDBColumn::Number(wxT("qty"));
+	PhysicalQ doc(wxT("doc"), 408); doc.AddCol(&docRegion); doc.AddCol(&docQty);
+	ibRawDBColumn allowedRegion = ibRawDBColumn::String(wxT("region"));
+	PhysicalQ allowed(wxT("allowed"), 409); allowed.AddCol(&allowedRegion);
+
+	EXPECT_EQ(SemiJoinRowCount(nullptr, doc, &docRegion, &docQty, allowed, &allowedRegion, nullptr), 2);
+}
