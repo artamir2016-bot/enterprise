@@ -39,6 +39,8 @@ private:
 		enDelete,
 		enClear,
 		enSort,
+		enTotal,
+		enFindRows,
 	};
 	//attributes:
 	enum Prop {

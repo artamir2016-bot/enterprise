@@ -4,6 +4,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include "valueTable.h"
+#include "valueArray.h"                          // ibValueArray — FindRows returns an array of rows
 #include "backend/backend_exception.h"
 
 // L5-1 composer — full type to bind the base m_composer to this table's source in the ctor (the RAM
@@ -62,6 +63,12 @@ void ibValueModelTable::FillMembers(ibMemberTable& helper) const
 	helper.AppendFunc(wxT("Delete"), 1, wxT("Delete(row : tableRow)"));
 	helper.AppendFunc(wxT("Clear"), wxT("Clear()"));
 	helper.AppendFunc(wxT("Sort"), 2, wxT("Sort(column : string, ascending = true : boolean)"));
+	helper.AppendFunc(wxT("Total"), 1, wxT("Total(column : string)"));
+	helper.AppendFunc(wxT("FindRows"), 2, wxT("FindRows(value : any, column : string)"));
+
+	// 1C-parity Russian aliases for the new methods (no extra dispatch — AliasMethod maps the name).
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x98\xD1\x82\xD0\xBE\xD0\xB3"), wxT("Total"));                                              // Итог
+	helper.AliasMethod(wxString::FromUTF8("\xD0\x9D\xD0\xB0\xD0\xB9\xD1\x82\xD0\xB8\xD0\xA1\xD1\x82\xD1\x80\xD0\xBE\xD0\xBA\xD0\xB8"), wxT("FindRows")); // НайтиСтроки
 
 	helper.AppendProp(wxT("Columns"));
 }
@@ -125,6 +132,39 @@ bool ibValueModelTable::CallAsFunc(const long lMethodNum, ibValue& pvarRetValue,
 		m_composer.ClearSorts();
 		m_composer.Sort(colName, lSizeArray > 0 ? paParams[1]->GetBoolean() : true);
 		NotifyReset();
+		return true;
+	}
+	case enTotal: {
+		// Итог(Колонка) — sum the numeric column over every row. An unknown column is an error
+		// (false), not a silent zero. Non-numeric cells contribute their numeric reading (0 when empty).
+		auto* colInfo = m_tableColumnCollection->GetColumnByName(paParams[0]->GetString());
+		if (colInfo == nullptr)
+			return false;
+		const ibMetaID colId = (ibMetaID)colInfo->GetColumnID();
+		ibNumber sum;   // default-constructed = 0
+		for (long row = 0; row < GetRowCount(); row++) {
+			ibComposerNode* node = GetViewData<ibComposerNode>(GetItem(row));
+			if (node != nullptr)
+				sum += node->GetTableValue(colId).GetNumber();
+		}
+		pvarRetValue = ibValue(sum);
+		return true;
+	}
+	case enFindRows: {
+		// НайтиСтроки(Значение, Колонка) — ALL rows whose column equals the value (Find returns only
+		// the first). Returns an Array of row values; an unknown column yields an empty array.
+		auto* colInfo = m_tableColumnCollection->GetColumnByName(paParams[1]->GetString());
+		ibValueArray* arr = new ibValueArray();
+		if (colInfo != nullptr) {
+			const ibMetaID colId = (ibMetaID)colInfo->GetColumnID();
+			for (long row = 0; row < GetRowCount(); row++) {
+				const ibDataViewItem& item = GetItem(row);
+				ibComposerNode* node = GetViewData<ibComposerNode>(item);
+				if (node != nullptr && *paParams[0] == node->GetTableValue(colId))
+					arr->Add(GetRowAt(item));
+			}
+		}
+		pvarRetValue = arr;
 		return true;
 	}
 	}
