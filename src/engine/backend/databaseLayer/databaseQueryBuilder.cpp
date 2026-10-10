@@ -688,6 +688,23 @@ wxString ibQueryRenderer::RenderExpr(const ibQueryExprPtr& expr)
 			s += RenderExpr(expr->m_args[i]);
 		}
 		s += wxT(")");
+		// T1.2 window: FN(arg) OVER (PARTITION BY e, …). An empty partition list = OVER () (grand total on
+		// every row). ORDER BY within the window is Inc 2 (not rendered yet). All four dialects spell the
+		// OVER / PARTITION BY clause identically, so this is one render path (gated by ibSqlFeatures::m_window).
+		if (expr->m_over) {
+			if (!m_dialect.m_features.m_window)
+				ibBackendQueryException::Throw(ibBackendQueryException::Kind::UnsupportedNode,
+					_("this database has no window functions (... OVER (...)) - the dialect does not advertise window support"));
+			s += wxT(" OVER (");
+			if (!expr->m_partitionBy.empty()) {
+				s += wxT("PARTITION BY ");
+				for (size_t i = 0; i < expr->m_partitionBy.size(); ++i) {
+					if (i) s += wxT(", ");
+					s += RenderExpr(expr->m_partitionBy[i]);
+				}
+			}
+			s += wxT(")");
+		}
 		return s;
 	}
 

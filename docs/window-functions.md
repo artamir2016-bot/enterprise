@@ -90,7 +90,16 @@ cases to a new `tests/test_queryWindow.cpp` built on the `ComputedServerFix` har
 
 ## Increment plan (risk-ordered, each shippable + oracle-gated)
 
-### Inc 1 — `PARTITION BY` only (implement first)
+### Inc 1 — `PARTITION BY` only  — **DONE**
+Landed: keywords `Over`/`Partition`; parser accepts `FN(arg) OVER ( [PARTITION BY …] [ORDER BY …] )`
+on an aggregate (ORDER BY parsed but lowering defers it to Inc 2); AST window fields on the `Func`
+node; L3 `ibQueryColumnExpr::Window`; lowering routes a windowed Func through `SelectExpr` (rows
+preserved, never `ExecuteAggregate`), gated on a single DB source; L2-1 `ibQueryExpr` OVER fields +
+render; renderer gates on `ibSqlFeatures::m_window`. Tests: `tests/test_queryWindow.cpp` (3 e2e on
+SQLite) + `tests/test_queryL4Parser.cpp` (6 parse cases). DISTINCT-in-window and window-over-RAM are
+rejected; window ORDER BY raises "Inc 2".
+
+
 The smallest useful window: `FN(arg) OVER (PARTITION BY e, …)` — a partition aggregate on
 every detail row, no ordering, no frame. Covers the dominant report need ("the row plus its
 group's total") and exercises the whole pipe end to end.

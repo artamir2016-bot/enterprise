@@ -838,3 +838,54 @@ TEST(QueryRender, InHierarchyRoundTrips) {
 	ExpectRoundTrip(wxT("SELECT Ref FROM Catalog.Products WHERE Parent NOT IN HIERARCHY (&Roots)"));
 	ExpectRoundTrip(wxT("SELECT Ref FROM Catalog.Products WHERE Parent IN (&A, &B)"));
 }
+
+// ── Window functions (T1.2): OVER (PARTITION BY …) parses onto the aggregate Func node ──
+TEST(QueryL4Parser, WindowPartitionByParses) {
+	auto sel = Parse(wxT("SELECT Warehouse, SUM(Qty) OVER (PARTITION BY Warehouse) AS WTotal FROM Document.Movement.Lines"));
+	ASSERT_NE(sel, nullptr);
+	ASSERT_EQ(sel->m_projections.size(), 2u);
+	const ibQueryAstExpr& w = *sel->m_projections[1].m_expr;
+	EXPECT_EQ(w.m_kind, ibQueryAstExprKind::Func);
+	EXPECT_EQ(w.m_func, ibQueryKeyword::Sum);
+	EXPECT_TRUE(w.m_hasWindow);
+	ASSERT_EQ(w.m_partitionBy.size(), 1u);
+	EXPECT_EQ(w.m_partitionBy[0]->m_path[0], wxT("Warehouse"));
+	EXPECT_TRUE(w.m_windowOrderBy.empty());
+	EXPECT_EQ(sel->m_projections[1].m_alias, wxT("WTotal"));
+}
+
+TEST(QueryL4Parser, WindowEmptyOverParses) {
+	// OVER () — the grand total on every row: has a window, no partition.
+	auto sel = Parse(wxT("SELECT SUM(Qty) OVER () FROM Document.Movement.Lines"));
+	ASSERT_NE(sel, nullptr);
+	ASSERT_EQ(sel->m_projections.size(), 1u);
+	const ibQueryAstExpr& w = *sel->m_projections[0].m_expr;
+	EXPECT_TRUE(w.m_hasWindow);
+	EXPECT_TRUE(w.m_partitionBy.empty());
+}
+
+TEST(QueryL4Parser, WindowOrderByParses) {
+	// ORDER BY inside OVER is accepted by the parser (lowering defers execution to Inc 2).
+	auto sel = Parse(wxT("SELECT SUM(Qty) OVER (PARTITION BY W ORDER BY Period DESC) FROM Document.Movement.Lines"));
+	ASSERT_NE(sel, nullptr);
+	const ibQueryAstExpr& w = *sel->m_projections[0].m_expr;
+	EXPECT_TRUE(w.m_hasWindow);
+	ASSERT_EQ(w.m_partitionBy.size(), 1u);
+	ASSERT_EQ(w.m_windowOrderBy.size(), 1u);
+	EXPECT_FALSE(w.m_windowOrderBy[0].m_ascending);   // DESC
+}
+
+TEST(QueryL4Parser, WindowRejectsDistinct) {
+	// DISTINCT inside a windowed aggregate is refused at parse (dialect-divergent otherwise).
+	EXPECT_THROW(Parse(wxT("SELECT SUM(DISTINCT Qty) OVER (PARTITION BY W) FROM Document.Movement.Lines")),
+		ibBackendException);
+}
+
+TEST(QueryL4Parser, CountStarWindowParses) {
+	auto sel = Parse(wxT("SELECT COUNT(*) OVER (PARTITION BY W) FROM Document.Movement.Lines"));
+	ASSERT_NE(sel, nullptr);
+	const ibQueryAstExpr& w = *sel->m_projections[0].m_expr;
+	EXPECT_EQ(w.m_func, ibQueryKeyword::Count);
+	EXPECT_TRUE(w.m_star);
+	EXPECT_TRUE(w.m_hasWindow);
+}

@@ -950,6 +950,29 @@ ibQueryExprPtr ibMetaIRBuilder::BuildColumnExpr(const ibBackendQueryable* querya
 		// spelling. Nothing engine-specific reaches this far up, which is the point: a totals rebuild
 		// groups the movements by the very expression the maintenance trigger keys rows with.
 		return ibPeriodTrunc(BuildColumnExpr(queryable, expr->m_lhs, mainQual), expr->m_periodUnit);
+
+	case ibQueryColumnExprKind::Window: {
+		// T1.2 window: FN(arg) OVER (PARTITION BY …). Build the L2-1 Func (COUNT(*) OVER keeps the `*`
+		// arg) then stamp the OVER clause; the renderer appends it and gates on the dialect's window
+		// capability. ORDER BY within the window is Inc 2 (not built yet).
+		auto fnName = [](ibWindowAggFn fn) -> wxString {
+			switch (fn) {
+			case ibWindowAggFn::Sum:   return wxT("SUM");
+			case ibWindowAggFn::Count: return wxT("COUNT");
+			case ibWindowAggFn::Min:   return wxT("MIN");
+			case ibWindowAggFn::Max:   return wxT("MAX");
+			case ibWindowAggFn::Avg:   return wxT("AVG");
+			}
+			return wxT("SUM");
+		};
+		std::vector<ibQueryExprPtr> args;
+		args.push_back(expr->m_winStar ? ibCol(wxT("*")) : BuildColumnExpr(queryable, expr->m_lhs, mainQual));
+		ibQueryExprPtr fn = ibFunc(fnName(expr->m_winFn), std::move(args), /*distinct*/ false);
+		fn->m_over = true;
+		for (const ibQueryColumnExprPtr& p : expr->m_partitionBy)
+			fn->m_partitionBy.push_back(BuildColumnExpr(queryable, p, mainQual));
+		return fn;
+	}
 	}
 	return nullptr;
 }

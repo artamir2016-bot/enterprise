@@ -1408,9 +1408,11 @@ bool PopulateBuilder(const ibQuerySelect& ast, const std::map<wxString, ibValue>
 		oc.m_ownedCol = column;
 	};
 
+	// A WINDOW aggregate (`SUM(x) OVER (…)`) is NOT a GROUP-BY aggregate — it keeps every row. So a
+	// windowed Func does NOT put the SELECT into aggregate (collapsing) mode; only a bare aggregate does.
 	bool aggregate = !ast.m_groupBy.empty();
 	for (const ibQueryProjection& p : ast.m_projections)
-		if (p.m_expr && p.m_expr->m_kind == ibQueryAstExprKind::Func) aggregate = true;
+		if (p.m_expr && p.m_expr->m_kind == ibQueryAstExprKind::Func && !p.m_expr->m_hasWindow) aggregate = true;
 
 	// projections -> output schema (+ door select for dot-walk / aggregates / explicit projection)
 	outSchema.clear();
@@ -1435,7 +1437,53 @@ bool PopulateBuilder(const ibQuerySelect& ast, const std::map<wxString, ibValue>
 			OutputColumn oc;
 			oc.m_name = alias;
 
-			if (e.m_kind == ibQueryAstExprKind::Func) {
+			if (e.m_kind == ibQueryAstExprKind::Func && e.m_hasWindow) {
+				// WINDOW aggregate (T1.2): FN(arg) OVER (PARTITION BY …) — a per-row computed column, NOT a
+				// GROUP-BY fold. Lowered to an ibQueryColumnExpr::Window and projected via SelectExpr (the
+				// computed-column path), so it rides ExecuteRead (rows preserved), never ExecuteAggregate.
+				// Gate (Inc 1): a single DB source only — a window needs the whole partition, which a RAM /
+				// computed / multi-source stitch cannot compute; and window ORDER BY is Inc 2.
+				if (computedPrimary || multiSource)
+					ThrowQueryException(e.m_line, e.m_col, _("a window function (… OVER (…)) needs a single database source"));
+				if (!e.m_windowOrderBy.empty())
+					ThrowQueryException(e.m_line, e.m_col, _("ORDER BY inside OVER (…) is not supported yet (window running aggregates are a later increment)"));
+				auto winFn = [&](ibQueryKeyword k) -> ibWindowAggFn {
+					switch (k) {
+					case ibQueryKeyword::Sum:   return ibWindowAggFn::Sum;
+					case ibQueryKeyword::Count: return ibWindowAggFn::Count;
+					case ibQueryKeyword::Min:   return ibWindowAggFn::Min;
+					case ibQueryKeyword::Max:   return ibWindowAggFn::Max;
+					case ibQueryKeyword::Avg:   return ibWindowAggFn::Avg;
+					default:                    return ibWindowAggFn::Sum;
+					}
+				};
+				// Argument: COUNT(*) (star), a computed expr (SUM(Qty*Price) OVER), or a plain column.
+				ibQueryColumnExprPtr arg;
+				if (!e.m_star) {
+					if (e.m_arg && IsComputedExprAst(*e.m_arg)) {
+						GateComputedExpr(sources, *e.m_arg);
+						arg = BuildColumnExprFromAst(sources, *e.m_arg, params);
+					}
+					else {
+						const std::vector<const ibBackendQueryColumn*> argCols = ResolvePath(sources, *e.m_arg);
+						if (argCols.size() != 1 || argCols.front() == nullptr)
+							ThrowQueryException(e.m_line, e.m_col, _("a window aggregate argument must be a plain column of the source (Inc 1)"));
+						arg = ibQueryColumnExpr::Col(argCols.front());
+					}
+				}
+				// PARTITION BY: plain columns of the single source (Inc 1).
+				std::vector<ibQueryColumnExprPtr> parts;
+				for (const ibQueryAstExprPtr& pe : e.m_partitionBy) {
+					const std::vector<const ibBackendQueryColumn*> pcols = ResolvePath(sources, *pe);
+					if (pcols.size() != 1 || pcols.front() == nullptr)
+						ThrowQueryException(pe->m_line, pe->m_col, _("PARTITION BY must name a plain column of the source (Inc 1)"));
+					parts.push_back(ibQueryColumnExpr::Col(pcols.front()));
+				}
+				b.SelectExpr(ibQueryColumnExpr::Window(winFn(e.m_func), arg, e.m_star, std::move(parts)), alias);
+				oc.m_alias = alias;
+				oc.m_byAlias = true;
+			}
+			else if (e.m_kind == ibQueryAstExprKind::Func) {
 				// Aggregate input: a plain column, a reference dot-walk leaf (SUM(Producer.Weight)), or a
 				// COMPUTED expression (SUM(Qty * Price) — the provider lowers it; single DB source, gated).
 				if (e.m_star) {

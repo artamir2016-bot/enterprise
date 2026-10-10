@@ -69,6 +69,8 @@ static const ibQueryKeyWordEntry s_queryKeyWordsEN[] =
 	{ ibQueryKeyword::Min,      wxT("MIN")      },
 	{ ibQueryKeyword::Max,      wxT("MAX")      },
 	{ ibQueryKeyword::Avg,      wxT("AVG")      },
+	{ ibQueryKeyword::Over,      wxT("OVER")      },
+	{ ibQueryKeyword::Partition, wxT("PARTITION") },
 	{ ibQueryKeyword::Value,    wxT("VALUE")    },
 	{ ibQueryKeyword::Cast,     wxT("CAST")     },
 };

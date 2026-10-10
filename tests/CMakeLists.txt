@@ -92,6 +92,7 @@ add_executable(oes_tests
     test_queryLinqExec.cpp
     test_queryComputedDotWalk.cpp
     test_queryComputedServer.cpp
+    test_queryWindow.cpp
     test_typeDescription.cpp
     test_dialectDictionary.cpp
     test_materializationDialect.cpp

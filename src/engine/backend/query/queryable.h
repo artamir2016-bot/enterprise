@@ -277,8 +277,17 @@ struct ibSemiJoinExists
 // without its author naming an engine — and so a totals REBUILD can group the movements by
 // exactly the expression the maintenance trigger keys rows with. Two paths, one definition; a
 // second notion of "start of the month" would silently split rows the trigger had merged.
-enum class ibQueryColumnExprKind { Column, Const, Arith, Case, PeriodTrunc };
+// Window (T1.2) — a per-row aggregate over a partition, `FN(arg) OVER (PARTITION BY …)`. It does NOT
+// collapse rows (unlike a GROUP-BY aggregate): every detail row survives carrying its partition's value.
+// The provider renders it to an L2-1 Func with an OVER tail and gates on the dialect's window capability
+// (ibSqlFeatures::m_window) — a RAM/computed source cannot compute a window and raises. See
+// docs/window-functions.md.
+enum class ibQueryColumnExprKind { Column, Const, Arith, Case, PeriodTrunc, Window };
 enum class ibQueryColumnArithOp { Add, Sub, Mul, Div, Mod };
+
+// The five window-capable aggregates (same set as the GROUP-BY aggregates; kept as its own enum here so
+// queryable.h stays independent of the L3 builder's ibAggregateFn — the provider maps one to the other).
+enum class ibWindowAggFn { Sum, Count, Min, Max, Avg };
 
 struct ibQueryColumnExpr;
 using ibQueryColumnExprPtr = std::shared_ptr<ibQueryColumnExpr>;
@@ -301,6 +310,12 @@ struct ibQueryColumnExpr
 	// PeriodTrunc — the unit m_lhs is truncated to. Same principle as everything else here: the
 	// expression names the CONCEPT, the dialect owns the spelling.
 	ibTotalsPeriod              m_periodUnit = ibTotalsPeriod::Month;
+
+	// Window (T1.2) — the aggregate (m_winFn), its argument (m_lhs; null when m_winStar = COUNT(*)), and
+	// the PARTITION BY expression list (m_partitionBy). ORDER BY within the window is Inc 2 (not stored yet).
+	ibWindowAggFn               m_winFn = ibWindowAggFn::Sum;
+	bool                        m_winStar = false;              // COUNT(*) OVER (…)
+	std::vector<ibQueryColumnExprPtr> m_partitionBy;
 
 	// ⭐⭐ ONE FIELD OF A COMPOSITE COLUMN, NAMED. A plain Col() reduces to the column's FIRST value
 	// field, which is the right answer for everything that has one value — a number, a date, a
@@ -336,6 +351,13 @@ struct ibQueryColumnExpr
 	                                 ibQueryColumnExprPtr otherwise) {
 		auto e = std::make_shared<ibQueryColumnExpr>();
 		e->m_kind = ibQueryColumnExprKind::Case; e->m_cases = std::move(cases); e->m_else = otherwise; return e;
+	}
+	// Window (T1.2): FN(arg) OVER (PARTITION BY parts…). arg is null + star=true for COUNT(*).
+	static ibQueryColumnExprPtr Window(ibWindowAggFn fn, ibQueryColumnExprPtr arg, bool star,
+	                                   std::vector<ibQueryColumnExprPtr> parts) {
+		auto e = std::make_shared<ibQueryColumnExpr>();
+		e->m_kind = ibQueryColumnExprKind::Window; e->m_winFn = fn; e->m_lhs = arg; e->m_winStar = star;
+		e->m_partitionBy = std::move(parts); return e;
 	}
 };
 

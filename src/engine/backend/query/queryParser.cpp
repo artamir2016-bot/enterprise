@@ -868,6 +868,34 @@ ibQueryAstExprPtr ibQueryParser::ParseAggregate()
 	}
 
 	ExpectPunct(wxT(')'), wxT("')'"));
+
+	// WINDOW (T1.2): an OVER (…) tail turns this aggregate into a WINDOW aggregate — computed per row
+	// over its partition, not folded. `FN([DISTINCT] arg) OVER ( [PARTITION BY e,…] [ORDER BY e[dir],…] )`.
+	// DISTINCT inside a windowed aggregate is rejected (most engines forbid it; refuse rather than emit
+	// dialect-divergent SQL). The lowering gates on a DB-backed source + the dialect's window capability.
+	if (AcceptKw(ibQueryKeyword::Over)) {
+		if (e->m_distinctArg)
+			ThrowQueryException(tk, _("DISTINCT is not allowed inside a window aggregate (FN(DISTINCT x) OVER (...))"));
+		e->m_hasWindow = true;
+		ExpectPunct(wxT('('), wxT("'(' after OVER"));
+		if (AcceptKw(ibQueryKeyword::Partition)) {
+			ExpectKw(ibQueryKeyword::By, wxT("BY after PARTITION"));
+			do { e->m_partitionBy.push_back(ParsePrimary()); } while (AcceptPunct(wxT(',')));
+		}
+		if (AcceptKw(ibQueryKeyword::Order)) {
+			ExpectKw(ibQueryKeyword::By, wxT("BY after ORDER"));
+			do {
+				ibQueryOrderItem it;
+				it.m_expr = ibQueryAstExpr::Make(ibQueryAstExprKind::Column);
+				it.m_expr->m_path = ParseDottedName();
+				if (AcceptKw(ibQueryKeyword::Desc))     it.m_ascending = false;
+				else if (AcceptKw(ibQueryKeyword::Asc)) it.m_ascending = true;
+				e->m_windowOrderBy.push_back(std::move(it));
+			} while (AcceptPunct(wxT(',')));
+		}
+		ExpectPunct(wxT(')'), wxT("')' to close OVER (...)"));
+	}
+
 	return e;
 }
 

@@ -138,6 +138,13 @@ struct ibQueryExpr
 	// In / IsNull / Exists: negation (NOT IN / IS NOT NULL / NOT EXISTS).
 	bool m_negated = false;
 
+	// Func (T1.2 window): a trailing `OVER (PARTITION BY …)` turns the aggregate into a WINDOW function —
+	// computed per row over its partition, not folded. m_over = emit the OVER clause; m_partitionBy = the
+	// partition expressions (empty + m_over = `OVER ()`, the grand total on every row). ORDER BY within the
+	// window is Inc 2. The renderer appends the clause; the dialect must advertise ibSqlFeatures::m_window.
+	bool m_over = false;
+	std::vector<std::shared_ptr<ibQueryExpr>> m_partitionBy;
+
 	// Exists: the correlated subquery. A shared_ptr to the (fwd-declared) relation tree — the subquery
 	// references the OUTER write row's columns, so it renders as a self-contained `EXISTS ( SELECT … )`.
 	std::shared_ptr<ibQueryRel> m_subquery;

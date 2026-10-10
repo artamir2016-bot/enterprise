@@ -95,6 +95,17 @@ struct ibQueryAstExpr
 	bool                  m_distinctArg = false;
 	ibQueryAstExprPtr        m_arg;                          // Func argument
 
+	// WINDOW (T1.2): a Func carrying `OVER (PARTITION BY … [ORDER BY …])` is a WINDOW aggregate —
+	// computed per row over its partition WITHOUT collapsing rows (unlike a GROUP-BY aggregate). The
+	// window spec lives on the Func node because the aggregate IS the windowed thing; the projection
+	// above is unchanged. m_hasWindow distinguishes `SUM(x) OVER (…)` from a bare `SUM(x)`. Empty
+	// partition list + m_hasWindow = `OVER ()` (the grand total on every row). m_windowOrderBy is the
+	// running-aggregate order (Inc 2; empty in Inc 1 = a plain partition aggregate). See
+	// docs/window-functions.md.
+	bool                             m_hasWindow = false;   // this Func has an OVER (…) clause
+	std::vector<ibQueryAstExprPtr>   m_partitionBy;         // OVER (PARTITION BY e, …)
+	std::vector<struct ibQueryOrderItem> m_windowOrderBy;   // OVER (… ORDER BY e [dir], …) — Inc 2
+
 	ibQueryCompareOp      m_cmp = ibQueryCompareOp::Eq;   // Compare
 	ibQueryArithOp        m_arith = ibQueryArithOp::Add;  // Arith
 	bool                  m_negated = false;              // Like/In/IsNull/Between negation

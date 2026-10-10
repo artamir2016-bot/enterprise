@@ -68,6 +68,10 @@ enum class ibQueryKeyword
 	// aggregate functions
 	Sum, Count, Min, Max, Avg,
 
+	// window functions (T1.2): FN(arg) OVER (PARTITION BY … [ORDER BY …]). `By`/`Order`/`Asc`/`Desc`
+	// reuse the existing clause keywords; only OVER and PARTITION are new. See docs/window-functions.md.
+	Over, Partition,
+
 	// literal-reference constant: value(<Kind>.<Name>.<Member>) — an empty reference / a predefined item
 	Value,
 
