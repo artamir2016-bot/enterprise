@@ -35,9 +35,17 @@ These are the dominant themes upstream and the biggest wins for an imported real
 
 ### T1.1 — Query pushdown to the server
 Move set/relational work from the interpreter into SQL the DB executes.
+Progress: Inc 1 + Inc 1b **DONE** (see [docs/query-pushdown.md](query-pushdown.md)).
 - `IN (SELECT …)` compiled as a real **semi-join** to the server, not a parameter list
-  (`8dd608e6`, `44183190`, `c5d9453a`).
+  (`8dd608e6`, `44183190`, `c5d9453a`). ✅ **DONE** — Inc 1 (`466da62b`/`c077b207`) lowers it
+  to an `ibSemiJoinExists`/`EXISTS`; Inc 1b (`cd8042bb`) adds the e2e EXISTS-render tests.
+  `NOT IN` deliberately stays on the materialise path (NOT EXISTS ≠ NOT IN under NULLs).
 - `IN HIERARCHY` walked by the server; hierarchy totals folded by keys (`00145890`, `645e9ee0`, `19d42e12`).
+  ⏸ **DEFERRED** — our `IN HIERARCHY` already resolves the subtree with one parent-map read
+  and sends a portable `IN (values)` (no recursive CTE, one render for all four drivers, on
+  purpose — `queryHierarchy.h`). A per-dialect recursive CTE would trade that portability for
+  a win only on pathologically large trees; revisit only if measured. Rationale recorded in
+  query-pushdown.md Inc 2.
 - `TOTALS` fold on the server; `BY … PERIODS`; turnovers fold on the server
   (`06273313`, `9ffd1a70`, `c4f6eac4`, `f38da764`).
 - `CAST` to a primitive; declare a nested source to the server; a column answers for itself

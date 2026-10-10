@@ -108,18 +108,31 @@ is UNKNOWN for every x, while `NOT EXISTS(k = x)` is true for non-matching x) �
 already gives. A correct `NOT IN` pushdown (NOT EXISTS + a null-probe guard) is a later
 increment; it is an optimisation with a subtle correctness trap, not shipped blind.
 
-### Inc 2 — `IN HIERARCHY` walked by the server
-- Render the hierarchy membership as SQL rather than resolving `ibQueryHierarchyScope`
-  in C++. Shape per dialect: a **recursive CTE** over the parent column
-  (`WITH RECURSIVE sub AS (SELECT seed … UNION ALL SELECT child JOIN sub …)`) for
-  engines that have it (PostgreSQL, SQLite, Firebird 3+), feeding the `IN (SELECT …)`
-  built in Inc 1. `HIERARCHY` vs `HIERARCHY ONLY` vs `ELEMENTS` (`ibQueryDimUnfold`)
-  choose the seed/÷recursion shape.
-- A driver without recursive CTE falls back to the C++ walk (explicit capability flag
-  on the dialect, logged — no silent divergence).
-- **Tests:** parity over a known parent tree — a node with descendants at depth ≥ 3,
-  `HIERARCHY` (self+subtree) vs `HIERARCHY ONLY` (subtree) vs `ELEMENTS` (leaves),
-  `NOT IN HIERARCHY`, a cycle guard (recursion must terminate).
+### Inc 2 — `IN HIERARCHY` walked by the server  — **DEFERRED (conflicts with a deliberate design)**
+The original plan: render hierarchy membership as a per-dialect **recursive CTE**
+(`WITH RECURSIVE sub AS (SELECT seed … UNION ALL SELECT child JOIN sub …)`) feeding the
+Inc 1 `IN (SELECT …)`, with a C++-walk fallback on drivers without recursive CTE.
+
+**Why it is deferred, not implemented (2026-10-10).** Our `IN HIERARCHY` already took the
+*opposite* road ON PURPOSE, and it is the better one for our workloads — see the ⚠ notes
+at the top of `query/queryHierarchy.h`:
+
+- The subtree is resolved into VALUES in C++ with **one read of the parent map** (not a
+  read per node), then sent as an ordinary `IN (values)`. So **all four drivers render it
+  with no recursive CTE** and no dialect has to spell one — the portability property the
+  whole engine is measured by (CLAUDE.md).
+- A recursive CTE would REPLACE that single portable render with a per-dialect construct +
+  a capability flag + a fallback + a cycle guard — materially more surface and risk — for a
+  win only on *pathologically large* hierarchies (chart of accounts / catalog trees are
+  small; one parent-map read is cheap).
+- The parent map read is the SAME mechanism `TOTALS BY x HIERARCHY` uses
+  (`ibQueryComposer::BuildReferenceHierarchy`), so filter and report cannot drift apart.
+
+Revisit only if a real configuration shows the parent-map materialisation (not row
+candidates — those already don't cross the wire, the `IN` is server-side) is a measured
+bottleneck on a huge hierarchy. Until then the current design stands. Clean-room note: the
+upstream reference pushes this to a CTE; we deliberately do not, for the portability reason
+above — a case where our own design is the considered choice, not a gap.
 
 ### Inc 3 — `TOTALS` folded on the server
 - Push the multi-level / grand-total cases ExecuteTotals currently folds in C++ onto
