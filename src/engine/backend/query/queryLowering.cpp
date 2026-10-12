@@ -1447,17 +1447,23 @@ bool PopulateBuilder(const ibQuerySelect& ast, const std::map<wxString, ibValue>
 					ThrowQueryException(e.m_line, e.m_col, _("a window function (… OVER (…)) needs a single database source"));
 				auto winFn = [&](ibQueryKeyword k) -> ibWindowAggFn {
 					switch (k) {
-					case ibQueryKeyword::Sum:   return ibWindowAggFn::Sum;
-					case ibQueryKeyword::Count: return ibWindowAggFn::Count;
-					case ibQueryKeyword::Min:   return ibWindowAggFn::Min;
-					case ibQueryKeyword::Max:   return ibWindowAggFn::Max;
-					case ibQueryKeyword::Avg:   return ibWindowAggFn::Avg;
-					default:                    return ibWindowAggFn::Sum;
+					case ibQueryKeyword::Sum:       return ibWindowAggFn::Sum;
+					case ibQueryKeyword::Count:     return ibWindowAggFn::Count;
+					case ibQueryKeyword::Min:       return ibWindowAggFn::Min;
+					case ibQueryKeyword::Max:       return ibWindowAggFn::Max;
+					case ibQueryKeyword::Avg:       return ibWindowAggFn::Avg;
+					case ibQueryKeyword::RowNumber: return ibWindowAggFn::RowNumber;
+					case ibQueryKeyword::Rank:      return ibWindowAggFn::Rank;
+					case ibQueryKeyword::DenseRank: return ibWindowAggFn::DenseRank;
+					default:                        return ibWindowAggFn::Sum;
 					}
 				};
+				// A ranking function (ROW_NUMBER / RANK / DENSE_RANK) takes NO argument — it ranks the rows,
+				// it does not fold a value. Everything else (SUM/COUNT/…) has an argument or is COUNT(*).
+				const bool ranking = ibIsRankingKeyword(e.m_func);
 				// Argument: COUNT(*) (star), a computed expr (SUM(Qty*Price) OVER), or a plain column.
 				ibQueryColumnExprPtr arg;
-				if (!e.m_star) {
+				if (!e.m_star && !ranking) {
 					if (e.m_arg && IsComputedExprAst(*e.m_arg)) {
 						GateComputedExpr(sources, *e.m_arg);
 						arg = BuildColumnExprFromAst(sources, *e.m_arg, params);

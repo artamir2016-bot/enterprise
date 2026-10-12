@@ -247,3 +247,68 @@ TEST_F(WindowFix, RunningTotalDescending)
 	EXPECT_EQ(run[2], 9);    // 2 + 7
 	EXPECT_EQ(run[1], 19);   // 2 + 7 + 10 — full partition sum
 }
+
+// Inc 3 — ranking functions. A score table with a TIE at the top (A, B both 100) distinguishes the
+// three: RANK skips after a tie (1,1,3,4), DENSE_RANK does not (1,1,2,3), ROW_NUMBER is always distinct.
+struct RankFix : WindowFix {
+	void SetUp() override {
+		WindowFix::SetUp();
+		if (!ready) return;
+		db->RunQuery(wxT("CREATE TABLE score (name TEXT, pts INTEGER)"));
+		db->RunQuery(wxT("INSERT INTO score (name, pts) VALUES ('A', 100), ('B', 100), ('C', 90), ('D', 80)"));
+	}
+	// Run FN() OVER (ORDER BY pts DESC) and return name -> rank.
+	std::map<std::string, long> RankBy(ibWindowAggFn fn, ibRawDBColumn& name, ibRawDBColumn& pts, PhysicalQ& score) {
+		ibDatabaseConnectionHolder* holder = ibConnectionPool::ThreadHolder();
+		ibDataQueryBuilder q(holder);
+		q.From(&score);
+		q.Select(&name, wxT("name"));
+		q.SelectExpr(ibQueryColumnExpr::Window(fn, nullptr, false, {}, { { ibQueryColumnExpr::Col(&pts), false } }), wxT("r"));
+		ibReadPageRequest page;
+		ibDataQueryResult res = q.Execute(page);
+		std::map<std::string, long> out;
+		while (res.Next())
+			out[res.GetColumn(wxT("name")).GetString().ToStdString()] = res.GetColumn(wxT("r")).GetInteger();
+		return out;
+	}
+};
+
+TEST_F(RankFix, RankSkipsAfterTie)
+{
+	if (!ready) return;
+	ibRawDBColumn name = ibRawDBColumn::String(wxT("name"));
+	ibRawDBColumn pts  = ibRawDBColumn::Number(wxT("pts"));
+	PhysicalQ score(wxT("score"), 520); score.AddCol(&name); score.AddCol(&pts);
+	const auto r = RankBy(ibWindowAggFn::Rank, name, pts, score);
+	EXPECT_EQ(r.at("A"), 1);
+	EXPECT_EQ(r.at("B"), 1);   // tie with A
+	EXPECT_EQ(r.at("C"), 3);   // RANK skips 2
+	EXPECT_EQ(r.at("D"), 4);
+}
+
+TEST_F(RankFix, DenseRankDoesNotSkip)
+{
+	if (!ready) return;
+	ibRawDBColumn name = ibRawDBColumn::String(wxT("name"));
+	ibRawDBColumn pts  = ibRawDBColumn::Number(wxT("pts"));
+	PhysicalQ score(wxT("score"), 521); score.AddCol(&name); score.AddCol(&pts);
+	const auto r = RankBy(ibWindowAggFn::DenseRank, name, pts, score);
+	EXPECT_EQ(r.at("A"), 1);
+	EXPECT_EQ(r.at("B"), 1);
+	EXPECT_EQ(r.at("C"), 2);   // DENSE_RANK does NOT skip
+	EXPECT_EQ(r.at("D"), 3);
+}
+
+TEST_F(RankFix, RowNumberIsDistinct)
+{
+	if (!ready) return;
+	ibRawDBColumn name = ibRawDBColumn::String(wxT("name"));
+	ibRawDBColumn pts  = ibRawDBColumn::Number(wxT("pts"));
+	PhysicalQ score(wxT("score"), 522); score.AddCol(&name); score.AddCol(&pts);
+	const auto r = RankBy(ibWindowAggFn::RowNumber, name, pts, score);
+	EXPECT_EQ(r.at("C"), 3);           // the two unique-pts rows are unambiguous
+	EXPECT_EQ(r.at("D"), 4);
+	// A and B (tied at the top) take 1 and 2 in some order — distinct, no gaps.
+	EXPECT_NE(r.at("A"), r.at("B"));
+	EXPECT_EQ(r.at("A") + r.at("B"), 3);   // {1,2}
+}

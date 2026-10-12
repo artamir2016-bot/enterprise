@@ -124,10 +124,15 @@ accumulates the same way. Lowering resolves each order expr to a plain column of
 Tests: `tests/test_queryWindow.cpp` — running total within a partition that resets at the boundary,
 and DESC accumulation (full oes_tests 1497/1497).
 
-### Inc 3 — ranking functions
-`ROW_NUMBER() OVER (…)`, `RANK()`, `DENSE_RANK()` — no argument, require ORDER BY.
-- Keywords + a small "ranking func" family distinct from the SUM/COUNT aggregate set.
-- Tests: dense vs sparse rank on ties, row_number stability.
+### Inc 3 — ranking functions  — **DONE**
+Landed: `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()` — no argument, ORDER BY inside OVER required
+(enforced at parse). Keywords `RowNumber`/`Rank`/`DenseRank` + `ibIsRankingKeyword` (their own family,
+distinct from the aggregates); parser `ParseRanking` (empty parens, required OVER + ORDER BY) sharing
+the extracted `ParseOverClause`; `ibWindowAggFn` extended; lowering builds the Window node with no
+argument; the Func renderer emits `ROW_NUMBER() OVER (…)` with empty parens. Tests:
+`tests/test_queryWindow.cpp` (RANK skips after a tie 1,1,3,4; DENSE_RANK does not 1,1,2,3; ROW_NUMBER
+distinct) + `tests/test_queryL4Parser.cpp` (5 parse cases incl. ORDER-BY-required, OVER-required,
+no-argument). Full oes_tests 1505/1505.
 
 ### Inc 4 — explicit frame + window coexisting with GROUP BY
 `ROWS/RANGE BETWEEN … AND …`; and a window computed over the *result of* a GROUP BY

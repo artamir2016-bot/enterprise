@@ -108,6 +108,8 @@ private:
 	ibQueryAstExprPtr             ParseMulDiv();      // * / % (higher precedence)
 	ibQueryAstExprPtr             ParsePrimary();
 	ibQueryAstExprPtr             ParseAggregate();   // SUM/COUNT/... ( ... )
+	ibQueryAstExprPtr             ParseRanking();     // ROW_NUMBER() / RANK() / DENSE_RANK() OVER ( ... )
+	void                          ParseOverClause(ibQueryAstExpr& e);   // the OVER ( [PARTITION BY ...] [ORDER BY ...] ) tail
 	ibQueryAstExprPtr             ParseValueConstant();// VALUE( <Kind>.<Name>.<Member> ) — literal reference constant
 	// CAST( <expr> AS <Kind>.<Name> ) [ . field ... ] - narrow a composite reference so the walk a
 	// composite forbids becomes possible. A trailing path makes the result a COLUMN rooted on the cast.

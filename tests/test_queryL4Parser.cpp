@@ -889,3 +889,39 @@ TEST(QueryL4Parser, CountStarWindowParses) {
 	EXPECT_TRUE(w.m_star);
 	EXPECT_TRUE(w.m_hasWindow);
 }
+
+// ── Ranking window functions (T1.2 Inc 3): ROW_NUMBER / RANK / DENSE_RANK ──
+TEST(QueryL4Parser, RankingParsesNoArg) {
+	auto sel = Parse(wxT("SELECT ROW_NUMBER() OVER (PARTITION BY W ORDER BY Period) FROM Document.Movement.Lines"));
+	ASSERT_NE(sel, nullptr);
+	const ibQueryAstExpr& w = *sel->m_projections[0].m_expr;
+	EXPECT_EQ(w.m_kind, ibQueryAstExprKind::Func);
+	EXPECT_EQ(w.m_func, ibQueryKeyword::RowNumber);
+	EXPECT_TRUE(w.m_hasWindow);
+	EXPECT_FALSE(w.m_star);
+	EXPECT_EQ(w.m_arg, nullptr);                // no argument
+	ASSERT_EQ(w.m_windowOrderBy.size(), 1u);
+}
+
+TEST(QueryL4Parser, RankAndDenseRankParse) {
+	auto r = Parse(wxT("SELECT RANK() OVER (ORDER BY Pts DESC) FROM Catalog.Scores"));
+	ASSERT_NE(r, nullptr);
+	EXPECT_EQ(r->m_projections[0].m_expr->m_func, ibQueryKeyword::Rank);
+	auto d = Parse(wxT("SELECT DENSE_RANK() OVER (ORDER BY Pts DESC) FROM Catalog.Scores"));
+	ASSERT_NE(d, nullptr);
+	EXPECT_EQ(d->m_projections[0].m_expr->m_func, ibQueryKeyword::DenseRank);
+}
+
+TEST(QueryL4Parser, RankingRequiresOrderBy) {
+	// A rank with no ORDER BY is meaningless — refused at parse.
+	EXPECT_THROW(Parse(wxT("SELECT RANK() OVER (PARTITION BY W) FROM Catalog.Scores")), ibBackendException);
+	EXPECT_THROW(Parse(wxT("SELECT ROW_NUMBER() OVER () FROM Catalog.Scores")), ibBackendException);
+}
+
+TEST(QueryL4Parser, RankingRequiresOver) {
+	EXPECT_THROW(Parse(wxT("SELECT RANK() FROM Catalog.Scores")), ibBackendException);
+}
+
+TEST(QueryL4Parser, RankingTakesNoArgument) {
+	EXPECT_THROW(Parse(wxT("SELECT RANK(Pts) OVER (ORDER BY Pts) FROM Catalog.Scores")), ibBackendException);
+}

@@ -778,6 +778,10 @@ ibQueryAstExprPtr ibQueryParser::ParsePrimary()
 	if (IsAggregateKw(tk))
 		return ParseAggregate();
 
+	// ranking window function — ROW_NUMBER() / RANK() / DENSE_RANK() OVER ( … )
+	if (tk.m_kind == ibQueryTokenKind::Keyword && ibIsRankingKeyword(tk.m_keyword))
+		return ParseRanking();
+
 	// value(<Kind>.<Name>.<Member>) — a literal reference constant (empty ref / predefined), resolved at lowering
 	if (tk.IsKeyword(ibQueryKeyword::Value))
 		return ParseValueConstant();
@@ -870,32 +874,63 @@ ibQueryAstExprPtr ibQueryParser::ParseAggregate()
 	ExpectPunct(wxT(')'), wxT("')'"));
 
 	// WINDOW (T1.2): an OVER (…) tail turns this aggregate into a WINDOW aggregate — computed per row
-	// over its partition, not folded. `FN([DISTINCT] arg) OVER ( [PARTITION BY e,…] [ORDER BY e[dir],…] )`.
-	// DISTINCT inside a windowed aggregate is rejected (most engines forbid it; refuse rather than emit
-	// dialect-divergent SQL). The lowering gates on a DB-backed source + the dialect's window capability.
-	if (AcceptKw(ibQueryKeyword::Over)) {
+	// over its partition, not folded. DISTINCT inside a windowed aggregate is rejected (most engines
+	// forbid it; refuse rather than emit dialect-divergent SQL).
+	if (Cur().IsKeyword(ibQueryKeyword::Over)) {
 		if (e->m_distinctArg)
 			ThrowQueryException(tk, _("DISTINCT is not allowed inside a window aggregate (FN(DISTINCT x) OVER (...))"));
-		e->m_hasWindow = true;
-		ExpectPunct(wxT('('), wxT("'(' after OVER"));
-		if (AcceptKw(ibQueryKeyword::Partition)) {
-			ExpectKw(ibQueryKeyword::By, wxT("BY after PARTITION"));
-			do { e->m_partitionBy.push_back(ParsePrimary()); } while (AcceptPunct(wxT(',')));
-		}
-		if (AcceptKw(ibQueryKeyword::Order)) {
-			ExpectKw(ibQueryKeyword::By, wxT("BY after ORDER"));
-			do {
-				ibQueryOrderItem it;
-				it.m_expr = ibQueryAstExpr::Make(ibQueryAstExprKind::Column);
-				it.m_expr->m_path = ParseDottedName();
-				if (AcceptKw(ibQueryKeyword::Desc))     it.m_ascending = false;
-				else if (AcceptKw(ibQueryKeyword::Asc)) it.m_ascending = true;
-				e->m_windowOrderBy.push_back(std::move(it));
-			} while (AcceptPunct(wxT(',')));
-		}
-		ExpectPunct(wxT(')'), wxT("')' to close OVER (...)"));
+		ParseOverClause(*e);
 	}
 
+	return e;
+}
+
+// The OVER ( [PARTITION BY e,…] [ORDER BY e[dir],…] ) tail, shared by aggregate and ranking windows.
+// Stamps m_hasWindow + the partition / order lists onto the Func node. Caller has already decided the
+// node IS windowed (it peeked OVER); this consumes the keyword and the parenthesised body.
+void ibQueryParser::ParseOverClause(ibQueryAstExpr& e)
+{
+	ExpectKw(ibQueryKeyword::Over, wxT("OVER"));
+	e.m_hasWindow = true;
+	ExpectPunct(wxT('('), wxT("'(' after OVER"));
+	if (AcceptKw(ibQueryKeyword::Partition)) {
+		ExpectKw(ibQueryKeyword::By, wxT("BY after PARTITION"));
+		do { e.m_partitionBy.push_back(ParsePrimary()); } while (AcceptPunct(wxT(',')));
+	}
+	if (AcceptKw(ibQueryKeyword::Order)) {
+		ExpectKw(ibQueryKeyword::By, wxT("BY after ORDER"));
+		do {
+			ibQueryOrderItem it;
+			it.m_expr = ibQueryAstExpr::Make(ibQueryAstExprKind::Column);
+			it.m_expr->m_path = ParseDottedName();
+			if (AcceptKw(ibQueryKeyword::Desc))     it.m_ascending = false;
+			else if (AcceptKw(ibQueryKeyword::Asc)) it.m_ascending = true;
+			e.m_windowOrderBy.push_back(std::move(it));
+		} while (AcceptPunct(wxT(',')));
+	}
+	ExpectPunct(wxT(')'), wxT("')' to close OVER (...)"));
+}
+
+// ROW_NUMBER() / RANK() / DENSE_RANK() OVER ( [PARTITION BY …] ORDER BY … ) — a ranking window.
+// No argument (empty parens); the ORDER BY inside OVER is REQUIRED (a rank with no order is meaningless)
+// and is enforced here at parse. Reuses the Func AST node (m_func = the ranking keyword, m_hasWindow).
+ibQueryAstExprPtr ibQueryParser::ParseRanking()
+{
+	const ibQueryToken& tk = Cur();
+	const ibQueryKeyword fn = tk.m_keyword;
+	++m_pos;
+
+	auto e = ibQueryAstExpr::Make(ibQueryAstExprKind::Func);
+	e->m_func = fn; e->m_line = tk.m_line; e->m_col = tk.m_col;
+
+	ExpectPunct(wxT('('), wxT("'(' after a ranking function"));
+	ExpectPunct(wxT(')'), wxT("')': a ranking function takes no argument"));
+
+	if (!Cur().IsKeyword(ibQueryKeyword::Over))
+		ThrowQueryException(tk, _("a ranking function (ROW_NUMBER / RANK / DENSE_RANK) requires OVER (...)"));
+	ParseOverClause(*e);
+	if (e->m_windowOrderBy.empty())
+		ThrowQueryException(tk, _("a ranking function requires ORDER BY inside OVER (...)"));
 	return e;
 }
 

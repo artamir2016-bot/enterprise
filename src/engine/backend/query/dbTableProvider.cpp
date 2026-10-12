@@ -957,16 +957,25 @@ ibQueryExprPtr ibMetaIRBuilder::BuildColumnExpr(const ibBackendQueryable* querya
 		// capability. ORDER BY within the window is Inc 2 (not built yet).
 		auto fnName = [](ibWindowAggFn fn) -> wxString {
 			switch (fn) {
-			case ibWindowAggFn::Sum:   return wxT("SUM");
-			case ibWindowAggFn::Count: return wxT("COUNT");
-			case ibWindowAggFn::Min:   return wxT("MIN");
-			case ibWindowAggFn::Max:   return wxT("MAX");
-			case ibWindowAggFn::Avg:   return wxT("AVG");
+			case ibWindowAggFn::Sum:       return wxT("SUM");
+			case ibWindowAggFn::Count:     return wxT("COUNT");
+			case ibWindowAggFn::Min:       return wxT("MIN");
+			case ibWindowAggFn::Max:       return wxT("MAX");
+			case ibWindowAggFn::Avg:       return wxT("AVG");
+			case ibWindowAggFn::RowNumber: return wxT("ROW_NUMBER");
+			case ibWindowAggFn::Rank:      return wxT("RANK");
+			case ibWindowAggFn::DenseRank: return wxT("DENSE_RANK");
 			}
 			return wxT("SUM");
 		};
+		// A ranking function takes NO argument — ROW_NUMBER() / RANK() / DENSE_RANK() render with empty
+		// parens. An aggregate window takes its argument (COUNT(*) keeps the `*`).
+		const bool ranking = expr->m_winFn == ibWindowAggFn::RowNumber
+		                  || expr->m_winFn == ibWindowAggFn::Rank
+		                  || expr->m_winFn == ibWindowAggFn::DenseRank;
 		std::vector<ibQueryExprPtr> args;
-		args.push_back(expr->m_winStar ? ibCol(wxT("*")) : BuildColumnExpr(queryable, expr->m_lhs, mainQual));
+		if (!ranking)
+			args.push_back(expr->m_winStar ? ibCol(wxT("*")) : BuildColumnExpr(queryable, expr->m_lhs, mainQual));
 		ibQueryExprPtr fn = ibFunc(fnName(expr->m_winFn), std::move(args), /*distinct*/ false);
 		fn->m_over = true;
 		for (const ibQueryColumnExprPtr& p : expr->m_partitionBy)

@@ -72,6 +72,11 @@ enum class ibQueryKeyword
 	// reuse the existing clause keywords; only OVER and PARTITION are new. See docs/window-functions.md.
 	Over, Partition,
 
+	// ranking window functions (T1.2 Inc 3): ROW_NUMBER() / RANK() / DENSE_RANK() — no argument, and
+	// they REQUIRE an ORDER BY inside OVER (a rank with no order has no meaning). Their own family,
+	// distinct from the SUM/COUNT aggregates. See docs/window-functions.md.
+	RowNumber, Rank, DenseRank,
+
 	// literal-reference constant: value(<Kind>.<Name>.<Member>) — an empty reference / a predefined item
 	Value,
 
@@ -104,6 +109,11 @@ BACKEND_API const wxString& ibQueryKeywordText(ibQueryKeyword kw);
 // COUNT — so a non-aggregate reaching it became a count instead of an error). Two spellings of one
 // closed set, and neither could tell the other when the set grew.
 BACKEND_API bool ibIsAggregateKeyword(ibQueryKeyword kw);
+
+// IS THIS KEYWORD A RANKING WINDOW FUNCTION — ROW_NUMBER / RANK / DENSE_RANK. They take no argument
+// and require an ORDER BY inside OVER; asked of the keyword table (like ibIsAggregateKeyword) so the
+// parser and the lowering share one closed set.
+BACKEND_API bool ibIsRankingKeyword(ibQueryKeyword kw);
 
 // DOES `DISTINCT` CHANGE THIS AGGREGATE'S ANSWER — is `FN(DISTINCT x)` a different question from
 // `FN(x)`?

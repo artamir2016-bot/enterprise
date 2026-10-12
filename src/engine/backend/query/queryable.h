@@ -285,9 +285,10 @@ struct ibSemiJoinExists
 enum class ibQueryColumnExprKind { Column, Const, Arith, Case, PeriodTrunc, Window };
 enum class ibQueryColumnArithOp { Add, Sub, Mul, Div, Mod };
 
-// The five window-capable aggregates (same set as the GROUP-BY aggregates; kept as its own enum here so
-// queryable.h stays independent of the L3 builder's ibAggregateFn — the provider maps one to the other).
-enum class ibWindowAggFn { Sum, Count, Min, Max, Avg };
+// Window functions: the five aggregates (same set as the GROUP-BY aggregates) plus the ranking family
+// (ROW_NUMBER / RANK / DENSE_RANK — no argument, require ORDER BY). Kept as its own enum here so
+// queryable.h stays independent of the L3 builder's ibAggregateFn — the provider maps one to the other.
+enum class ibWindowAggFn { Sum, Count, Min, Max, Avg, RowNumber, Rank, DenseRank };
 
 struct ibQueryColumnExpr;
 using ibQueryColumnExprPtr = std::shared_ptr<ibQueryColumnExpr>;
