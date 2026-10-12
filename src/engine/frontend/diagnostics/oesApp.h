@@ -234,18 +234,22 @@ protected:
 
 		const wxString caption = wxT("OES ") + exeName + wxT(" - startup error");
 
+		// ALWAYS surface the fault on stderr, in EVERY mode — before any dialog. A startup fault is a
+		// machine-readable event, not only a human one: a script or a model launching the app (even in
+		// windowed mode) must be able to SEE the failure on the CLI, not infer it from a hang. The modal
+		// below (interactive only) comes AFTER, so the stderr line is already out when a watcher reads it.
+		std::fprintf(stderr, "[%s] %s\n",
+			static_cast<const char*>(caption.ToUTF8()),
+			static_cast<const char*>(message.ToUTF8()));
+		std::fflush(stderr);
+
 		// HEADLESS / AUTOMATED run (batch `/LoadCfg…/UpdateDBCfg`, --minimized, --testagent): a modal
 		// message box here BLOCKS a non-interactive process forever — the caller waits for a click that
-		// never comes and has to kill it on a timeout, never seeing the reason. The fault is already in
-		// the startup log; ALSO write it to stderr so the CLI sees it immediately, then return WITHOUT a
-		// dialog. (Same SuppressDialogs() gate the main-loop / unhandled / assert handlers already use.)
-		if (ibCrashGuard::SuppressDialogs()) {
-			std::fprintf(stderr, "[%s] %s\n",
-				static_cast<const char*>(caption.ToUTF8()),
-				static_cast<const char*>(message.ToUTF8()));
-			std::fflush(stderr);
+		// never comes and has to kill it on a timeout. The fault is already on stderr + the startup log,
+		// so return WITHOUT a dialog. (Same SuppressDialogs() gate the main-loop / unhandled / assert
+		// handlers already use.) INTERACTIVE run: fall through and ALSO show the dialog for the human.
+		if (ibCrashGuard::SuppressDialogs())
 			return;
-		}
 #ifdef __WXMSW__
 		// Always platform-native during startup — wx state may be
 		// half-initialised and wxMessageBox can re-enter the broken
