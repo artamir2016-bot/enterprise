@@ -37,6 +37,7 @@
 #endif
 
 #include "backend/diagnostics/leakTracker.h"
+#include "backend/diagnostics/crashGuard.h"   // SetSuppressDialogs — headless batch has no user to dismiss a modal
 
 IB_LEAK_TRACKER_ARM();
 
@@ -61,6 +62,10 @@ void ibAppDesigner::OnInitCmdLine(wxCmdLineParser& parser)
 	// swallow every token as a free (multiple/optional) parameter.
 	if (DetectBatchMode()) {
 		m_batchMode = true;
+		// Headless batch: no interactive user to dismiss a modal. Suppress ALL dialog surfaces (startup
+		// fault, main-loop error, unhandled exception, asserts) so an error prints to stderr / the batch
+		// report and the process exits with a code — instead of a modal that blocks until a kill-timeout.
+		ibCrashGuard::SetSuppressDialogs(true);
 		parser.SetSwitchChars(wxT("-"));
 		parser.AddParam(wxT("batch"), wxCMD_LINE_VAL_STRING,
 			wxCMD_LINE_PARAM_OPTIONAL | wxCMD_LINE_PARAM_MULTIPLE);
@@ -306,12 +311,23 @@ int ibAppDesigner::RunBatch()
 					// base, not just the data-table restructuring — the same flag the GUI "Update DB
 					// configuration" uses. Plain SaveDatabase() left the base's config metadata stale
 					// (e.g. a VES config kept reading back as CES).
-					if (metaData->SaveDatabase(saveConfigFlag))
+					//
+					// ⚠ SaveDatabase can THROW (a CREATE TRIGGER / restructure that Firebird rejects, e.g.
+					// a mistyped register resource). Uncaught it escapes RunBatch → ibWxApp::OnRun →
+					// ReportStartupFault, which — before SuppressDialogs covered startup — popped a MODAL
+					// box that hung the headless process until a kill-timeout. Catch it HERE so the real
+					// DB error lands in the batch report (stderr + /Out) with exitCode 1, every time.
+					bool saved = false;
+					try { saved = metaData->SaveDatabase(saveConfigFlag); }
+					catch (const ibBackendException&) { saved = false; }
+					catch (...)                       { saved = false; }
+					if (saved)
 						emit(_("Database configuration updated."));
 					else {
 						emit(_("Failed to update the database configuration."));
 						// OES-IMPORT: surface the underlying schema/DB error in batch mode — SaveDatabase
-						// swallows the exception behind a bool, leaving CI/import with a bare "Failed".
+						// swallows the exception behind a bool (or throws), leaving CI/import with a bare
+						// "Failed" otherwise.
 						for (const wxString& e : ibBackendException::DrainLastErrors())
 							emit(wxString::Format(wxT("  %s"), e));
 						exitCode = 1;

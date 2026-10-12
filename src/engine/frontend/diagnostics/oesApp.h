@@ -44,6 +44,7 @@
 #include <wx/string.h>
 #include <wx/thread.h>
 
+#include <cstdio>    // stderr fault surface in headless / batch mode
 #include <cstdlib>   // EXIT_FAILURE
 #include <exception>
 #include <functional>
@@ -232,6 +233,19 @@ protected:
 		ibCrashGuard::LogStartupError(exeName, message);
 
 		const wxString caption = wxT("OES ") + exeName + wxT(" - startup error");
+
+		// HEADLESS / AUTOMATED run (batch `/LoadCfg…/UpdateDBCfg`, --minimized, --testagent): a modal
+		// message box here BLOCKS a non-interactive process forever — the caller waits for a click that
+		// never comes and has to kill it on a timeout, never seeing the reason. The fault is already in
+		// the startup log; ALSO write it to stderr so the CLI sees it immediately, then return WITHOUT a
+		// dialog. (Same SuppressDialogs() gate the main-loop / unhandled / assert handlers already use.)
+		if (ibCrashGuard::SuppressDialogs()) {
+			std::fprintf(stderr, "[%s] %s\n",
+				static_cast<const char*>(caption.ToUTF8()),
+				static_cast<const char*>(message.ToUTF8()));
+			std::fflush(stderr);
+			return;
+		}
 #ifdef __WXMSW__
 		// Always platform-native during startup — wx state may be
 		// half-initialised and wxMessageBox can re-enter the broken
