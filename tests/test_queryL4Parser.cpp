@@ -925,3 +925,55 @@ TEST(QueryL4Parser, RankingRequiresOver) {
 TEST(QueryL4Parser, RankingTakesNoArgument) {
 	EXPECT_THROW(Parse(wxT("SELECT RANK(Pts) OVER (ORDER BY Pts) FROM Catalog.Scores")), ibBackendException);
 }
+
+// ── Explicit window frame (T1.2 Inc 4): ROWS/RANGE BETWEEN ──
+TEST(QueryL4Parser, FrameRowsBetweenParses) {
+	auto sel = Parse(wxT("SELECT SUM(Qty) OVER (PARTITION BY W ORDER BY P ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM Document.Movement.Lines"));
+	ASSERT_NE(sel, nullptr);
+	const ibQueryAstExpr& w = *sel->m_projections[0].m_expr;
+	EXPECT_TRUE(w.m_hasWindow);
+	EXPECT_EQ(w.m_frameMode, ibQueryFrameMode::Rows);
+	EXPECT_EQ(w.m_frameStart.m_kind, ibQueryFrameBoundKind::Preceding);
+	EXPECT_EQ(w.m_frameStart.m_offset, 1);
+	EXPECT_EQ(w.m_frameEnd.m_kind, ibQueryFrameBoundKind::CurrentRow);
+}
+
+TEST(QueryL4Parser, FrameSingleBoundShortForm) {
+	// `ROWS 3 PRECEDING` == BETWEEN 3 PRECEDING AND CURRENT ROW.
+	auto sel = Parse(wxT("SELECT SUM(Qty) OVER (ORDER BY P ROWS 3 PRECEDING) FROM Document.Movement.Lines"));
+	ASSERT_NE(sel, nullptr);
+	const ibQueryAstExpr& w = *sel->m_projections[0].m_expr;
+	EXPECT_EQ(w.m_frameMode, ibQueryFrameMode::Rows);
+	EXPECT_EQ(w.m_frameStart.m_kind, ibQueryFrameBoundKind::Preceding);
+	EXPECT_EQ(w.m_frameStart.m_offset, 3);
+	EXPECT_EQ(w.m_frameEnd.m_kind, ibQueryFrameBoundKind::CurrentRow);
+}
+
+TEST(QueryL4Parser, FrameRangeUnboundedParses) {
+	auto sel = Parse(wxT("SELECT SUM(Qty) OVER (ORDER BY P RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM Document.Movement.Lines"));
+	ASSERT_NE(sel, nullptr);
+	const ibQueryAstExpr& w = *sel->m_projections[0].m_expr;
+	EXPECT_EQ(w.m_frameMode, ibQueryFrameMode::Range);
+	EXPECT_EQ(w.m_frameStart.m_kind, ibQueryFrameBoundKind::UnboundedPreceding);
+	EXPECT_EQ(w.m_frameEnd.m_kind, ibQueryFrameBoundKind::UnboundedFollowing);
+}
+
+TEST(QueryL4Parser, FrameRequiresOrderBy) {
+	// A frame with no ORDER BY is meaningless — refused at parse.
+	EXPECT_THROW(Parse(wxT("SELECT SUM(Qty) OVER (PARTITION BY W ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM Document.Movement.Lines")),
+		ibBackendException);
+}
+
+// The window CLAUSE words are NON-RESERVED: they must still work as ordinary column / alias names, or
+// adding window support would silently break existing queries (it did — COUNT(*) AS rows). Guards the
+// soft-keyword design so a future change cannot re-reserve them unnoticed.
+TEST(QueryL4Parser, WindowClauseWordsStayUsableAsIdentifiers) {
+	EXPECT_NO_THROW(Parse(wxT("SELECT COUNT(*) AS rows FROM Catalog.Products")));
+	EXPECT_NO_THROW(Parse(wxT("SELECT Row, Range, Partition, Over FROM Catalog.Products")));
+	EXPECT_NO_THROW(Parse(wxT("SELECT Price AS over FROM Catalog.Products")));
+	auto sel = Parse(wxT("SELECT Rows FROM Catalog.Products"));
+	ASSERT_NE(sel, nullptr);
+	ASSERT_EQ(sel->m_projections.size(), 1u);
+	EXPECT_EQ(sel->m_projections[0].m_expr->m_kind, ibQueryAstExprKind::Column);
+	EXPECT_EQ(sel->m_projections[0].m_expr->m_path[0], wxT("Rows"));
+}

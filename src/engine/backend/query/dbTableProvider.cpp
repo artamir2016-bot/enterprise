@@ -982,6 +982,23 @@ ibQueryExprPtr ibMetaIRBuilder::BuildColumnExpr(const ibBackendQueryable* querya
 			fn->m_partitionBy.push_back(BuildColumnExpr(queryable, p, mainQual));
 		for (const auto& o : expr->m_windowOrderBy)   // Inc 2: running-aggregate ORDER BY
 			fn->m_windowOrder.emplace_back(BuildColumnExpr(queryable, o.first, mainQual), o.second);
+		// Inc 4: explicit frame — map the L3 ibWinFrame to the L2-1 frame fields.
+		if (expr->m_windowFrame.m_mode != ibWinFrameMode::None) {
+			auto mapBound = [](ibWinFrameBound b) -> ibQueryExpr::FrameBound {
+				switch (b) {
+				case ibWinFrameBound::UnboundedPreceding: return ibQueryExpr::FrameBound::UnboundedPreceding;
+				case ibWinFrameBound::Preceding:          return ibQueryExpr::FrameBound::Preceding;
+				case ibWinFrameBound::CurrentRow:         return ibQueryExpr::FrameBound::CurrentRow;
+				case ibWinFrameBound::Following:          return ibQueryExpr::FrameBound::Following;
+				case ibWinFrameBound::UnboundedFollowing: return ibQueryExpr::FrameBound::UnboundedFollowing;
+				}
+				return ibQueryExpr::FrameBound::CurrentRow;
+			};
+			fn->m_frameMode   = expr->m_windowFrame.m_mode == ibWinFrameMode::Rows
+			                  ? ibQueryExpr::FrameMode::Rows : ibQueryExpr::FrameMode::Range;
+			fn->m_frameStart  = mapBound(expr->m_windowFrame.m_start);  fn->m_frameStartN = expr->m_windowFrame.m_startN;
+			fn->m_frameEnd    = mapBound(expr->m_windowFrame.m_end);    fn->m_frameEndN   = expr->m_windowFrame.m_endN;
+		}
 		return fn;
 	}
 	}

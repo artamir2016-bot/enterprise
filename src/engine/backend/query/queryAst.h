@@ -67,6 +67,18 @@ enum class ibQueryAstExprKind
 	Not,       // NOT lhs
 };
 
+// Window FRAME (T1.2 Inc 4): FN(x) OVER (… ORDER BY … ROWS|RANGE <extent>). A sliding window over the
+// ordered partition. Mode None = no explicit frame (the default — whole partition, or running to the
+// current row when ORDER BY is present). Declared before the expression node — stored there by value.
+enum class ibQueryFrameMode { None, Rows, Range };
+// A frame edge. Preceding/Following carry an n (m_offset); the unbounded + current-row kinds ignore it.
+enum class ibQueryFrameBoundKind { UnboundedPreceding, Preceding, CurrentRow, Following, UnboundedFollowing };
+struct ibQueryFrameBound
+{
+	ibQueryFrameBoundKind m_kind = ibQueryFrameBoundKind::CurrentRow;
+	long                  m_offset = 0;   // row count for Preceding / Following
+};
+
 // Comparison operator of a Compare node.
 enum class ibQueryCompareOp { Eq, Ne, Lt, Le, Gt, Ge };
 
@@ -105,6 +117,9 @@ struct ibQueryAstExpr
 	bool                             m_hasWindow = false;   // this Func has an OVER (…) clause
 	std::vector<ibQueryAstExprPtr>   m_partitionBy;         // OVER (PARTITION BY e, …)
 	std::vector<struct ibQueryOrderItem> m_windowOrderBy;   // OVER (… ORDER BY e [dir], …) — Inc 2
+	// Explicit frame (Inc 4) — ROWS|RANGE BETWEEN m_frameStart AND m_frameEnd. None = default frame.
+	ibQueryFrameMode                 m_frameMode = ibQueryFrameMode::None;
+	ibQueryFrameBound                m_frameStart, m_frameEnd;
 
 	ibQueryCompareOp      m_cmp = ibQueryCompareOp::Eq;   // Compare
 	ibQueryArithOp        m_arith = ibQueryArithOp::Add;  // Arith

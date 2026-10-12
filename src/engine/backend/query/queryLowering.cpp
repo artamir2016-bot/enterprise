@@ -1491,7 +1491,24 @@ bool PopulateBuilder(const ibQuerySelect& ast, const std::map<wxString, ibValue>
 						ThrowQueryException(e.m_line, e.m_col, _("ORDER BY inside OVER must name a plain column of the source (Inc 2)"));
 					order.emplace_back(ibQueryColumnExpr::Col(ocols.front()), oi.m_ascending);
 				}
-				b.SelectExpr(ibQueryColumnExpr::Window(winFn(e.m_func), arg, e.m_star, std::move(parts), std::move(order)), alias);
+				// Explicit frame (Inc 4) — map the AST frame to the L3 ibWinFrame (plain bounds, no columns).
+				ibWinFrame frame;
+				if (e.m_frameMode != ibQueryFrameMode::None) {
+					auto mapBound = [](ibQueryFrameBoundKind k) -> ibWinFrameBound {
+						switch (k) {
+						case ibQueryFrameBoundKind::UnboundedPreceding: return ibWinFrameBound::UnboundedPreceding;
+						case ibQueryFrameBoundKind::Preceding:          return ibWinFrameBound::Preceding;
+						case ibQueryFrameBoundKind::CurrentRow:         return ibWinFrameBound::CurrentRow;
+						case ibQueryFrameBoundKind::Following:          return ibWinFrameBound::Following;
+						case ibQueryFrameBoundKind::UnboundedFollowing: return ibWinFrameBound::UnboundedFollowing;
+						}
+						return ibWinFrameBound::CurrentRow;
+					};
+					frame.m_mode   = e.m_frameMode == ibQueryFrameMode::Rows ? ibWinFrameMode::Rows : ibWinFrameMode::Range;
+					frame.m_start  = mapBound(e.m_frameStart.m_kind);  frame.m_startN = e.m_frameStart.m_offset;
+					frame.m_end    = mapBound(e.m_frameEnd.m_kind);    frame.m_endN   = e.m_frameEnd.m_offset;
+				}
+				b.SelectExpr(ibQueryColumnExpr::Window(winFn(e.m_func), arg, e.m_star, std::move(parts), std::move(order), frame), alias);
 				oc.m_alias = alias;
 				oc.m_byAlias = true;
 			}

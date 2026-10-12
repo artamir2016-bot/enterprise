@@ -290,6 +290,20 @@ enum class ibQueryColumnArithOp { Add, Sub, Mul, Div, Mod };
 // queryable.h stays independent of the L3 builder's ibAggregateFn — the provider maps one to the other.
 enum class ibWindowAggFn { Sum, Count, Min, Max, Avg, RowNumber, Rank, DenseRank };
 
+// Window FRAME (T1.2 Inc 4) at L3 — a sliding window over the ordered partition. Mode None = the
+// default frame (no explicit ROWS/RANGE). A parallel POD lives at L2-1 (databaseQueryBuilder.h); the
+// provider maps one to the other, like every other IR enum pair.
+enum class ibWinFrameMode  { None, Rows, Range };
+enum class ibWinFrameBound { UnboundedPreceding, Preceding, CurrentRow, Following, UnboundedFollowing };
+struct ibWinFrame
+{
+	ibWinFrameMode  m_mode   = ibWinFrameMode::None;
+	ibWinFrameBound m_start  = ibWinFrameBound::CurrentRow;
+	long            m_startN = 0;
+	ibWinFrameBound m_end    = ibWinFrameBound::CurrentRow;
+	long            m_endN   = 0;
+};
+
 struct ibQueryColumnExpr;
 using ibQueryColumnExprPtr = std::shared_ptr<ibQueryColumnExpr>;
 
@@ -320,6 +334,8 @@ struct ibQueryColumnExpr
 	// Window ORDER BY (Inc 2) — (expr, ascending) pairs. Non-empty = a RUNNING aggregate: the default
 	// frame (unbounded preceding … current row) accumulates in this order within each partition.
 	std::vector<std::pair<ibQueryColumnExprPtr, bool>> m_windowOrderBy;
+	// Explicit frame (Inc 4) — ROWS/RANGE sliding window. m_mode None = the default frame.
+	ibWinFrame m_windowFrame;
 
 	// ⭐⭐ ONE FIELD OF A COMPOSITE COLUMN, NAMED. A plain Col() reduces to the column's FIRST value
 	// field, which is the right answer for everything that has one value — a number, a date, a
@@ -360,10 +376,12 @@ struct ibQueryColumnExpr
 	// COUNT(*). order non-empty (Inc 2) makes it a running aggregate (default frame, accumulating in order).
 	static ibQueryColumnExprPtr Window(ibWindowAggFn fn, ibQueryColumnExprPtr arg, bool star,
 	                                   std::vector<ibQueryColumnExprPtr> parts,
-	                                   std::vector<std::pair<ibQueryColumnExprPtr, bool>> order = {}) {
+	                                   std::vector<std::pair<ibQueryColumnExprPtr, bool>> order = {},
+	                                   ibWinFrame frame = {}) {
 		auto e = std::make_shared<ibQueryColumnExpr>();
 		e->m_kind = ibQueryColumnExprKind::Window; e->m_winFn = fn; e->m_lhs = arg; e->m_winStar = star;
-		e->m_partitionBy = std::move(parts); e->m_windowOrderBy = std::move(order); return e;
+		e->m_partitionBy = std::move(parts); e->m_windowOrderBy = std::move(order); e->m_windowFrame = frame;
+		return e;
 	}
 };
 

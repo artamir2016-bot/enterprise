@@ -147,6 +147,13 @@ struct ibQueryExpr
 	// Window ORDER BY (Inc 2): (expr, ascending) pairs rendered inside OVER (… ORDER BY e [DESC], …).
 	// Non-empty = a running aggregate (the dialect's default frame accumulates in this order).
 	std::vector<std::pair<std::shared_ptr<ibQueryExpr>, bool>> m_windowOrder;
+	// Explicit FRAME (Inc 4): ROWS|RANGE BETWEEN start AND end — a sliding window. Mode None = no
+	// explicit frame (the dialect default). A parallel POD at L3 (queryable.h ibWinFrame) maps here.
+	enum class FrameMode  { None, Rows, Range };
+	enum class FrameBound { UnboundedPreceding, Preceding, CurrentRow, Following, UnboundedFollowing };
+	FrameMode  m_frameMode  = FrameMode::None;
+	FrameBound m_frameStart = FrameBound::CurrentRow;  long m_frameStartN = 0;
+	FrameBound m_frameEnd   = FrameBound::CurrentRow;  long m_frameEndN   = 0;
 
 	// Exists: the correlated subquery. A shared_ptr to the (fwd-declared) relation tree — the subquery
 	// references the OUTER write row's columns, so it renders as a self-contained `EXISTS ( SELECT … )`.

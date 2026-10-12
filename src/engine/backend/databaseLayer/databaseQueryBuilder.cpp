@@ -715,6 +715,24 @@ wxString ibQueryRenderer::RenderExpr(const ibQueryExprPtr& expr)
 					if (!expr->m_windowOrder[i].second) s += wxT(" DESC");
 				}
 			}
+			if (expr->m_frameMode != ibQueryExpr::FrameMode::None) {
+				// Explicit frame: ROWS|RANGE BETWEEN <start> AND <end>. Standard SQL, spelled identically
+				// by every window-capable dialect — one render path.
+				auto bound = [](ibQueryExpr::FrameBound b, long n) -> wxString {
+					switch (b) {
+					case ibQueryExpr::FrameBound::UnboundedPreceding: return wxT("UNBOUNDED PRECEDING");
+					case ibQueryExpr::FrameBound::Preceding:          return wxString::Format(wxT("%ld PRECEDING"), n);
+					case ibQueryExpr::FrameBound::CurrentRow:         return wxT("CURRENT ROW");
+					case ibQueryExpr::FrameBound::Following:          return wxString::Format(wxT("%ld FOLLOWING"), n);
+					case ibQueryExpr::FrameBound::UnboundedFollowing: return wxT("UNBOUNDED FOLLOWING");
+					}
+					return wxT("CURRENT ROW");
+				};
+				s += (expr->m_frameMode == ibQueryExpr::FrameMode::Rows) ? wxT(" ROWS BETWEEN ") : wxT(" RANGE BETWEEN ");
+				s += bound(expr->m_frameStart, expr->m_frameStartN);
+				s += wxT(" AND ");
+				s += bound(expr->m_frameEnd, expr->m_frameEndN);
+			}
 			s += wxT(")");
 		}
 		return s;

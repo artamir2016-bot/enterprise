@@ -134,9 +134,28 @@ argument; the Func renderer emits `ROW_NUMBER() OVER (…)` with empty parens. T
 distinct) + `tests/test_queryL4Parser.cpp` (5 parse cases incl. ORDER-BY-required, OVER-required,
 no-argument). Full oes_tests 1505/1505.
 
-### Inc 4 — explicit frame + window coexisting with GROUP BY
-`ROWS/RANGE BETWEEN … AND …`; and a window computed over the *result of* a GROUP BY
-(window over grouped rows). Both are real but niche; specified when reached.
+### Inc 4 — explicit frame  — **DONE** (window-over-GROUP-BY deferred)
+Landed the **explicit frame** half: `ROWS|RANGE BETWEEN <start> AND <end>` — a sliding window (moving
+average / running-N), the natural completion of the running aggregate. Bounds: `UNBOUNDED PRECEDING`,
+`n PRECEDING`, `CURRENT ROW`, `n FOLLOWING`, `UNBOUNDED FOLLOWING`; the single-bound short form
+`ROWS n PRECEDING` = `BETWEEN n PRECEDING AND CURRENT ROW`. A frame requires an ORDER BY (enforced at
+parse). AST `ibQueryFrameMode`/`ibQueryFrameBound` on the Func node → L3 `ibWinFrame` → L2-1 frame
+fields → the Func renderer appends `ROWS BETWEEN … AND …`. Tests: `tests/test_queryWindow.cpp`
+(a 2-row sliding sum that DROPS rows out of the frame — p3 = 7+2, not the running 19) +
+`tests/test_queryL4Parser.cpp` (ROWS BETWEEN, single-bound short form, RANGE UNBOUNDED, ORDER-BY-required).
+
+A **window computed over the result of a GROUP BY** remains deferred — genuinely niche, and it needs the
+window to run over grouped rows rather than the base read; revisit on demand.
+
+### Non-reserved window keywords (design note)
+The window CLAUSE words — `OVER`, `PARTITION`, `ROWS`, `RANGE`, `UNBOUNDED`, `PRECEDING`, `FOLLOWING`,
+`CURRENT`, `ROW` — are **non-reserved** (SQL-standard): they are NOT in the lexer keyword table, so
+they stay ordinary identifiers everywhere, and the parser recognises them by text only at the OVER (…)
+grammar positions (`ibQueryParser::AcceptSoftKw`). This was forced by a real regression — reserving
+`ROWS` broke `SELECT COUNT(*) AS rows` — and guards common column / alias names (`Row`, `Range`, a
+`Partition` column). The ranking/aggregate FUNCTION names (`ROW_NUMBER`/`RANK`/`DENSE_RANK`, `SUM`/…)
+stay reserved, consistent with the pre-existing aggregate reservation. Guard test:
+`QueryL4Parser.WindowClauseWordsStayUsableAsIdentifiers`.
 
 ## Non-goals / guard-rails
 - **No RAM window.** A window over a computed/RAM source raises (clear message), never a

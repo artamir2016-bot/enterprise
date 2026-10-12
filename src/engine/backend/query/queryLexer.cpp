@@ -69,11 +69,15 @@ static const ibQueryKeyWordEntry s_queryKeyWordsEN[] =
 	{ ibQueryKeyword::Min,      wxT("MIN")      },
 	{ ibQueryKeyword::Max,      wxT("MAX")      },
 	{ ibQueryKeyword::Avg,      wxT("AVG")      },
-	{ ibQueryKeyword::Over,      wxT("OVER")      },
-	{ ibQueryKeyword::Partition, wxT("PARTITION") },
+	// Ranking FUNCTION names are reserved, like the aggregate names (SUM/COUNT/…) above them.
 	{ ibQueryKeyword::RowNumber, wxT("ROW_NUMBER") },
 	{ ibQueryKeyword::Rank,      wxT("RANK")       },
 	{ ibQueryKeyword::DenseRank, wxT("DENSE_RANK") },
+	// NOTE: the window CLAUSE words — OVER, PARTITION, ROWS, RANGE, UNBOUNDED, PRECEDING, FOLLOWING,
+	// CURRENT, ROW — are deliberately NOT in this table. They are NON-RESERVED (SQL-standard): common
+	// column / alias names (`AS rows`, a column `Row`) must keep working. The parser recognises them by
+	// text at the exact grammar positions they can appear (ibQueryParser::AcceptSoftKw), so they are
+	// keywords only inside OVER (…), identifiers everywhere else.
 	{ ibQueryKeyword::Value,    wxT("VALUE")    },
 	{ ibQueryKeyword::Cast,     wxT("CAST")     },
 };

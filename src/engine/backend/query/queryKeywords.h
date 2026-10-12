@@ -77,6 +77,11 @@ enum class ibQueryKeyword
 	// distinct from the SUM/COUNT aggregates. See docs/window-functions.md.
 	RowNumber, Rank, DenseRank,
 
+	// explicit window FRAME (T1.2 Inc 4): FN(x) OVER (… ORDER BY … ROWS|RANGE BETWEEN b AND b) — a
+	// sliding window (moving average / running-N). Bounds: UNBOUNDED PRECEDING, n PRECEDING, CURRENT ROW,
+	// n FOLLOWING, UNBOUNDED FOLLOWING. (`Between`/`And` reuse the predicate keywords.)
+	Rows, Range, Unbounded, Preceding, Following, Current, Row,
+
 	// literal-reference constant: value(<Kind>.<Name>.<Member>) — an empty reference / a predefined item
 	Value,
 

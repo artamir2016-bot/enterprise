@@ -248,6 +248,45 @@ TEST_F(WindowFix, RunningTotalDescending)
 	EXPECT_EQ(run[1], 19);   // 2 + 7 + 10 — full partition sum
 }
 
+// Inc 4 — explicit frame. SUM(qty) OVER (PARTITION BY region ORDER BY period ROWS BETWEEN 1 PRECEDING
+// AND CURRENT ROW): a SLIDING 2-row window. Unlike the running total (which keeps everything preceding),
+// the frame DROPS rows that fall out of it — p3 sums only p2+p3, not the whole partition.
+TEST_F(WindowFix, SlidingFrameRowsPrecedingCurrent)
+{
+	if (!ready) return;
+
+	db->RunQuery(wxT("CREATE TABLE mov (region TEXT, period INTEGER, qty INTEGER)"));
+	db->RunQuery(wxT("INSERT INTO mov (region, period, qty) VALUES ('North', 1, 10), ('North', 2, 7), ('North', 3, 2)"));
+
+	ibRawDBColumn region = ibRawDBColumn::String(wxT("region"));
+	ibRawDBColumn period = ibRawDBColumn::Number(wxT("period"));
+	ibRawDBColumn qty    = ibRawDBColumn::Number(wxT("qty"));
+	PhysicalQ mov(wxT("mov"), 530); mov.AddCol(&region); mov.AddCol(&period); mov.AddCol(&qty);
+
+	ibWinFrame frame;
+	frame.m_mode   = ibWinFrameMode::Rows;
+	frame.m_start  = ibWinFrameBound::Preceding;  frame.m_startN = 1;
+	frame.m_end    = ibWinFrameBound::CurrentRow;
+
+	ibDatabaseConnectionHolder* holder = ibConnectionPool::ThreadHolder();
+	ASSERT_NE(holder, nullptr);
+	ibDataQueryBuilder q(holder);
+	q.From(&mov);
+	q.Select(&period, wxT("period"));
+	q.SelectExpr(ibQueryColumnExpr::Window(ibWindowAggFn::Sum, ibQueryColumnExpr::Col(&qty), false,
+	                                        { ibQueryColumnExpr::Col(&region) },
+	                                        { { ibQueryColumnExpr::Col(&period), true } }, frame), wxT("mv"));
+	ibReadPageRequest page;
+	ibDataQueryResult res = q.Execute(page);
+
+	std::map<long, long> mv;
+	while (res.Next())
+		mv[res.GetColumn(wxT("period")).GetInteger()] = res.GetColumn(wxT("mv")).GetInteger();
+	EXPECT_EQ(mv[1], 10);   // only itself (no preceding row)
+	EXPECT_EQ(mv[2], 17);   // 10 + 7
+	EXPECT_EQ(mv[3], 9);    // 7 + 2 — p1 has slid out of the 2-row frame (running total would be 19)
+}
+
 // Inc 3 — ranking functions. A score table with a TIE at the top (A, B both 100) distinguishes the
 // three: RANK skips after a tie (1,1,3,4), DENSE_RANK does not (1,1,2,3), ROW_NUMBER is always distinct.
 struct RankFix : WindowFix {

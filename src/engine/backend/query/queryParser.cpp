@@ -33,6 +33,17 @@ void ibQueryParser::ExpectKw(ibQueryKeyword kw, const wxChar* what)
 		ThrowQueryException(Cur(), wxString::Format(_("expected %s"), what));
 }
 
+bool ibQueryParser::IsSoftKw(const ibQueryToken& t, const wxChar* word) const
+{
+	return t.m_kind == ibQueryTokenKind::Ident && t.m_text.IsSameAs(word, /*caseSensitive*/ false);
+}
+
+bool ibQueryParser::AcceptSoftKw(const wxChar* word)
+{
+	if (IsSoftKw(Cur(), word)) { ++m_pos; return true; }
+	return false;
+}
+
 bool ibQueryParser::AcceptPunct(wxChar c)
 {
 	if (Cur().IsPunct(c)) { ++m_pos; return true; }
@@ -876,7 +887,7 @@ ibQueryAstExprPtr ibQueryParser::ParseAggregate()
 	// WINDOW (T1.2): an OVER (…) tail turns this aggregate into a WINDOW aggregate — computed per row
 	// over its partition, not folded. DISTINCT inside a windowed aggregate is rejected (most engines
 	// forbid it; refuse rather than emit dialect-divergent SQL).
-	if (Cur().IsKeyword(ibQueryKeyword::Over)) {
+	if (IsSoftKw(Cur(), wxT("OVER"))) {
 		if (e->m_distinctArg)
 			ThrowQueryException(tk, _("DISTINCT is not allowed inside a window aggregate (FN(DISTINCT x) OVER (...))"));
 		ParseOverClause(*e);
@@ -890,10 +901,11 @@ ibQueryAstExprPtr ibQueryParser::ParseAggregate()
 // node IS windowed (it peeked OVER); this consumes the keyword and the parenthesised body.
 void ibQueryParser::ParseOverClause(ibQueryAstExpr& e)
 {
-	ExpectKw(ibQueryKeyword::Over, wxT("OVER"));
+	if (!AcceptSoftKw(wxT("OVER")))
+		ThrowQueryException(Cur(), _("expected OVER"));
 	e.m_hasWindow = true;
 	ExpectPunct(wxT('('), wxT("'(' after OVER"));
-	if (AcceptKw(ibQueryKeyword::Partition)) {
+	if (AcceptSoftKw(wxT("PARTITION"))) {
 		ExpectKw(ibQueryKeyword::By, wxT("BY after PARTITION"));
 		do { e.m_partitionBy.push_back(ParsePrimary()); } while (AcceptPunct(wxT(',')));
 	}
@@ -908,7 +920,52 @@ void ibQueryParser::ParseOverClause(ibQueryAstExpr& e)
 			e.m_windowOrderBy.push_back(std::move(it));
 		} while (AcceptPunct(wxT(',')));
 	}
+	// Explicit FRAME (Inc 4): ROWS|RANGE ( BETWEEN b AND b | b ). A frame needs an ORDER BY to mean
+	// anything (what does "the 3 preceding rows" mean with no order?), so require it. The single-bound
+	// short form `ROWS n PRECEDING` means `BETWEEN n PRECEDING AND CURRENT ROW`.
+	const bool isRows  = AcceptSoftKw(wxT("ROWS"));
+	const bool isRange = !isRows && AcceptSoftKw(wxT("RANGE"));
+	if (isRows || isRange) {
+		if (e.m_windowOrderBy.empty())
+			ThrowQueryException(Cur(), _("a window frame (ROWS / RANGE) needs an ORDER BY inside OVER (...)"));
+		e.m_frameMode = isRows ? ibQueryFrameMode::Rows : ibQueryFrameMode::Range;
+		if (AcceptKw(ibQueryKeyword::Between)) {
+			e.m_frameStart = ParseFrameBound();
+			ExpectKw(ibQueryKeyword::And, wxT("AND between the two frame bounds"));
+			e.m_frameEnd = ParseFrameBound();
+		}
+		else {
+			// Single-bound short form: the start bound, end implicitly CURRENT ROW.
+			e.m_frameStart = ParseFrameBound();
+			e.m_frameEnd = ibQueryFrameBound{ ibQueryFrameBoundKind::CurrentRow, 0 };
+		}
+	}
 	ExpectPunct(wxT(')'), wxT("')' to close OVER (...)"));
+}
+
+// One frame edge: UNBOUNDED PRECEDING | UNBOUNDED FOLLOWING | CURRENT ROW | <n> PRECEDING | <n> FOLLOWING.
+ibQueryFrameBound ibQueryParser::ParseFrameBound()
+{
+	const ibQueryToken& tk = Cur();
+	if (AcceptSoftKw(wxT("UNBOUNDED"))) {
+		if (AcceptSoftKw(wxT("PRECEDING"))) return ibQueryFrameBound{ ibQueryFrameBoundKind::UnboundedPreceding, 0 };
+		if (AcceptSoftKw(wxT("FOLLOWING"))) return ibQueryFrameBound{ ibQueryFrameBoundKind::UnboundedFollowing, 0 };
+		ThrowQueryException(tk, _("UNBOUNDED must be followed by PRECEDING or FOLLOWING"));
+	}
+	if (AcceptSoftKw(wxT("CURRENT"))) {
+		if (!AcceptSoftKw(wxT("ROW")))
+			ThrowQueryException(Cur(), _("expected ROW after CURRENT"));
+		return ibQueryFrameBound{ ibQueryFrameBoundKind::CurrentRow, 0 };
+	}
+	if (Cur().m_kind == ibQueryTokenKind::Number) {
+		const long n = Cur().m_literal.GetInteger();
+		++m_pos;
+		if (AcceptSoftKw(wxT("PRECEDING"))) return ibQueryFrameBound{ ibQueryFrameBoundKind::Preceding, n };
+		if (AcceptSoftKw(wxT("FOLLOWING"))) return ibQueryFrameBound{ ibQueryFrameBoundKind::Following, n };
+		ThrowQueryException(tk, _("a frame offset must be followed by PRECEDING or FOLLOWING"));
+	}
+	ThrowQueryException(tk, _("expected a frame bound: UNBOUNDED PRECEDING/FOLLOWING, CURRENT ROW, or n PRECEDING/FOLLOWING"));
+	return ibQueryFrameBound{};   // unreachable (ThrowQueryException does not return)
 }
 
 // ROW_NUMBER() / RANK() / DENSE_RANK() OVER ( [PARTITION BY …] ORDER BY … ) — a ranking window.
@@ -926,7 +983,7 @@ ibQueryAstExprPtr ibQueryParser::ParseRanking()
 	ExpectPunct(wxT('('), wxT("'(' after a ranking function"));
 	ExpectPunct(wxT(')'), wxT("')': a ranking function takes no argument"));
 
-	if (!Cur().IsKeyword(ibQueryKeyword::Over))
+	if (!IsSoftKw(Cur(), wxT("OVER")))
 		ThrowQueryException(tk, _("a ranking function (ROW_NUMBER / RANK / DENSE_RANK) requires OVER (...)"));
 	ParseOverClause(*e);
 	if (e->m_windowOrderBy.empty())

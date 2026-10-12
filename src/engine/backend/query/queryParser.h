@@ -77,6 +77,11 @@ private:
 	const ibQueryToken& Peek() const { return m_toks[m_pos + 1 < m_toks.size() ? m_pos + 1 : m_toks.size() - 1]; }
 	const ibQueryToken& Next()       { const ibQueryToken& t = Cur(); if (m_pos < m_toks.size()) ++m_pos; return t; }
 	bool   AcceptKw(ibQueryKeyword kw);
+	// Soft (non-reserved) keyword: an Ident whose text equals `word` (case-insensitive). Used for the
+	// window clause words (OVER / PARTITION / ROWS / …) which are NOT in the keyword table — they stay
+	// ordinary identifiers everywhere except the OVER (…) grammar positions that peek for them.
+	bool   IsSoftKw(const struct ibQueryToken& t, const wxChar* word) const;
+	bool   AcceptSoftKw(const wxChar* word);
 	void   ExpectKw(ibQueryKeyword kw, const wxChar* what);
 	bool   AcceptPunct(wxChar c);
 	void   ExpectPunct(wxChar c, const wxChar* what);
@@ -109,7 +114,8 @@ private:
 	ibQueryAstExprPtr             ParsePrimary();
 	ibQueryAstExprPtr             ParseAggregate();   // SUM/COUNT/... ( ... )
 	ibQueryAstExprPtr             ParseRanking();     // ROW_NUMBER() / RANK() / DENSE_RANK() OVER ( ... )
-	void                          ParseOverClause(ibQueryAstExpr& e);   // the OVER ( [PARTITION BY ...] [ORDER BY ...] ) tail
+	void                          ParseOverClause(ibQueryAstExpr& e);   // the OVER ( [PARTITION BY ...] [ORDER BY ...] [frame] ) tail
+	struct ibQueryFrameBound      ParseFrameBound();                    // UNBOUNDED PRECEDING | n PRECEDING | CURRENT ROW | n FOLLOWING | UNBOUNDED FOLLOWING
 	ibQueryAstExprPtr             ParseValueConstant();// VALUE( <Kind>.<Name>.<Member> ) — literal reference constant
 	// CAST( <expr> AS <Kind>.<Name> ) [ . field ... ] - narrow a composite reference so the walk a
 	// composite forbids becomes possible. A trailing path makes the result a COLUMN rooted on the cast.
