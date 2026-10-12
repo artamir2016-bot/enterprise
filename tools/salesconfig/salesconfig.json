@@ -1,0 +1,180 @@
+{
+  "name": "УчётПродаж",
+  "syntax": "ves",
+
+  "enums": [
+    { "name": "ВидЦены",     "values": ["Закупочная", "Оптовая", "Розничная"] },
+    { "name": "СтатусЗаказа", "values": ["Новый", "ВРаботе", "Выполнен", "Отменён"] }
+  ],
+
+  "catalogs": [
+    {
+      "name": "Организации",
+      "attributes": [
+        { "name": "ИНН", "type": "String", "length": 12 }
+      ],
+      "predefined": [
+        { "name": "ОсновнаяОрганизация", "code": "000000001", "description": "Основная организация" }
+      ]
+    },
+    {
+      "name": "Склады",
+      "predefined": [
+        { "name": "ОсновнойСклад", "code": "000000001", "description": "Основной склад" }
+      ]
+    },
+    {
+      "name": "ЕдиницыИзмерения",
+      "predefined": [
+        { "name": "шт", "code": "796", "description": "Штука" },
+        { "name": "кг",  "code": "166", "description": "Килограмм" }
+      ]
+    },
+    {
+      "name": "Номенклатура",
+      "attributes": [
+        { "name": "Артикул",          "type": "String", "length": 25 },
+        { "name": "ЕдиницаИзмерения",  "type": "ref", "refs": ["Catalog.ЕдиницыИзмерения"] },
+        { "name": "Услуга",           "type": "Boolean" }
+      ]
+    },
+    {
+      "name": "Контрагенты",
+      "attributes": [
+        { "name": "ИНН",      "type": "String", "length": 12 },
+        { "name": "Телефон",  "type": "String", "length": 20 }
+      ]
+    }
+  ],
+
+  "informationRegisters": [
+    {
+      "name": "ЦеныНоменклатуры",
+      "dimensions": [
+        { "name": "Номенклатура", "type": "ref", "refs": ["Catalog.Номенклатура"] },
+        { "name": "ВидЦены",      "type": "ref", "refs": ["Enum.ВидЦены"] }
+      ],
+      "resources": [
+        { "name": "Цена", "type": "Number", "precision": 15, "scale": 2 }
+      ]
+    }
+  ],
+
+  "accumulationRegisters": [
+    {
+      "name": "ОстаткиТоваров",
+      "registerType": "balance",
+      "dimensions": [
+        { "name": "Номенклатура", "type": "ref", "refs": ["Catalog.Номенклатура"] },
+        { "name": "Склад",        "type": "ref", "refs": ["Catalog.Склады"] }
+      ],
+      "resources": [
+        { "name": "Количество", "type": "Number", "precision": 15, "scale": 3 }
+      ]
+    },
+    {
+      "name": "Продажи",
+      "registerType": "turnover",
+      "dimensions": [
+        { "name": "Номенклатура", "type": "ref", "refs": ["Catalog.Номенклатура"] },
+        { "name": "Контрагент",   "type": "ref", "refs": ["Catalog.Контрагенты"] },
+        { "name": "Организация",  "type": "ref", "refs": ["Catalog.Организации"] }
+      ],
+      "resources": [
+        { "name": "Количество",    "type": "Number", "precision": 15, "scale": 3 },
+        { "name": "Сумма",         "type": "Number", "precision": 15, "scale": 2 },
+        { "name": "Себестоимость", "type": "Number", "precision": 15, "scale": 2 }
+      ]
+    },
+    {
+      "name": "ВзаиморасчётыСКонтрагентами",
+      "registerType": "balance",
+      "dimensions": [
+        { "name": "Контрагент",  "type": "ref", "refs": ["Catalog.Контрагенты"] },
+        { "name": "Организация", "type": "ref", "refs": ["Catalog.Организации"] }
+      ],
+      "resources": [
+        { "name": "Сумма", "type": "Number", "precision": 15, "scale": 2 }
+      ]
+    }
+  ],
+
+  "documents": [
+    {
+      "name": "ПоступлениеТоваров",
+      "attributes": [
+        { "name": "Организация", "type": "ref", "refs": ["Catalog.Организации"] },
+        { "name": "Склад",       "type": "ref", "refs": ["Catalog.Склады"] },
+        { "name": "Контрагент",  "type": "ref", "refs": ["Catalog.Контрагенты"] }
+      ],
+      "tabularSections": [
+        {
+          "name": "Товары",
+          "attributes": [
+            { "name": "Номенклатура", "type": "ref", "refs": ["Catalog.Номенклатура"] },
+            { "name": "Количество",   "type": "Number", "precision": 15, "scale": 3 },
+            { "name": "Цена",         "type": "Number", "precision": 15, "scale": 2 },
+            { "name": "Сумма",        "type": "Number", "precision": 15, "scale": 2 }
+          ]
+        }
+      ],
+      "registerRecords": ["AccumulationRegister.ОстаткиТоваров", "AccumulationRegister.ВзаиморасчётыСКонтрагентами"]
+    },
+    {
+      "name": "РеализацияТоваров",
+      "attributes": [
+        { "name": "Организация", "type": "ref", "refs": ["Catalog.Организации"] },
+        { "name": "Склад",       "type": "ref", "refs": ["Catalog.Склады"] },
+        { "name": "Контрагент",  "type": "ref", "refs": ["Catalog.Контрагенты"] }
+      ],
+      "tabularSections": [
+        {
+          "name": "Товары",
+          "attributes": [
+            { "name": "Номенклатура", "type": "ref", "refs": ["Catalog.Номенклатура"] },
+            { "name": "Количество",   "type": "Number", "precision": 15, "scale": 3 },
+            { "name": "Цена",         "type": "Number", "precision": 15, "scale": 2 },
+            { "name": "Сумма",        "type": "Number", "precision": 15, "scale": 2 }
+          ]
+        }
+      ],
+      "registerRecords": [
+        "AccumulationRegister.ОстаткиТоваров",
+        "AccumulationRegister.Продажи",
+        "AccumulationRegister.ВзаиморасчётыСКонтрагентами"
+      ]
+    },
+    {
+      "name": "ЗаказПокупателя",
+      "attributes": [
+        { "name": "Организация", "type": "ref", "refs": ["Catalog.Организации"] },
+        { "name": "Контрагент",  "type": "ref", "refs": ["Catalog.Контрагенты"] },
+        { "name": "Статус",      "type": "ref", "refs": ["Enum.СтатусЗаказа"] }
+      ],
+      "tabularSections": [
+        {
+          "name": "Товары",
+          "attributes": [
+            { "name": "Номенклатура", "type": "ref", "refs": ["Catalog.Номенклатура"] },
+            { "name": "Количество",   "type": "Number", "precision": 15, "scale": 3 },
+            { "name": "Цена",         "type": "Number", "precision": 15, "scale": 2 },
+            { "name": "Сумма",        "type": "Number", "precision": 15, "scale": 2 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ПоступлениеОплаты",
+      "attributes": [
+        { "name": "Организация", "type": "ref", "refs": ["Catalog.Организации"] },
+        { "name": "Контрагент",  "type": "ref", "refs": ["Catalog.Контрагенты"] },
+        { "name": "Сумма",       "type": "Number", "precision": 15, "scale": 2 }
+      ],
+      "registerRecords": ["AccumulationRegister.ВзаиморасчётыСКонтрагентами"]
+    }
+  ],
+
+  "roles": [
+    { "name": "ПолныеПрава" }
+  ]
+}

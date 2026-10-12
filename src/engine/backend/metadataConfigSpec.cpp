@@ -62,6 +62,21 @@ long JInt(const json& obj, const char* key, long def) {
 //   { "type": "ref", "refs": ["Catalog.X", "Document.Y"] }
 bool ApplyType(ibTypeDescription& td, const json& a, const RefMap& refMap,
                const wxString& ctx, wxString& err) {
+	// Fail FAST on the common mistake: a NESTED type object — `"type": { "type": "Number", … }` —
+	// instead of the flat shape this spec uses (`"type": "Number", "precision": 15`). Left to degrade
+	// silently to String it surfaces much later and far away: a numeric register resource becomes a
+	// string, and the balance-totals trigger then tries to negate it ("Strings cannot be negated"),
+	// taking the whole DB restructuring down with no hint at the real cause.
+	{
+		auto t = a.find("type");
+		if (t != a.end() && !t->is_string()) {
+			err = wxString::Format(
+				wxT("%s: 'type' must be a string (e.g. \"Number\" / \"String\" / \"ref\"); its qualifiers ")
+				wxT("(precision/scale/length/refs) are SIBLING keys on the same object, not nested under 'type'."),
+				ctx);
+			return false;
+		}
+	}
 	const wxString typeName = JStr(a, "type", wxT("String"));
 
 	if (typeName.IsSameAs(wxT("Number"), false)) {
@@ -973,6 +988,18 @@ bool FillRegister(ibMetaDataConfigurationFile& cfg, ibValueMetaObject* obj,
 	if (!AddTypedChildren(cfg, obj, node, "dimensions", g_metaDimensionCLSID, refMap, err)) return false;
 	if (!AddTypedChildren(cfg, obj, node, "resources",  g_metaResourceCLSID,  refMap, err)) return false;
 	if (!AddTypedChildren(cfg, obj, node, "attributes", g_metaAttributeCLSID, refMap, err)) return false;
+	// Accumulation register KIND: "balance" (остатки, the default — receipt/expense) or "turnover"
+	// (обороты — a one-sided flow, e.g. sales). Only the accumulation register carries this property;
+	// an information register has no such key, so GetProperty returns null and this is a no-op there.
+	{
+		const wxString rt = JStr(node, "registerType").Lower();
+		if (!rt.IsEmpty()) {
+			if (ibProperty* p = obj->GetProperty(wxT("RegisterType"))) {
+				const bool turnover = rt.StartsWith(wxT("turnover")) || rt == wxT("обороты");
+				p->SetValue(wxVariant(turnover ? 1 : 0));   // ibRegisterType::eTurnovers / eBalances
+			}
+		}
+	}
 	ApplyObjectModules(obj, node);
 	if (!AddForms(cfg, obj, node, refMap, err))
 		return false;
