@@ -971,6 +971,8 @@ ibQueryExprPtr ibMetaIRBuilder::BuildColumnExpr(const ibBackendQueryable* querya
 		fn->m_over = true;
 		for (const ibQueryColumnExprPtr& p : expr->m_partitionBy)
 			fn->m_partitionBy.push_back(BuildColumnExpr(queryable, p, mainQual));
+		for (const auto& o : expr->m_windowOrderBy)   // Inc 2: running-aggregate ORDER BY
+			fn->m_windowOrder.emplace_back(BuildColumnExpr(queryable, o.first, mainQual), o.second);
 		return fn;
 	}
 	}

@@ -144,6 +144,9 @@ struct ibQueryExpr
 	// window is Inc 2. The renderer appends the clause; the dialect must advertise ibSqlFeatures::m_window.
 	bool m_over = false;
 	std::vector<std::shared_ptr<ibQueryExpr>> m_partitionBy;
+	// Window ORDER BY (Inc 2): (expr, ascending) pairs rendered inside OVER (… ORDER BY e [DESC], …).
+	// Non-empty = a running aggregate (the dialect's default frame accumulates in this order).
+	std::vector<std::pair<std::shared_ptr<ibQueryExpr>, bool>> m_windowOrder;
 
 	// Exists: the correlated subquery. A shared_ptr to the (fwd-declared) relation tree — the subquery
 	// references the OUTER write row's columns, so it renders as a self-contained `EXISTS ( SELECT … )`.

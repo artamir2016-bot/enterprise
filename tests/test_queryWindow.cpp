@@ -171,3 +171,79 @@ TEST_F(WindowFix, CountStarPartitionSize)
 	EXPECT_EQ(byRegion["South"], 1);
 	EXPECT_EQ(byRegion["East"], 1);
 }
+
+// Inc 2 — SUM(qty) OVER (PARTITION BY region ORDER BY period): a RUNNING total that accumulates in
+// period order within each partition and RESETS at the partition boundary (default frame).
+TEST_F(WindowFix, RunningTotalWithinPartitionResetsAtBoundary)
+{
+	if (!ready) return;
+
+	db->RunQuery(wxT("CREATE TABLE mov (region TEXT, period INTEGER, qty INTEGER)"));
+	db->RunQuery(wxT("INSERT INTO mov (region, period, qty) VALUES ")
+	             wxT("('North', 1, 10), ('North', 2, 7), ('North', 3, 2), ('South', 1, 5), ('South', 2, 4)"));
+
+	ibRawDBColumn region = ibRawDBColumn::String(wxT("region"));
+	ibRawDBColumn period = ibRawDBColumn::Number(wxT("period"));
+	ibRawDBColumn qty    = ibRawDBColumn::Number(wxT("qty"));
+	PhysicalQ mov(wxT("mov"), 510); mov.AddCol(&region); mov.AddCol(&period); mov.AddCol(&qty);
+
+	ibDatabaseConnectionHolder* holder = ibConnectionPool::ThreadHolder();
+	ASSERT_NE(holder, nullptr);
+	ibDataQueryBuilder q(holder);
+	q.From(&mov);
+	q.Select(&region, wxT("region"));
+	q.Select(&period, wxT("period"));
+	q.SelectExpr(ibQueryColumnExpr::Window(ibWindowAggFn::Sum, ibQueryColumnExpr::Col(&qty), false,
+	                                        { ibQueryColumnExpr::Col(&region) },
+	                                        { { ibQueryColumnExpr::Col(&period), true } }), wxT("run"));
+	ibReadPageRequest page;
+	ibDataQueryResult res = q.Execute(page);
+
+	std::map<std::string, long> run;   // key "region:period" -> running total
+	int rows = 0;
+	while (res.Next()) {
+		++rows;
+		const std::string key = res.GetColumn(wxT("region")).GetString().ToStdString() + ":" +
+		                        std::to_string(res.GetColumn(wxT("period")).GetInteger());
+		run[key] = res.GetColumn(wxT("run")).GetInteger();
+	}
+	EXPECT_EQ(rows, 5);
+	EXPECT_EQ(run["North:1"], 10);
+	EXPECT_EQ(run["North:2"], 17);   // 10 + 7
+	EXPECT_EQ(run["North:3"], 19);   // 10 + 7 + 2
+	EXPECT_EQ(run["South:1"], 5);    // resets at the partition boundary
+	EXPECT_EQ(run["South:2"], 9);    // 5 + 4
+}
+
+// DESC ordering reverses the accumulation direction: the first period in DESC order carries only its
+// own value, the last carries the full partition sum.
+TEST_F(WindowFix, RunningTotalDescending)
+{
+	if (!ready) return;
+
+	db->RunQuery(wxT("CREATE TABLE mov (region TEXT, period INTEGER, qty INTEGER)"));
+	db->RunQuery(wxT("INSERT INTO mov (region, period, qty) VALUES ('North', 1, 10), ('North', 2, 7), ('North', 3, 2)"));
+
+	ibRawDBColumn region = ibRawDBColumn::String(wxT("region"));
+	ibRawDBColumn period = ibRawDBColumn::Number(wxT("period"));
+	ibRawDBColumn qty    = ibRawDBColumn::Number(wxT("qty"));
+	PhysicalQ mov(wxT("mov"), 511); mov.AddCol(&region); mov.AddCol(&period); mov.AddCol(&qty);
+
+	ibDatabaseConnectionHolder* holder = ibConnectionPool::ThreadHolder();
+	ASSERT_NE(holder, nullptr);
+	ibDataQueryBuilder q(holder);
+	q.From(&mov);
+	q.Select(&period, wxT("period"));
+	q.SelectExpr(ibQueryColumnExpr::Window(ibWindowAggFn::Sum, ibQueryColumnExpr::Col(&qty), false,
+	                                        { ibQueryColumnExpr::Col(&region) },
+	                                        { { ibQueryColumnExpr::Col(&period), false } }), wxT("run"));   // DESC
+	ibReadPageRequest page;
+	ibDataQueryResult res = q.Execute(page);
+
+	std::map<long, long> run;
+	while (res.Next())
+		run[res.GetColumn(wxT("period")).GetInteger()] = res.GetColumn(wxT("run")).GetInteger();
+	EXPECT_EQ(run[3], 2);    // first in DESC order
+	EXPECT_EQ(run[2], 9);    // 2 + 7
+	EXPECT_EQ(run[1], 19);   // 2 + 7 + 10 — full partition sum
+}

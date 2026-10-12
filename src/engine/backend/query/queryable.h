@@ -316,6 +316,9 @@ struct ibQueryColumnExpr
 	ibWindowAggFn               m_winFn = ibWindowAggFn::Sum;
 	bool                        m_winStar = false;              // COUNT(*) OVER (…)
 	std::vector<ibQueryColumnExprPtr> m_partitionBy;
+	// Window ORDER BY (Inc 2) — (expr, ascending) pairs. Non-empty = a RUNNING aggregate: the default
+	// frame (unbounded preceding … current row) accumulates in this order within each partition.
+	std::vector<std::pair<ibQueryColumnExprPtr, bool>> m_windowOrderBy;
 
 	// ⭐⭐ ONE FIELD OF A COMPOSITE COLUMN, NAMED. A plain Col() reduces to the column's FIRST value
 	// field, which is the right answer for everything that has one value — a number, a date, a
@@ -352,12 +355,14 @@ struct ibQueryColumnExpr
 		auto e = std::make_shared<ibQueryColumnExpr>();
 		e->m_kind = ibQueryColumnExprKind::Case; e->m_cases = std::move(cases); e->m_else = otherwise; return e;
 	}
-	// Window (T1.2): FN(arg) OVER (PARTITION BY parts…). arg is null + star=true for COUNT(*).
+	// Window (T1.2): FN(arg) OVER (PARTITION BY parts… [ORDER BY order…]). arg is null + star=true for
+	// COUNT(*). order non-empty (Inc 2) makes it a running aggregate (default frame, accumulating in order).
 	static ibQueryColumnExprPtr Window(ibWindowAggFn fn, ibQueryColumnExprPtr arg, bool star,
-	                                   std::vector<ibQueryColumnExprPtr> parts) {
+	                                   std::vector<ibQueryColumnExprPtr> parts,
+	                                   std::vector<std::pair<ibQueryColumnExprPtr, bool>> order = {}) {
 		auto e = std::make_shared<ibQueryColumnExpr>();
 		e->m_kind = ibQueryColumnExprKind::Window; e->m_winFn = fn; e->m_lhs = arg; e->m_winStar = star;
-		e->m_partitionBy = std::move(parts); return e;
+		e->m_partitionBy = std::move(parts); e->m_windowOrderBy = std::move(order); return e;
 	}
 };
 

@@ -1445,8 +1445,6 @@ bool PopulateBuilder(const ibQuerySelect& ast, const std::map<wxString, ibValue>
 				// computed / multi-source stitch cannot compute; and window ORDER BY is Inc 2.
 				if (computedPrimary || multiSource)
 					ThrowQueryException(e.m_line, e.m_col, _("a window function (… OVER (…)) needs a single database source"));
-				if (!e.m_windowOrderBy.empty())
-					ThrowQueryException(e.m_line, e.m_col, _("ORDER BY inside OVER (…) is not supported yet (window running aggregates are a later increment)"));
 				auto winFn = [&](ibQueryKeyword k) -> ibWindowAggFn {
 					switch (k) {
 					case ibQueryKeyword::Sum:   return ibWindowAggFn::Sum;
@@ -1479,7 +1477,15 @@ bool PopulateBuilder(const ibQuerySelect& ast, const std::map<wxString, ibValue>
 						ThrowQueryException(pe->m_line, pe->m_col, _("PARTITION BY must name a plain column of the source (Inc 1)"));
 					parts.push_back(ibQueryColumnExpr::Col(pcols.front()));
 				}
-				b.SelectExpr(ibQueryColumnExpr::Window(winFn(e.m_func), arg, e.m_star, std::move(parts)), alias);
+				// ORDER BY inside OVER (Inc 2) — a running aggregate. Plain columns of the single source.
+				std::vector<std::pair<ibQueryColumnExprPtr, bool>> order;
+				for (const ibQueryOrderItem& oi : e.m_windowOrderBy) {
+					const std::vector<const ibBackendQueryColumn*> ocols = ResolvePath(sources, *oi.m_expr);
+					if (ocols.size() != 1 || ocols.front() == nullptr)
+						ThrowQueryException(e.m_line, e.m_col, _("ORDER BY inside OVER must name a plain column of the source (Inc 2)"));
+					order.emplace_back(ibQueryColumnExpr::Col(ocols.front()), oi.m_ascending);
+				}
+				b.SelectExpr(ibQueryColumnExpr::Window(winFn(e.m_func), arg, e.m_star, std::move(parts), std::move(order)), alias);
 				oc.m_alias = alias;
 				oc.m_byAlias = true;
 			}

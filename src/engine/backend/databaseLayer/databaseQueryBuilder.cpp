@@ -703,6 +703,18 @@ wxString ibQueryRenderer::RenderExpr(const ibQueryExprPtr& expr)
 					s += RenderExpr(expr->m_partitionBy[i]);
 				}
 			}
+			if (!expr->m_windowOrder.empty()) {
+				// A running aggregate: ORDER BY inside OVER. The default frame (unbounded preceding … current
+				// row) is implied — not spelled — so every dialect accumulates the same way. A space before
+				// ORDER only when a PARTITION BY preceded it.
+				if (!expr->m_partitionBy.empty()) s += wxT(" ");
+				s += wxT("ORDER BY ");
+				for (size_t i = 0; i < expr->m_windowOrder.size(); ++i) {
+					if (i) s += wxT(", ");
+					s += RenderExpr(expr->m_windowOrder[i].first);
+					if (!expr->m_windowOrder[i].second) s += wxT(" DESC");
+				}
+			}
 			s += wxT(")");
 		}
 		return s;

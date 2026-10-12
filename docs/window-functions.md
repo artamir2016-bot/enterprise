@@ -115,12 +115,14 @@ group's total") and exercises the whole pipe end to end.
 - Tests: partition total, unpartitioned `OVER ()`, `COUNT(*) OVER (PARTITION BY k)`, the
   no-push gate.
 
-### Inc 2 — `ORDER BY` in the window (running aggregates)
-Add the order clause → running/cumulative aggregates with the default frame.
-- Parser: `ORDER BY e [ASC|DESC], …` after the optional partition clause.
-- IR + render: append `ORDER BY …` inside the OVER; the dialect's default frame gives the
-  running semantics (no explicit frame emitted).
-- Tests: running total within a partition (resets at boundary), ASC/DESC, NULL ordering.
+### Inc 2 — `ORDER BY` in the window (running aggregates)  — **DONE**
+Landed: the window `ORDER BY` (parsed since Inc 1) now lowers and executes. L3
+`ibQueryColumnExpr::Window` carries `m_windowOrderBy` (expr, ascending); L2-1 `ibQueryExpr` carries
+`m_windowOrder`; the Func renderer appends `ORDER BY e [DESC], …` inside the OVER. The dialect's
+default frame (unbounded preceding … current row) is implied, not spelled, so every engine
+accumulates the same way. Lowering resolves each order expr to a plain column of the single source.
+Tests: `tests/test_queryWindow.cpp` — running total within a partition that resets at the boundary,
+and DESC accumulation (full oes_tests 1497/1497).
 
 ### Inc 3 — ranking functions
 `ROW_NUMBER() OVER (…)`, `RANK()`, `DENSE_RANK()` — no argument, require ORDER BY.
